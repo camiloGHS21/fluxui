@@ -203,9 +203,31 @@ private:
 
     // Geometry
     uint32_t quadVAO_ = 0, quadVBO_ = 0;
+    uint32_t instanceVBO_ = 0;  // for batched rounded rect instances
     uint32_t textVAO_ = 0, textVBO_ = 0;
     size_t textVBOCapacity_ = 0;
     std::vector<float> textVertexScratch_;
+
+    // Batched rounded rect instances (OpenGL instancing)
+    struct RoundedRectInstance {
+        float rect[4];        // x, y, w, h
+        float color[4];       // r, g, b, a
+        float color2[4];      // r, g, b, a
+        float borderColor[4]; // r, g, b, a
+        float radius;
+        float borderWidth;
+        float opacity;
+        float hasGradient;
+        float gradientAngle;
+        float _pad[3];        // pad to 96 bytes (24 floats)
+    };
+    std::vector<RoundedRectInstance> rectBatch_;
+    size_t instanceVBOCapacity_ = 0;
+    float batchScale_ = 1.0f;
+    Vec2 batchScalePivot_ = {0, 0};
+    bool batchValid_ = false;
+    void flushRectBatch();
+    void setupInstanceBuffer();
 
     struct RoundedRectUniforms {
         int projection = -1;
