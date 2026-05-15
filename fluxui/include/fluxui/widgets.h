@@ -13,7 +13,7 @@
 #include <utility>
 #include <unordered_map>
 
-struct SDL_Cursor;
+// Forward declarations (handles moved to core.h)
 
 namespace FluxUI {
 
@@ -381,10 +381,10 @@ public:
     bool running = true;
 
 private:
-    SDL_Window* window_ = nullptr;
-    SDL_Cursor* defaultCursor_ = nullptr;
-    SDL_Cursor* pointerCursor_ = nullptr;
-    SDL_Cursor* textCursor_ = nullptr;
+    void* window_ = nullptr;
+    void* defaultCursor_ = nullptr;
+    void* pointerCursor_ = nullptr;
+    void* textCursor_ = nullptr;
     CursorType activeCursor_ = CursorType::Default;
     Renderer renderer_;
     RenderBackendType backendPreference_ = Renderer::defaultBackend();

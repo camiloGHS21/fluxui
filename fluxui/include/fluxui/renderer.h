@@ -8,8 +8,7 @@
 #include <cstdint>
 #include <memory>
 
-struct SDL_Window;
-typedef void* SDL_GLContext;
+
 
 namespace FluxUI {
 
@@ -51,7 +50,7 @@ class IRenderBackend {
 public:
     virtual ~IRenderBackend() = default;
     virtual RenderBackendInfo info() const = 0;
-    virtual uint32_t sdlWindowFlags() const = 0;
+    virtual uint32_t windowFlags() const = 0;
 };
 
 // ============================================================
@@ -135,14 +134,14 @@ public:
     RenderBackendType backendPreference() const { return backendPreference_; }
     RenderBackendType activeBackend() const { return activeBackend_; }
     const char* activeBackendName() const;
-    uint32_t sdlWindowFlags() const;
+    uint32_t windowFlags() const;
 
     static RenderBackendInfo getBackendInfo(RenderBackendType backend);
     static const char* backendName(RenderBackendType backend);
     static RenderBackendType defaultBackend();
     static VulkanProbeResult probeVulkanRuntime(const char* appName = "FluxUI Vulkan Probe");
 
-    bool init(SDL_Window* window);
+    bool init(void* windowHandle);
     void shutdown();
 
     // Frame management
@@ -187,8 +186,8 @@ public:
     Vec2 getWindowSize() const { return {(float)windowWidth_, (float)windowHeight_}; }
 
 private:
-    SDL_Window* window_ = nullptr;
-    SDL_GLContext glContext_ = nullptr;
+    void* window_ = nullptr;
+    void* glContext_ = nullptr;
     RenderBackendType backendPreference_ = defaultBackend();
     RenderBackendType activeBackend_ = defaultBackend();
     bool backendResolved_ = false;
@@ -263,7 +262,7 @@ private:
     bool buildFontAtlas(FontData& font, const unsigned char* data, int dataSize, float size);
     FontData* getFontForSize(const std::string& fontName, float fontSize);
     const FontData* findFontForMeasure(const std::string& fontName, float fontSize) const;
-    bool initVulkan(SDL_Window* window);
+    bool initVulkan(void* windowHandle);
     void shutdownVulkan();
     bool beginVulkanFrame(int windowWidth, int windowHeight);
     void endVulkanFrame();

@@ -1,14 +1,12 @@
 // FluxUI Widget Implementation
 #include "fluxui/widgets.h"
-#include <SDL.h>
 #include <iostream>
 #include <algorithm>
-#include <cmath>
+#include <chrono>
 #include <cctype>
+#include <thread>
 
-#ifndef FLUXUI_ENABLE_MSAA
-#define FLUXUI_ENABLE_MSAA 1
-#endif
+#include "fluxui/platform.h"
 
 namespace FluxUI {
 
@@ -755,22 +753,22 @@ void Widget::update(const InputState& input) {
         if (hovered && !scrollbarDragging && input.keyCode != 0) {
             float maxScroll = maxScrollY();
             switch (input.keyCode) {
-            case SDLK_UP:
+            case 0x26: // VK_UP
                 targetScrollY -= 48.0f;
                 break;
-            case SDLK_DOWN:
+            case 0x28: // VK_DOWN
                 targetScrollY += 48.0f;
                 break;
-            case SDLK_PAGEUP:
+            case 0x21: // VK_PRIOR (PAGE UP)
                 targetScrollY -= bounds.h * 0.88f;
                 break;
-            case SDLK_PAGEDOWN:
+            case 0x22: // VK_NEXT (PAGE DOWN)
                 targetScrollY += bounds.h * 0.88f;
                 break;
-            case SDLK_HOME:
+            case 0x24: // VK_HOME
                 targetScrollY = 0.0f;
                 break;
-            case SDLK_END:
+            case 0x23: // VK_END
                 targetScrollY = maxScroll;
                 break;
             default:
@@ -1247,8 +1245,8 @@ void TextInput::update(const InputState& input) {
         return approximateTextIndexAtX(value, localX, computedStyle.fontSize);
     };
 
-    bool shift = (input.modifiers & KMOD_SHIFT) != 0;
-    bool ctrl = (input.modifiers & KMOD_CTRL) != 0;
+    bool shift = (input.modifiers & MOD_SHIFT) != 0;
+    bool ctrl = (input.modifiers & MOD_CTRL) != 0;
     Rect clearRect = clearButtonRect();
     clearHovered_ = !value.empty() && clearRect.contains(input.mousePos);
     clearPressed_ = clearHovered_ && input.mouseDown[0];
@@ -1302,41 +1300,34 @@ void TextInput::update(const InputState& input) {
 
     caretBlinkTime_ += input.deltaTime;
 
-    SDL_Rect imeRect = {
-        (int)(bounds.x + computedStyle.padding.left),
-        (int)bounds.y,
-        (int)std::max(1.0f, bounds.w - computedStyle.padding.horizontal()),
-        (int)bounds.h
-    };
-    SDL_SetTextInputRect(&imeRect);
+    // IME Rect handling removed for pure Win32 simplicity or could use ImmSetCompositionWindow
 
     if (input.keyCode != 0) {
-        if (ctrl && input.keyCode == SDLK_a) {
+        if (ctrl && input.keyCode == 'A') {
             selectionAnchor_ = 0;
             selectionFocus_ = value.size();
             caretIndex_ = value.size();
             caretBlinkTime_ = 0;
             return;
         }
-        if (ctrl && (input.keyCode == SDLK_c || input.keyCode == SDLK_x)) {
+        if (ctrl && (input.keyCode == 'C' || input.keyCode == 'X')) {
             if (hasSelection()) {
                 std::string selected = value.substr(selectionStart(), selectionEnd() - selectionStart());
-                SDL_SetClipboardText(selected.c_str());
-                if (input.keyCode == SDLK_x) eraseSelection();
+                Platform::setClipboardText(selected.c_str());
+                if (input.keyCode == 'X') eraseSelection();
             }
             return;
         }
-        if (ctrl && input.keyCode == SDLK_v) {
-            char* clip = SDL_GetClipboardText();
-            if (clip) {
+        if (ctrl && input.keyCode == 'V') {
+            std::string clip = Platform::getClipboardText();
+            if (!clip.empty()) {
                 insertText(clip);
-                SDL_free(clip);
             }
             return;
         }
 
         switch (input.keyCode) {
-        case SDLK_BACKSPACE:
+        case 0x08: // VK_BACK
             if (!eraseSelection() && caretIndex_ > 0) {
                 size_t prev = ctrl ? previousWordBoundary(value, caretIndex_) :
                     previousCodepoint(value, caretIndex_);
@@ -1344,7 +1335,7 @@ void TextInput::update(const InputState& input) {
                 setCaret(prev, false);
             }
             return;
-        case SDLK_DELETE:
+        case 0x2E: // VK_DELETE
             if (!eraseSelection() && caretIndex_ < value.size()) {
                 size_t next = ctrl ? nextWordBoundary(value, caretIndex_) :
                     nextCodepoint(value, caretIndex_);
@@ -1352,32 +1343,33 @@ void TextInput::update(const InputState& input) {
                 setCaret(caretIndex_, false);
             }
             return;
-        case SDLK_LEFT: {
+        case 0x25: // VK_LEFT
+        {
             size_t target = hasSelection() && !shift ? selectionStart() :
                 (ctrl ? previousWordBoundary(value, caretIndex_) : previousCodepoint(value, caretIndex_));
             setCaret(target, shift);
             return;
         }
-        case SDLK_RIGHT: {
+        case 0x27: // VK_RIGHT
+        {
             size_t target = hasSelection() && !shift ? selectionEnd() :
                 (ctrl ? nextWordBoundary(value, caretIndex_) : nextCodepoint(value, caretIndex_));
             setCaret(target, shift);
             return;
         }
-        case SDLK_HOME:
+        case 0x24: // VK_HOME
             setCaret(0, shift);
             return;
-        case SDLK_END:
+        case 0x23: // VK_END
             setCaret(value.size(), shift);
             return;
-        case SDLK_ESCAPE:
+        case 0x1B: // VK_ESCAPE
             focused = false;
             selecting_ = false;
             selectionAnchor_ = caretIndex_;
             selectionFocus_ = caretIndex_;
             return;
-        case SDLK_RETURN:
-        case SDLK_KP_ENTER:
+        case 0x0D: // VK_RETURN
             focused = false;
             selecting_ = false;
             return;
@@ -1747,48 +1739,146 @@ void StatCard::render(Renderer& renderer) {
 //  Application
 // ============================================================
 
-bool Application::init(const std::string& title, int width, int height) {
-    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
-    SDL_SetHint("SDL_WINDOWS_DPI_SCALING", "1");
+// ============================================================
+//  Application (Win32 Implementation)
+// ============================================================
 
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << std::endl;
-        return false;
+// ============================================================
+//  Internal Event Handler
+// ============================================================
+
+#ifdef _WIN32
+#include <windows.h>
+#include <windowsx.h>
+void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam) {
+    Application* app = static_cast<Application*>(appPtr);
+    if (!app) return;
+
+    switch (msg) {
+    case WM_CLOSE:
+        app->running = false;
+        break;
+    case WM_SIZE: {
+        int w = LOWORD(lParam);
+        int h = HIWORD(lParam);
+        app->input().windowSize = {(float)w, (float)h};
+        UIEvent event;
+        event.type = UIEventType::WindowResized;
+        event.position = app->input().windowSize;
+        app->emit(std::move(event));
+        break;
     }
+    case WM_MOUSEMOVE: {
+        Vec2 oldPos = app->input().mousePos;
+        app->input().mousePos = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
+        app->input().mouseDelta = app->input().mousePos - oldPos;
+        UIEvent event;
+        event.type = UIEventType::MouseMove;
+        event.position = app->input().mousePos;
+        event.delta = app->input().mouseDelta;
+        app->emit(std::move(event));
+        break;
+    }
+    case WM_LBUTTONDOWN:
+    case WM_RBUTTONDOWN:
+    case WM_MBUTTONDOWN: {
+        int btn = (msg == WM_LBUTTONDOWN) ? 0 : (msg == WM_RBUTTONDOWN ? 1 : 2);
+        app->input().mouseDown[btn] = true;
+        app->input().mouseClicked[btn] = true;
+        app->input().mouseClickCount[btn] = 1;
+        UIEvent event;
+        event.type = UIEventType::MouseDown;
+        event.position = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
+        event.button = btn + 1;
+        event.clickCount = 1;
+        app->emit(std::move(event));
+        break;
+    }
+    case WM_LBUTTONUP:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONUP: {
+        int btn = (msg == WM_LBUTTONUP) ? 0 : (msg == WM_RBUTTONUP ? 1 : 2);
+        app->input().mouseDown[btn] = false;
+        app->input().mouseReleased[btn] = true;
+        UIEvent event;
+        event.type = UIEventType::MouseUp;
+        event.position = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
+        event.button = btn + 1;
+        app->emit(std::move(event));
+        break;
+    }
+    case WM_MOUSEWHEEL: {
+        float delta = (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
+        app->input().scroll.y += delta;
+        UIEvent event;
+        event.type = UIEventType::MouseWheel;
+        event.delta = {0, delta};
+        app->emit(std::move(event));
+        break;
+    }
+    case WM_CHAR: {
+        if (wParam >= 32) {
+            char utf8[5] = {0};
+            WideCharToMultiByte(CP_UTF8, 0, (LPCWSTR)&wParam, 1, utf8, 4, nullptr, nullptr);
+            app->input().text += utf8;
+            UIEvent event;
+            event.type = UIEventType::TextInput;
+            event.text = utf8;
+            app->emit(std::move(event));
+        }
+        break;
+    }
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN: {
+        app->input().keyCode = (int)wParam;
+        app->input().modifiers = MOD_NONE;
+        if (GetKeyState(VK_SHIFT) & 0x8000) app->input().modifiers |= MOD_SHIFT;
+        if (GetKeyState(VK_CONTROL) & 0x8000) app->input().modifiers |= MOD_CTRL;
+        if (GetKeyState(VK_MENU) & 0x8000) app->input().modifiers |= MOD_ALT;
+        if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) app->input().modifiers |= MOD_GUI;
+        UIEvent event;
+        event.type = UIEventType::KeyDown;
+        event.keyCode = app->input().keyCode;
+        event.modifiers = app->input().modifiers;
+        app->emit(std::move(event));
+        break;
+    }
+    case WM_KEYUP:
+    case WM_SYSKEYUP: {
+        UIEvent event;
+        event.type = UIEventType::KeyUp;
+        event.keyCode = (int)wParam;
+        app->emit(std::move(event));
+        break;
+    }
+    }
+}
+#else
+// Placeholder for other platforms
+void Internal_OnWindowEvent(void* app, uint32_t msg, uint64_t w, uint64_t l) {}
+#endif
+
+bool Application::init(const std::string& title, int width, int height) {
+    if (!Platform::init()) return false;
+
+    PlatformWindowConfig config;
+    config.title = title;
+    config.width = width;
+    config.height = height;
+    
+    window_ = Platform::createWindow(config);
+    if (!window_) return false;
+
+#ifdef _WIN32
+    SetWindowLongPtr((HWND)window_, GWLP_USERDATA, (LONG_PTR)this);
+#endif
 
     renderer_.setBackend(backendPreference_);
-
-    if (renderer_.activeBackend() == RenderBackendType::Compatibility) {
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-        SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-#if FLUXUI_ENABLE_MSAA
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-#else
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-#endif
-    }
-
-    window_ = SDL_CreateWindow(title.c_str(),
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-        width, height,
-        renderer_.sdlWindowFlags() | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_HIDDEN);
-
-    if (!window_) {
-        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << std::endl;
-        return false;
-    }
-
     if (!renderer_.init(window_)) return false;
-    SDL_StartTextInput();
-    defaultCursor_ = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_ARROW);
-    pointerCursor_ = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_HAND);
-    textCursor_ = SDL_CreateSystemCursor(SDL_SYSTEM_CURSOR_IBEAM);
-    if (defaultCursor_) SDL_SetCursor(defaultCursor_);
+
+    defaultCursor_ = Platform::createSystemCursor(CursorType::Default);
+    pointerCursor_ = Platform::createSystemCursor(CursorType::Pointer);
+    textCursor_ = Platform::createSystemCursor(CursorType::Text);
 
     root_ = std::make_shared<Panel>();
     root_->id = "root";
@@ -1797,7 +1887,6 @@ bool Application::init(const std::string& title, int width, int height) {
     root_->computedStyle.flexDirection = FlexDirection::Row;
 
     input_.windowSize = {(float)width, (float)height};
-
     return true;
 }
 
@@ -1819,131 +1908,15 @@ void Application::processEvents() {
     input_.scroll = {0, 0};
     input_.text.clear();
     input_.keyCode = 0;
-    input_.modifiers = (int)SDL_GetModState();
 
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
-        case SDL_QUIT:
-            running = false;
-            emit({UIEventType::Quit});
-            break;
-        case SDL_WINDOWEVENT:
-            if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-                input_.windowSize = {(float)event.window.data1, (float)event.window.data2};
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::WindowResized;
-                uiEvent.position = input_.windowSize;
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_MOUSEMOTION:
-            input_.mouseDelta.x += (float)event.motion.xrel;
-            input_.mouseDelta.y += (float)event.motion.yrel;
-            input_.mousePos = {(float)event.motion.x, (float)event.motion.y};
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::MouseMove;
-                uiEvent.position = input_.mousePos;
-                uiEvent.delta = {(float)event.motion.xrel, (float)event.motion.yrel};
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_MOUSEBUTTONDOWN:
-            input_.mousePos = {(float)event.button.x, (float)event.button.y};
-            if (event.button.button <= 3) {
-                input_.mouseDown[event.button.button - 1] = true;
-                input_.mouseClicked[event.button.button - 1] = true;
-                input_.mouseClickCount[event.button.button - 1] = event.button.clicks;
-            }
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::MouseDown;
-                uiEvent.position = input_.mousePos;
-                uiEvent.button = event.button.button;
-                uiEvent.clickCount = event.button.clicks;
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_MOUSEBUTTONUP:
-            input_.mousePos = {(float)event.button.x, (float)event.button.y};
-            if (event.button.button <= 3) {
-                input_.mouseDown[event.button.button - 1] = false;
-                input_.mouseReleased[event.button.button - 1] = true;
-            }
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::MouseUp;
-                uiEvent.position = input_.mousePos;
-                uiEvent.button = event.button.button;
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_MOUSEWHEEL: {
-            int mx = 0, my = 0;
-            SDL_GetMouseState(&mx, &my);
-            input_.mousePos = {(float)mx, (float)my};
-            float wheelX = (float)event.wheel.x;
-            float wheelY = (float)event.wheel.y;
-#if SDL_VERSION_ATLEAST(2, 0, 18)
-            if (std::abs(event.wheel.preciseX) > 0.001f || std::abs(event.wheel.preciseY) > 0.001f) {
-                wheelX = event.wheel.preciseX;
-                wheelY = event.wheel.preciseY;
-            }
-#endif
-            if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
-                wheelX = -wheelX;
-                wheelY = -wheelY;
-            }
-            input_.scroll.x += wheelX;
-            input_.scroll.y += wheelY;
-            UIEvent uiEvent;
-            uiEvent.type = UIEventType::MouseWheel;
-            uiEvent.position = input_.mousePos;
-            uiEvent.delta = {wheelX, wheelY};
-            emit(std::move(uiEvent));
-            break;
-        }
-        case SDL_TEXTINPUT:
-            input_.text += event.text.text;
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::TextInput;
-                uiEvent.text = event.text.text;
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_KEYDOWN:
-            input_.keyCode = event.key.keysym.sym;
-            input_.modifiers = event.key.keysym.mod;
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::KeyDown;
-                uiEvent.keyCode = input_.keyCode;
-                uiEvent.modifiers = input_.modifiers;
-                emit(std::move(uiEvent));
-            }
-            break;
-        case SDL_KEYUP:
-            input_.modifiers = event.key.keysym.mod;
-            {
-                UIEvent uiEvent;
-                uiEvent.type = UIEventType::KeyUp;
-                uiEvent.keyCode = event.key.keysym.sym;
-                uiEvent.modifiers = input_.modifiers;
-                emit(std::move(uiEvent));
-            }
-            break;
-        }
-    }
+    Platform::processEvents(running);
 }
 
 void Application::updateCursor(CursorType cursor) {
     if (cursor == activeCursor_) return;
-    SDL_Cursor* next = defaultCursor_;
-    if (cursor == CursorType::Pointer) next = pointerCursor_ ? pointerCursor_ : defaultCursor_;
-    if (cursor == CursorType::Text) next = textCursor_ ? textCursor_ : defaultCursor_;
-    if (next) SDL_SetCursor(next);
+    Platform::setCursor((NativeCursorHandle)
+        (cursor == CursorType::Pointer ? pointerCursor_ : 
+         (cursor == CursorType::Text ? textCursor_ : defaultCursor_)));
     activeCursor_ = cursor;
 }
 
@@ -2034,13 +2007,13 @@ bool Application::renderRoute(Widget* container) {
 }
 
 void Application::run() {
-    uint64_t lastTime = SDL_GetPerformanceCounter();
-    uint64_t freq = SDL_GetPerformanceFrequency();
-
+    auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
+
     while (running) {
-        uint64_t now = SDL_GetPerformanceCounter();
-        input_.deltaTime = (float)(now - lastTime) / (float)freq;
+        auto now = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<float> elapsed = now - lastTime;
+        input_.deltaTime = elapsed.count();
         lastTime = now;
 
         processEvents();
@@ -2049,16 +2022,15 @@ void Application::run() {
         // Resolve styles
         root_->resolveStyles(stylesheet_);
 
-        if (firstFrame) {
-            SDL_Rect bounds;
-            SDL_GetDisplayUsableBounds(SDL_GetWindowDisplayIndex(window_), &bounds);
-            SDL_SetWindowSize(window_, bounds.w, bounds.h);
-            SDL_SetWindowPosition(window_, bounds.x, bounds.y);
-        }
-
         // Layout
-        int w, h;
-        SDL_GetWindowSize(window_, &w, &h);
+        RECT rect;
+#ifdef _WIN32
+        GetClientRect((HWND)window_, &rect);
+        int w = rect.right - rect.left;
+        int h = rect.bottom - rect.top;
+#else
+        int w = 800, h = 600; // Fallback
+#endif
         root_->layout({0, 0, (float)w, (float)h});
 
         // Update
@@ -2082,25 +2054,30 @@ void Application::run() {
         if (onRender) onRender();
         renderer_.endFrame();
 
+#ifdef _WIN32
         if (firstFrame) {
-            SDL_MaximizeWindow(window_);
+            ShowWindow((HWND)window_, SW_SHOWMAXIMIZED);
             firstFrame = false;
         }
+#endif
 
-        // Cap at ~120 FPS
-        SDL_Delay(1);
+        constexpr float targetFrameSeconds = 1.0f / 120.0f;
+        auto frameElapsed = std::chrono::duration<float>(
+            std::chrono::high_resolution_clock::now() - now).count();
+        if (frameElapsed < targetFrameSeconds) {
+            std::this_thread::sleep_for(
+                std::chrono::duration<float>(targetFrameSeconds - frameElapsed));
+        } else {
+            std::this_thread::yield();
+        }
     }
 }
 
 void Application::shutdown() {
     renderer_.shutdown();
-    SDL_StopTextInput();
-    if (defaultCursor_) SDL_FreeCursor(defaultCursor_);
-    if (pointerCursor_) SDL_FreeCursor(pointerCursor_);
-    if (textCursor_) SDL_FreeCursor(textCursor_);
-    defaultCursor_ = pointerCursor_ = textCursor_ = nullptr;
-    if (window_) SDL_DestroyWindow(window_);
-    SDL_Quit();
+#ifdef _WIN32
+    if (window_) DestroyWindow((HWND)window_);
+#endif
 }
 
 } // namespace FluxUI

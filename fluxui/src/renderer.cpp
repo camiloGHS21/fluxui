@@ -14,26 +14,12 @@
 #define FLUXUI_HAS_VULKAN_SDK 0
 #endif
 
-#if FLUXUI_HAS_VULKAN_SDK && defined(_WIN32)
-#ifndef VK_USE_PLATFORM_WIN32_KHR
-#define VK_USE_PLATFORM_WIN32_KHR
-#endif
-#endif
-
 #include <glad/gl.h>
-#include <SDL.h>
-#include <SDL_vulkan.h>
 #if FLUXUI_HAS_VULKAN_SDK
-#include <vulkan/vulkan.h>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-#include <glslang/Include/glslang_c_interface.h>
-#include <glslang/Public/resource_limits_c.h>
 #endif
-#ifdef _WIN32
-#include <windows.h>
-#include <SDL_syswm.h>
-#endif
+#include "fluxui/platform.h"
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
@@ -56,6 +42,10 @@
 
 #ifndef FLUXUI_ENABLE_VSYNC
 #define FLUXUI_ENABLE_VSYNC 1
+#endif
+
+#ifndef FLUXUI_LOW_MEMORY
+#define FLUXUI_LOW_MEMORY 1
 #endif
 
 #ifndef FLUXUI_HAS_VULKAN
@@ -352,8 +342,8 @@ public:
         };
     }
 
-    uint32_t sdlWindowFlags() const override {
-        return SDL_WINDOW_OPENGL;
+    uint32_t windowFlags() const override {
+        return 0;
     }
 };
 
@@ -371,12 +361,8 @@ public:
         };
     }
 
-    uint32_t sdlWindowFlags() const override {
-#if defined(_WIN32)
+    uint32_t windowFlags() const override {
         return 0;
-#else
-        return SDL_WINDOW_VULKAN;
-#endif
     }
 };
 
@@ -394,7 +380,7 @@ public:
         };
     }
 
-    uint32_t sdlWindowFlags() const override {
+    uint32_t windowFlags() const override {
         return 0;
     }
 };
@@ -413,12 +399,8 @@ public:
         };
     }
 
-    uint32_t sdlWindowFlags() const override {
-#ifdef SDL_WINDOW_METAL
-        return SDL_WINDOW_METAL;
-#else
+    uint32_t windowFlags() const override {
         return 0;
-#endif
     }
 };
 
@@ -650,17 +632,17 @@ const char* Renderer::activeBackendName() const {
     return backendName(activeBackend_);
 }
 
-uint32_t Renderer::sdlWindowFlags() const {
+uint32_t Renderer::windowFlags() const {
     if (activeBackend_ == RenderBackendType::Vulkan) {
-        return vulkanBackendInfo().sdlWindowFlags();
+        return vulkanBackendInfo().windowFlags();
     }
     if (activeBackend_ == RenderBackendType::Direct3D12) {
-        return direct3D12BackendInfo().sdlWindowFlags();
+        return direct3D12BackendInfo().windowFlags();
     }
     if (activeBackend_ == RenderBackendType::Metal) {
-        return metalBackendInfo().sdlWindowFlags();
+        return metalBackendInfo().windowFlags();
     }
-    return compatibilityBackendInfo().sdlWindowFlags();
+    return compatibilityBackendInfo().windowFlags();
 }
 
 RenderBackendInfo Renderer::getBackendInfo(RenderBackendType backend) {
@@ -704,235 +686,128 @@ RenderBackendType Renderer::defaultBackend() {
 VulkanProbeResult Renderer::probeVulkanRuntime(const char* appName) {
     VulkanProbeResult result;
 
-    const bool videoAlreadyInitialized = (SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO) != 0;
-    bool loadedLibrary = false;
-    bool loadedWithSDL = false;
-#ifdef _WIN32
-    HMODULE vulkanModule = nullptr;
-#endif
-    SDL_Window* window = nullptr;
-    VkInstance instance = nullptr;
-    VkSurfaceKHR surface = nullptr;
-    PFN_vkDestroyInstance vkDestroyInstance = nullptr;
-    PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR = nullptr;
-
-    auto finish = [&]() {
-        if (surface && vkDestroySurfaceKHR && instance) {
-            vkDestroySurfaceKHR(instance, surface, nullptr);
-        }
-        if (instance && vkDestroyInstance) {
-            vkDestroyInstance(instance, nullptr);
-        }
-        if (window) {
-            SDL_DestroyWindow(window);
-        }
-        if (loadedWithSDL) {
-            SDL_Vulkan_UnloadLibrary();
-        }
-#ifdef _WIN32
-        if (vulkanModule) {
-            FreeLibrary(vulkanModule);
-        }
-#endif
-        if (!videoAlreadyInitialized) {
-            SDL_QuitSubSystem(SDL_INIT_VIDEO);
-        }
-        return result;
-    };
-
-    if (!videoAlreadyInitialized && SDL_InitSubSystem(SDL_INIT_VIDEO) != 0) {
-        result.error = std::string("SDL video init failed: ") + SDL_GetError();
-        return finish();
-    }
-
+    void* vulkanModule = nullptr;
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
-    std::string sdlLoadError;
-    if (SDL_Vulkan_LoadLibrary(nullptr) == 0) {
-        loadedLibrary = true;
-        loadedWithSDL = true;
-        vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
-            SDL_Vulkan_GetVkGetInstanceProcAddr());
-    } else {
-        sdlLoadError = SDL_GetError();
-#ifdef _WIN32
-        vulkanModule = LoadLibraryA("vulkan-1.dll");
-        if (vulkanModule) {
-            loadedLibrary = true;
-            vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
-                GetProcAddress(vulkanModule, "vkGetInstanceProcAddr"));
-        }
-#endif
-    }
-
-    if (!loadedLibrary || !vkGetInstanceProcAddr) {
-        result.error = "Could not load Vulkan loader";
-        if (!sdlLoadError.empty()) {
-            result.error += ": " + sdlLoadError;
-        }
-        return finish();
-    }
-    result.loaderAvailable = true;
-
-    window = SDL_CreateWindow(appName ? appName : "FluxUI Vulkan Probe",
-                              SDL_WINDOWPOS_UNDEFINED,
-                              SDL_WINDOWPOS_UNDEFINED,
-                              64,
-                              64,
-                              (loadedWithSDL ? SDL_WINDOW_VULKAN : 0) | SDL_WINDOW_HIDDEN);
-    if (!window) {
-        result.error = std::string("SDL could not create a Vulkan probe window: ") + SDL_GetError();
-        return finish();
-    }
-    result.windowCreated = true;
-
-    unsigned int extensionCount = 0;
-    std::vector<const char*> extensions;
-    if (loadedWithSDL) {
-        if (SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr) != SDL_TRUE) {
-            result.error = std::string("SDL could not query Vulkan instance extensions: ") + SDL_GetError();
-            return finish();
-        }
-
-        extensions.resize(extensionCount);
-        if (extensionCount > 0 &&
-            SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions.data()) != SDL_TRUE) {
-            result.error = std::string("SDL could not read Vulkan instance extensions: ") + SDL_GetError();
-            return finish();
-        }
-    } else {
-#ifdef _WIN32
-        extensions = {"VK_KHR_surface", "VK_KHR_win32_surface"};
-        extensionCount = (unsigned int)extensions.size();
+#if FLUXUI_HAS_VULKAN_SDK
+    vkGetInstanceProcAddr = ::vkGetInstanceProcAddr;
+    result.loaderAvailable = vkGetInstanceProcAddr != nullptr;
 #else
-        result.error = "Vulkan loader fallback is only implemented for Windows";
-        return finish();
+    vulkanModule = Platform::loadVulkanLibrary();
+    if (vulkanModule) {
+        vkGetInstanceProcAddr = reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+            Platform::getVulkanProc(vulkanModule, "vkGetInstanceProcAddr"));
+    }
+    result.loaderAvailable = vulkanModule != nullptr;
 #endif
+
+    auto unloadLoader = [&]() {
+        if (vulkanModule) {
+            Platform::unloadVulkanLibrary(vulkanModule);
+            vulkanModule = nullptr;
+        }
+    };
+
+    if (!result.loaderAvailable) {
+        result.error = "Could not load Vulkan library";
+        return result;
     }
 
-    auto loadGlobal = [&](const char* name) {
-        return vkGetInstanceProcAddr(nullptr, name);
-    };
+    if (!vkGetInstanceProcAddr) {
+        unloadLoader();
+        result.error = "vkGetInstanceProcAddr not found";
+        return result;
+    }
 
     auto vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
-        loadGlobal("vkCreateInstance"));
+        vkGetInstanceProcAddr(nullptr, "vkCreateInstance"));
+
     if (!vkCreateInstance) {
-        result.error = "Vulkan loader did not expose vkCreateInstance";
-        return finish();
+        unloadLoader();
+        result.error = "vkCreateInstance not found";
+        return result;
     }
 
-    VkApplicationInfo applicationInfo = {};
-    applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    applicationInfo.pApplicationName = appName ? appName : "FluxUI Vulkan Probe";
-    applicationInfo.applicationVersion = makeVkVersion(1, 0, 0);
-    applicationInfo.pEngineName = "FluxUI";
-    applicationInfo.engineVersion = makeVkVersion(1, 0, 0);
-    applicationInfo.apiVersion = makeVkVersion(1, 0, 0);
+    std::vector<const char*> extensions = Platform::getVulkanInstanceExtensions();
 
-    VkInstanceCreateInfo instanceInfo = {};
-    instanceInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    instanceInfo.pApplicationInfo = &applicationInfo;
-    instanceInfo.enabledExtensionCount = extensionCount;
-    instanceInfo.ppEnabledExtensionNames = extensions.empty() ? nullptr : extensions.data();
+    VkApplicationInfo appInfo = {};
+    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    appInfo.pApplicationName = appName ? appName : "FluxUI Probe";
+    appInfo.apiVersion = VK_API_VERSION_1_0;
 
-    VkResult createResult = vkCreateInstance(&instanceInfo, nullptr, &instance);
-    if (createResult != VK_SUCCESS || !instance) {
-        result.error = vkResultMessage("vkCreateInstance", createResult);
-        return finish();
+    VkInstanceCreateInfo instInfo = {};
+    instInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    instInfo.pApplicationInfo = &appInfo;
+    instInfo.enabledExtensionCount = (uint32_t)extensions.size();
+    instInfo.ppEnabledExtensionNames = extensions.data();
+
+    VkInstance instance = nullptr;
+    VkResult res = vkCreateInstance(&instInfo, nullptr, &instance);
+    if (res != VK_SUCCESS) {
+        unloadLoader();
+        result.error = "vkCreateInstance failed";
+        return result;
     }
     result.instanceCreated = true;
 
-    auto loadInstance = [&](const char* name) {
-        return vkGetInstanceProcAddr(instance, name);
-    };
-
-    vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
-        loadInstance("vkDestroyInstance"));
-    vkDestroySurfaceKHR = reinterpret_cast<PFN_vkDestroySurfaceKHR>(
-        loadInstance("vkDestroySurfaceKHR"));
-
-    if (loadedWithSDL) {
-        if (SDL_Vulkan_CreateSurface(window, instance, &surface) != SDL_TRUE || !surface) {
-            result.error = std::string("SDL could not create a Vulkan surface: ") + SDL_GetError();
-            return finish();
-        }
-    } else {
-#ifdef _WIN32
-        SDL_SysWMinfo wmInfo;
-        SDL_VERSION(&wmInfo.version);
-        if (SDL_GetWindowWMInfo(window, &wmInfo) != SDL_TRUE || !wmInfo.info.win.window) {
-            result.error = std::string("SDL could not expose the Win32 window handle: ") + SDL_GetError();
-            return finish();
+    PlatformWindowConfig config;
+    config.title = "Vulkan Probe";
+    config.width = 1; config.height = 1;
+    NativeWindowHandle tempWindow = Platform::createWindow(config);
+    if (tempWindow) {
+        result.windowCreated = true;
+        VkSurfaceKHR surface = nullptr;
+        if (Platform::createVulkanSurface(instance, tempWindow, &surface)) {
+            result.surfaceCreated = true;
+            auto vkDestroySurfaceKHR = reinterpret_cast<PFN_vkDestroySurfaceKHR>(vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR"));
+            if (vkDestroySurfaceKHR) vkDestroySurfaceKHR(instance, surface, nullptr);
         }
 
-        auto vkCreateWin32SurfaceKHR = reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(
-            loadInstance("vkCreateWin32SurfaceKHR"));
-        if (!vkCreateWin32SurfaceKHR) {
-            result.error = "Vulkan instance did not expose vkCreateWin32SurfaceKHR";
-            return finish();
+        auto vkEnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
+        auto vkGetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties"));
+
+        if (vkEnumeratePhysicalDevices && vkGetPhysicalDeviceProperties) {
+            uint32_t count = 0;
+            vkEnumeratePhysicalDevices(instance, &count, nullptr);
+            result.physicalDeviceCount = count;
+            if (count > 0) {
+                std::vector<VkPhysicalDevice> devices(count);
+                vkEnumeratePhysicalDevices(instance, &count, devices.data());
+                for (uint32_t i = 0; i < count; i++) {
+                    FluxUIVkPhysicalDeviceProperties props = {};
+                    vkGetPhysicalDeviceProperties(devices[i], &props);
+                    result.deviceNames.push_back(props.deviceName);
+                }
+            }
         }
-
-        VkWin32SurfaceCreateInfoKHR surfaceInfo = {};
-        surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-        surfaceInfo.hinstance = GetModuleHandleW(nullptr);
-        surfaceInfo.hwnd = wmInfo.info.win.window;
-
-        VkResult surfaceResult = vkCreateWin32SurfaceKHR(instance, &surfaceInfo, nullptr, &surface);
-        if (surfaceResult != VK_SUCCESS || !surface) {
-            result.error = vkResultMessage("vkCreateWin32SurfaceKHR", surfaceResult);
-            return finish();
-        }
-#endif
-    }
-    result.surfaceCreated = true;
-
-    auto vkEnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
-        loadInstance("vkEnumeratePhysicalDevices"));
-    auto vkGetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
-        loadInstance("vkGetPhysicalDeviceProperties"));
-    if (!vkEnumeratePhysicalDevices || !vkGetPhysicalDeviceProperties) {
-        result.error = "Vulkan instance did not expose physical device queries";
-        return finish();
+        Platform::destroyWindow(tempWindow);
     }
 
-    uint32_t deviceCount = 0;
-    VkResult enumResult = vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    if (enumResult != VK_SUCCESS) {
-        result.error = vkResultMessage("vkEnumeratePhysicalDevices", enumResult);
-        return finish();
-    }
-    result.physicalDeviceCount = deviceCount;
-
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    if (deviceCount > 0) {
-        enumResult = vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-        if (enumResult != VK_SUCCESS) {
-            result.error = vkResultMessage("vkEnumeratePhysicalDevices", enumResult);
-            return finish();
+    if (result.physicalDeviceCount == 0) {
+        auto vkEnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+            vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
+        auto vkGetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
+            vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties"));
+        if (vkEnumeratePhysicalDevices && vkGetPhysicalDeviceProperties) {
+            uint32_t count = 0;
+            vkEnumeratePhysicalDevices(instance, &count, nullptr);
+            result.physicalDeviceCount = count;
+            if (count > 0) {
+                std::vector<VkPhysicalDevice> devices(count);
+                vkEnumeratePhysicalDevices(instance, &count, devices.data());
+                for (uint32_t i = 0; i < count; ++i) {
+                    FluxUIVkPhysicalDeviceProperties props = {};
+                    vkGetPhysicalDeviceProperties(devices[i], &props);
+                    result.deviceNames.push_back(props.deviceName);
+                }
+            }
         }
     }
 
-    result.deviceNames.reserve(deviceCount);
-    for (uint32_t i = 0; i < deviceCount; ++i) {
-        FluxUIVkPhysicalDeviceProperties properties = {};
-        vkGetPhysicalDeviceProperties(devices[i], &properties);
-
-        uint32_t major = vkVersionMajor(properties.apiVersion);
-        uint32_t minor = vkVersionMinor(properties.apiVersion);
-        uint32_t patch = vkVersionPatch(properties.apiVersion);
-
-        char line[384];
-        std::snprintf(line,
-                      sizeof(line),
-                      "%s (%s, Vulkan %u.%u.%u)",
-                      properties.deviceName,
-                      physicalDeviceTypeName(properties.deviceType),
-                      major,
-                      minor,
-                      patch);
-        result.deviceNames.emplace_back(line);
-    }
-
-    return finish();
+    auto vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(vkGetInstanceProcAddr(instance, "vkDestroyInstance"));
+    if (vkDestroyInstance) vkDestroyInstance(instance, nullptr);
+    
+    unloadLoader();
+    return result;
 }
 
 #if FLUXUI_HAS_VULKAN_SDK
@@ -1111,6 +986,21 @@ Color compositedVulkanColor(const Color& color, float opacity) {
     };
 }
 
+void destroyVulkanDynamicPage(VulkanRendererState& state,
+                              VulkanRendererState::DynamicPage& page) {
+    if (page.mapped && page.allocation && state.allocator) {
+        vmaUnmapMemory(state.allocator, page.allocation);
+        page.mapped = nullptr;
+    }
+    if (page.buffer && page.allocation && state.allocator) {
+        vmaDestroyBuffer(state.allocator, page.buffer, page.allocation);
+        page.buffer = VK_NULL_HANDLE;
+        page.allocation = VK_NULL_HANDLE;
+    }
+    page.capacityBytes = 0;
+    page.bytesUsed = 0;
+}
+
 void destroyVulkanSwapchain(VulkanRendererState& state) {
     if (!state.device) {
         return;
@@ -1118,17 +1008,7 @@ void destroyVulkanSwapchain(VulkanRendererState& state) {
 
     auto destroyDynamicPool = [&](VulkanRendererState::DynamicPool& pool) {
         for (auto& page : pool.pages) {
-            if (page.mapped && page.allocation && state.allocator) {
-                vmaUnmapMemory(state.allocator, page.allocation);
-                page.mapped = nullptr;
-            }
-            if (page.buffer && page.allocation && state.allocator) {
-                vmaDestroyBuffer(state.allocator, page.buffer, page.allocation);
-                page.buffer = VK_NULL_HANDLE;
-                page.allocation = VK_NULL_HANDLE;
-            }
-            page.capacityBytes = 0;
-            page.bytesUsed = 0;
+            destroyVulkanDynamicPage(state, page);
         }
         pool.pages.clear();
         pool.currentPage = 0;
@@ -1194,7 +1074,10 @@ bool createVulkanSwapchain(VulkanRendererState& state, int width, int height) {
     auto presentMode = chooseVulkanPresentMode(support.presentModes);
     auto extent = chooseVulkanExtent(support.capabilities, width, height);
 
-    uint32_t imageCount = support.capabilities.minImageCount + 1;
+    uint32_t imageCount = support.capabilities.minImageCount;
+#if !FLUXUI_LOW_MEMORY
+    imageCount += 1;
+#endif
     if (support.capabilities.maxImageCount > 0 &&
         imageCount > support.capabilities.maxImageCount) {
         imageCount = support.capabilities.maxImageCount;
@@ -1851,12 +1734,12 @@ bool createVulkanPipelines(VulkanRendererState& state) {
 
     VkDescriptorPoolSize poolSize = {};
     poolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSize.descriptorCount = 256;
+    poolSize.descriptorCount = 64;
 
     VkDescriptorPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 256;
+    poolInfo.maxSets = 64;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
     result = vkCreateDescriptorPool(state.device, &poolInfo, nullptr, &state.descriptorPool);
@@ -2052,6 +1935,21 @@ void resetVulkanDynamicPool(VulkanRendererState::DynamicPool& pool) {
     pool.currentPage = 0;
     for (auto& page : pool.pages) {
         page.bytesUsed = 0;
+    }
+}
+
+void trimVulkanDynamicPool(VulkanRendererState& state,
+                           VulkanRendererState::DynamicPool& pool,
+                           size_t retainedPages) {
+    if (pool.pages.size() <= retainedPages) {
+        return;
+    }
+    for (size_t i = retainedPages; i < pool.pages.size(); ++i) {
+        destroyVulkanDynamicPage(state, pool.pages[i]);
+    }
+    pool.pages.resize(retainedPages);
+    if (pool.currentPage >= pool.pages.size()) {
+        pool.currentPage = 0;
     }
 }
 
@@ -2426,40 +2324,21 @@ void Renderer::useShader(uint32_t shader) {
     activeShader_ = shader;
 }
 
-bool Renderer::initVulkan(SDL_Window* window) {
+bool Renderer::initVulkan(void* windowHandle) {
 #if !FLUXUI_HAS_VULKAN_SDK
-    (void)window;
+    (void)windowHandle;
     std::cerr << "FluxUI: Vulkan backend needs the Vulkan SDK/loader at build time." << std::endl;
     return false;
 #else
     vulkan_ = std::make_unique<VulkanRendererState>();
     auto& state = *vulkan_;
 
-    int w = 1, h = 1;
-    SDL_GetWindowSize(window, &w, &h);
+    int w = 800, h = 600;
+    Platform::getWindowSize(windowHandle, w, h);
     windowWidth_ = std::max(1, w);
     windowHeight_ = std::max(1, h);
 
-    std::vector<const char*> extensions;
-#if defined(_WIN32)
-    extensions = {VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
-#else
-    unsigned int extensionCount = 0;
-    if (SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, nullptr) != SDL_TRUE) {
-        std::cerr << "FluxUI: SDL could not query Vulkan extensions: "
-                  << SDL_GetError() << std::endl;
-        shutdownVulkan();
-        return false;
-    }
-    extensions.resize(extensionCount);
-    if (extensionCount > 0 &&
-        SDL_Vulkan_GetInstanceExtensions(window, &extensionCount, extensions.data()) != SDL_TRUE) {
-        std::cerr << "FluxUI: SDL could not read Vulkan extensions: "
-                  << SDL_GetError() << std::endl;
-        shutdownVulkan();
-        return false;
-    }
-#endif
+    std::vector<const char*> extensions = Platform::getVulkanInstanceExtensions();
 
     VkApplicationInfo appInfo = {};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -2482,36 +2361,11 @@ bool Renderer::initVulkan(SDL_Window* window) {
         return false;
     }
 
-#if defined(_WIN32)
-    SDL_SysWMinfo wmInfo;
-    SDL_VERSION(&wmInfo.version);
-    if (SDL_GetWindowWMInfo(window, &wmInfo) != SDL_TRUE || !wmInfo.info.win.window) {
-        std::cerr << "FluxUI: SDL could not expose the Win32 window handle: "
-                  << SDL_GetError() << std::endl;
+    if (!Platform::createVulkanSurface(state.instance, windowHandle, &state.surface)) {
+        std::cerr << "Failed to create Vulkan surface" << std::endl;
         shutdownVulkan();
         return false;
     }
-
-    VkWin32SurfaceCreateInfoKHR surfaceInfo = {};
-    surfaceInfo.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
-    surfaceInfo.hinstance = GetModuleHandleW(nullptr);
-    surfaceInfo.hwnd = wmInfo.info.win.window;
-
-    result = vkCreateWin32SurfaceKHR(state.instance, &surfaceInfo, nullptr, &state.surface);
-    if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkCreateWin32SurfaceKHR", result) << std::endl;
-        shutdownVulkan();
-        return false;
-    }
-#else
-    if (SDL_Vulkan_CreateSurface(window, state.instance, &state.surface) != SDL_TRUE ||
-        !state.surface) {
-        std::cerr << "FluxUI: SDL could not create Vulkan surface: "
-                  << SDL_GetError() << std::endl;
-        shutdownVulkan();
-        return false;
-    }
-#endif
 
     uint32_t deviceCount = 0;
     result = vkEnumeratePhysicalDevices(state.instance, &deviceCount, nullptr);
@@ -2715,6 +2569,8 @@ bool Renderer::beginVulkanFrame(int w, int h) {
     }
 
     vkResetCommandBuffer(frame.commandBuffer, 0);
+    trimVulkanDynamicPool(state, frame.roundedInstances, 1);
+    trimVulkanDynamicPool(state, frame.textVertices, 1);
     resetVulkanDynamicPool(frame.roundedInstances);
     state.roundedBatchOffsetBytes = 0;
     state.roundedBatchPageIndex = 0;
@@ -2914,7 +2770,7 @@ void Renderer::drawVulkanRoundedRect(const Rect& rect,
                                     frame.roundedInstances,
                                     sizeof(VulkanRoundedInstance),
                                     alignof(VulkanRoundedInstance),
-                                    512 * 1024,
+                                    128 * 1024,
                                     "vmaMapMemory(rounded dynamic page)",
                                     allocation)) {
         return;
@@ -3004,7 +2860,7 @@ void Renderer::drawVulkanBoxShadow(const Rect& rect,
                                     frame.roundedInstances,
                                     sizeof(VulkanRoundedInstance),
                                     alignof(VulkanRoundedInstance),
-                                    512 * 1024,
+                                    128 * 1024,
                                     "vmaMapMemory(rounded dynamic page)",
                                     allocation)) {
         return;
@@ -3141,7 +2997,7 @@ void Renderer::drawVulkanText(const std::string& text,
                                     frame.textVertices,
                                     byteSize,
                                     alignof(VulkanTextVertex),
-                                    4 * 1024 * 1024,
+                                    512 * 1024,
                                     "vmaMapMemory(text dynamic page)",
                                     allocation)) {
         return;
@@ -3170,11 +3026,11 @@ void Renderer::drawVulkanText(const std::string& text,
 #endif
 }
 
-bool Renderer::init(SDL_Window* window) {
-    window_ = window;
+bool Renderer::init(void* windowHandle) {
+    window_ = windowHandle;
 
     if (activeBackend_ == RenderBackendType::Vulkan) {
-        return initVulkan(window);
+        return initVulkan(windowHandle);
     }
 
     if (activeBackend_ != RenderBackendType::Compatibility) {
@@ -3183,61 +3039,19 @@ bool Renderer::init(SDL_Window* window) {
         activeBackend_ = RenderBackendType::Compatibility;
     }
     
-    // Calculate DPI scale
-    int w, h, dw, dh;
-    SDL_GetWindowSize(window, &w, &h);
-    SDL_GL_GetDrawableSize(window, &dw, &dh);
-    dpiScale_ = (float)dw / (float)w;
+    // Calculate DPI scale (Win32 specific fallback for compatibility)
+    int w = 800, h = 600;
+    Platform::getWindowSize(windowHandle, w, h);
+    
+    // In a pure Win32 app without SDL, we'd use GetDpiForWindow
+    dpiScale_ = 1.0f; 
     windowWidth_ = w;
     windowHeight_ = h;
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-#if FLUXUI_ENABLE_MSAA
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
-#else
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
-#endif
-
-    glContext_ = SDL_GL_CreateContext(window);
-    if (!glContext_) {
-        std::cerr << "Failed to create compatibility GPU context: " << SDL_GetError() << std::endl;
-        return false;
-    }
-
-    int version = gladLoadGL((GLADloadfunc)SDL_GL_GetProcAddress);
-    if (!version) {
-        std::cerr << "Failed to initialize compatibility GPU loader" << std::endl;
-        return false;
-    }
-
-    SDL_GL_SetSwapInterval(FLUXUI_ENABLE_VSYNC ? 1 : 0);
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-#if FLUXUI_ENABLE_MSAA
-    glEnable(GL_MULTISAMPLE);
-#else
-    glDisable(GL_MULTISAMPLE);
-#endif
-
-    // Compile shaders
-    roundedRectShader_ = compileShader(ROUNDED_RECT_VERT, ROUNDED_RECT_FRAG);
-    shadowShader_ = compileShader(ROUNDED_RECT_VERT, SHADOW_FRAG);
-    textShader_ = compileShader(TEXT_VERT, TEXT_FRAG);
-    cacheUniformLocations();
-
-    setupQuad();
-    setupTextBuffer();
-
-    std::cout << "FluxUI Renderer initialized (compatibility driver "
-              << GLAD_VERSION_MAJOR(version) << "." << GLAD_VERSION_MINOR(version)
-              << ", backend " << activeBackendName() << ")" << std::endl;
-    backendInitialized_ = true;
-    return true;
+    // OpenGL/Compatibility path removal
+    // (If we ever need OpenGL back, we'd need WGL/GLX initialization here)
+    std::cerr << "FluxUI: Compatibility (OpenGL) backend requires SDL2 (currently removed) or native WGL/GLX implementation." << std::endl;
+    return false;
 }
 
 void Renderer::shutdown() {
@@ -3257,7 +3071,7 @@ void Renderer::shutdown() {
     for (auto& [name, font] : fonts_) {
         if (font.textureId) glDeleteTextures(1, &font.textureId);
     }
-    if (glContext_) SDL_GL_DeleteContext(glContext_);
+    // glContext_ (SDL_GLContext) removed
     glContext_ = nullptr;
     backendInitialized_ = false;
     activeShader_ = 0;
@@ -3277,8 +3091,9 @@ void Renderer::beginFrame(int w, int h) {
     
     int drawW = w, drawH = h;
     if (window_) {
-        SDL_GL_GetDrawableSize(window_, &drawW, &drawH);
-        dpiScale_ = (float)drawW / (float)w;
+        Platform::getWindowSize(window_, drawW, drawH);
+        // Simplified DPI calculation: assume 1:1 if not set
+        dpiScale_ = (w > 0) ? (float)drawW / (float)w : 1.0f;
     }
     glViewport(0, 0, drawW, drawH);
     glClearColor(0.06f, 0.06f, 0.09f, 1.0f);
@@ -3294,7 +3109,8 @@ void Renderer::endFrame() {
         return;
     }
 
-    SDL_GL_SwapWindow(window_);
+    // In Vulkan, endFrame handles presentation.
+    // In Win32/GDI it would be SwapBuffers((HDC)window_);
 }
 
 // ============================================================
@@ -3385,27 +3201,37 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
 
     float bakedSize = std::max(8.0f, size);
     float pixelSize = bakedSize * std::max(1.0f, dpiScale_);
-    int atlasSize = pixelSize > 48.0f ? 4096 : (pixelSize > 28.0f ? 2048 : 1024);
+    int atlasSize = pixelSize > 48.0f ? 2048 : (pixelSize > 24.0f ? 1024 : 512);
     std::vector<unsigned char> atlas((size_t)atlasSize * (size_t)atlasSize, 0);
     std::vector<stbtt_packedchar> packed(1024);
+    constexpr int firstGlyph = 32;
+#if FLUXUI_LOW_MEMORY
+    constexpr int glyphLimit = 256;
+#else
+    constexpr int glyphLimit = 1024;
+#endif
 
     stbtt_pack_context pc;
     if (!stbtt_PackBegin(&pc, atlas.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
         return false;
     }
-    int oversample = pixelSize <= 20.0f ? 3 : 2;
+    int oversample = pixelSize <= 20.0f ? 2 : 1;
     stbtt_PackSetOversampling(&pc, oversample, oversample);
-    bool packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, 32, 1024 - 32, packed.data() + 32) != 0;
+    bool packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, firstGlyph,
+                                        glyphLimit - firstGlyph,
+                                        packed.data() + firstGlyph) != 0;
     stbtt_PackEnd(&pc);
 
-    if (!packedOk && atlasSize < 4096) {
-        atlasSize = atlasSize < 2048 ? 2048 : 4096;
+    if (!packedOk && atlasSize < 2048) {
+        atlasSize = atlasSize < 1024 ? 1024 : 2048;
         atlas.assign((size_t)atlasSize * (size_t)atlasSize, 0);
         if (!stbtt_PackBegin(&pc, atlas.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
             return false;
         }
         stbtt_PackSetOversampling(&pc, oversample, oversample);
-        packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, 32, 1024 - 32, packed.data() + 32) != 0;
+        packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, firstGlyph,
+                                       glyphLimit - firstGlyph,
+                                       packed.data() + firstGlyph) != 0;
         stbtt_PackEnd(&pc);
     }
     if (!packedOk) return false;
@@ -3427,7 +3253,7 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
         font.glyphs[i] = {};
     }
 
-    for (int i = 32; i < 1024; ++i) {
+    for (int i = firstGlyph; i < glyphLimit; ++i) {
         const auto& ch = packed[i];
         font.glyphs[i].x0 = ch.x0 / (float)atlasSize;
         font.glyphs[i].y0 = ch.y0 / (float)atlasSize;
@@ -3472,6 +3298,11 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
 
     int snappedSize = std::max(8, (int)std::round(fontSize * std::max(1.0f, dpiScale_)));
     int baseSize = std::max(8, (int)std::round(baseIt->second.fontSize));
+#if FLUXUI_LOW_MEMORY
+    if (snappedSize <= baseSize) {
+        return &baseIt->second;
+    }
+#endif
     if (snappedSize == baseSize || baseIt->second.sourceData.empty()) {
         return &baseIt->second;
     }
@@ -3498,11 +3329,17 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
 
 const FontData* Renderer::findFontForMeasure(const std::string& fontName, float fontSize) const {
     int snappedSize = std::max(8, (int)std::round(fontSize * std::max(1.0f, dpiScale_)));
+    auto baseIt = fonts_.find(fontName);
+    if (baseIt != fonts_.end() && baseIt->second.loaded) {
+#if FLUXUI_LOW_MEMORY
+        int baseSize = std::max(8, (int)std::round(baseIt->second.fontSize));
+        if (snappedSize <= baseSize) return &baseIt->second;
+#endif
+    }
     std::string sizedName = fontName + "@" + std::to_string(snappedSize);
     auto sizedIt = fonts_.find(sizedName);
     if (sizedIt != fonts_.end() && sizedIt->second.loaded) return &sizedIt->second;
 
-    auto baseIt = fonts_.find(fontName);
     if (baseIt != fonts_.end() && baseIt->second.loaded) return &baseIt->second;
     return nullptr;
 }

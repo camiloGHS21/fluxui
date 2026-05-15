@@ -3,6 +3,16 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================
 #  vcpkg integration
 # ============================================================
+option(DATALEAKGUARD_SINGLE_BINARY "Prefer static dependencies and build only the application executable" ON)
+
+if(DATALEAKGUARD_SINGLE_BINARY AND WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "vcpkg target triplet")
+endif()
+
+if(DATALEAKGUARD_SINGLE_BINARY AND WIN32)
+    set(VCPKG_APPLOCAL_DEPS OFF CACHE BOOL "Do not copy vcpkg DLLs next to the executable")
+endif()
+
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vendor/vcpkg/scripts/buildsystems/vcpkg.cmake"
     CACHE STRING "Vcpkg toolchain file")
 
@@ -11,16 +21,42 @@ project(DataLeakGuard VERSION 1.0.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(DATALEAKGUARD_EMBEDDED_THEME_HEADER "${CMAKE_BINARY_DIR}/generated/embedded_theme.h")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/assets/styles/theme.css"
+)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated")
+file(READ "${CMAKE_SOURCE_DIR}/assets/styles/theme.css" DATALEAKGUARD_THEME_HEX HEX)
+string(REGEX REPLACE "([0-9A-Fa-f][0-9A-Fa-f])" "0x\\1," DATALEAKGUARD_THEME_BYTES "${DATALEAKGUARD_THEME_HEX}")
+file(WRITE "${DATALEAKGUARD_EMBEDDED_THEME_HEADER}"
+    "#pragma once\n\n"
+    "static constexpr unsigned char DATALEAKGUARD_EMBEDDED_THEME_CSS_BYTES[] = {\n"
+    "${DATALEAKGUARD_THEME_BYTES}0x00\n"
+    "};\n\n"
+    "inline const char* dataleakguardEmbeddedThemeCss() {\n"
+    "    return reinterpret_cast<const char*>(DATALEAKGUARD_EMBEDDED_THEME_CSS_BYTES);\n"
+    "}\n"
+)
+
+if(DATALEAKGUARD_SINGLE_BINARY AND WIN32 AND
+   DEFINED VCPKG_TARGET_TRIPLET AND NOT VCPKG_TARGET_TRIPLET MATCHES "static")
+    message(WARNING "DATALEAKGUARD_SINGLE_BINARY is ON, but VCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}' is not a static triplet. Configure with -DVCPKG_TARGET_TRIPLET=x64-windows-static for a Vulkan loader linked into the executable.")
+endif()
+
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # ============================================================
 #  Find packages
 # ============================================================
-find_package(SDL2 CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 
 option(FLUXUI_ENABLE_MSAA "Enable 4x multisample antialiasing for smoother UI edges" ON)
 option(FLUXUI_ENABLE_VSYNC "Enable swap interval vsync by default" ON)
 option(FLUXUI_ENABLE_VULKAN "Compile optional Vulkan backend metadata/probing support" ON)
+option(FLUXUI_LOW_MEMORY "Favor lower RAM/VRAM usage over extra buffering" ON)
 if(WIN32)
     set(FLUXUI_ENABLE_D3D12_DEFAULT ON)
 else()
@@ -56,22 +92,10 @@ set(FLUXUI_VULKAN_AVAILABLE OFF)
 set(FLUXUI_VULKAN_SDK_AVAILABLE OFF)
 if(FLUXUI_ENABLE_VULKAN)
     set(FLUXUI_VULKAN_AVAILABLE ON)
-    find_package(Vulkan QUIET)
-    if(Vulkan_FOUND)
-        set(FLUXUI_VULKAN_SDK_AVAILABLE ON)
-        find_package(VulkanMemoryAllocator CONFIG REQUIRED)
-        find_package(glslang CONFIG QUIET)
-        if(NOT glslang_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/glslang/glslang-config.cmake")
-            set(glslang_DIR "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/glslang"
-                CACHE PATH "glslang package directory" FORCE)
-            find_package(glslang CONFIG QUIET)
-        endif()
-        if(NOT glslang_FOUND)
-            message(FATAL_ERROR "FLUXUI_ENABLE_VULKAN requires glslang for Vulkan shader compilation. Run vendor/vcpkg/vcpkg.exe install --triplet ${VCPKG_TARGET_TRIPLET} or install glslang in the active vcpkg tree.")
-        endif()
-    else()
-        message(STATUS "FLUXUI_ENABLE_VULKAN is ON, but Vulkan SDK was not found. Vulkan runtime probing will use SDL dynamic loading.")
-    endif()
+    find_package(Vulkan REQUIRED)
+    find_package(nlohmann_json CONFIG REQUIRED)
+    find_package(VulkanMemoryAllocator CONFIG REQUIRED)
+    set(FLUXUI_VULKAN_SDK_AVAILABLE ON)
 endif()
 
 set(FLUXUI_D3D12_AVAILABLE OFF)
@@ -91,19 +115,31 @@ add_library(glad STATIC
     vendor/glad/src/gl.c
 )
 target_include_directories(glad PUBLIC vendor/glad/include)
+set_target_properties(glad PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+)
 
 # ============================================================
 #  FluxUI Framework Library
 # ============================================================
 set(FLUXUI_SOURCES
-    fluxui/src/css_parser.cpp
-    fluxui/src/renderer.cpp
     fluxui/src/widgets.cpp
+    fluxui/src/renderer.cpp
+    fluxui/src/css_parser.cpp
     fluxui/src/fluxui_c.cpp
 )
 
+if(WIN32)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform_win32.cpp)
+else()
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform_linux.cpp)
+endif()
+
 add_library(fluxui STATIC
     ${FLUXUI_SOURCES}
+)
+set_target_properties(fluxui PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
 
 function(configure_fluxui_target target_name)
@@ -115,8 +151,14 @@ function(configure_fluxui_target target_name)
 
     target_link_libraries(${target_name} PUBLIC
         glad
-        $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
     )
+
+    if(WIN32)
+        target_compile_definitions(${target_name} PUBLIC
+            NOMINMAX
+            WIN32_LEAN_AND_MEAN
+        )
+    endif()
 
     if(TARGET OpenGL::GL)
         target_link_libraries(${target_name} PUBLIC OpenGL::GL)
@@ -138,6 +180,12 @@ function(configure_fluxui_target target_name)
         target_compile_definitions(${target_name} PUBLIC FLUXUI_ENABLE_VSYNC=0)
     endif()
 
+    if(FLUXUI_LOW_MEMORY)
+        target_compile_definitions(${target_name} PUBLIC FLUXUI_LOW_MEMORY=1)
+    else()
+        target_compile_definitions(${target_name} PUBLIC FLUXUI_LOW_MEMORY=0)
+    endif()
+
     if(FLUXUI_VULKAN_AVAILABLE)
         target_compile_definitions(${target_name} PUBLIC FLUXUI_HAS_VULKAN=1)
     else()
@@ -149,11 +197,6 @@ function(configure_fluxui_target target_name)
         target_link_libraries(${target_name} PUBLIC
             Vulkan::Vulkan
             GPUOpen::VulkanMemoryAllocator
-            glslang::glslang
-            glslang::glslang-default-resource-limits
-            glslang::SPIRV
-            glslang::MachineIndependent
-            glslang::GenericCodeGen
         )
     else()
         target_compile_definitions(${target_name} PUBLIC FLUXUI_HAS_VULKAN_SDK=0)
@@ -179,7 +222,7 @@ endfunction()
 configure_fluxui_target(fluxui)
 target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC)
 
-option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" ON)
+option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" OFF)
 if(FLUXUI_BUILD_SHARED)
     add_library(fluxui_shared SHARED
         ${FLUXUI_SOURCES}
@@ -200,20 +243,19 @@ target_link_libraries(DataLeakGuard PRIVATE
     nlohmann_json::nlohmann_json
 )
 
-# Copy assets to build directory
-add_custom_command(TARGET DataLeakGuard POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/assets"
-        "$<TARGET_FILE_DIR:DataLeakGuard>/assets"
+target_include_directories(DataLeakGuard PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
 )
 
-# Copy SDL2 DLL on Windows
-if(WIN32)
-    add_custom_command(TARGET DataLeakGuard POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:SDL2::SDL2>
-            $<TARGET_FILE_DIR:DataLeakGuard>
-    )
+# ============================================================
+#  Tools
+# ============================================================
+add_executable(font_baker
+    tools/font_baker.cpp
+)
+target_include_directories(font_baker PRIVATE vendor/stb)
+if(MSVC)
+    target_compile_definitions(font_baker PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
 

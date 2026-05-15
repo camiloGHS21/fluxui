@@ -13,6 +13,17 @@
 
 namespace FluxUI {
 
+typedef void* NativeWindowHandle;
+typedef void* NativeCursorHandle;
+
+enum ModifierBits {
+    MOD_NONE = 0,
+    MOD_SHIFT = 1 << 0,
+    MOD_CTRL = 1 << 1,
+    MOD_ALT = 1 << 2,
+    MOD_GUI = 1 << 3
+};
+
 // ============================================================
 //  Core Math Types
 // ============================================================

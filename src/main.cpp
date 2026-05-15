@@ -2,6 +2,7 @@
 // Built on FluxUI Framework
 
 #include "fluxui/FluxUI.h"
+#include "embedded_theme.h"
 
 #include <algorithm>
 #include <array>
@@ -663,38 +664,33 @@ int main(int argc, char** argv) {
     }
 
     bool fontLoaded = false;
-    // Prioritize pre-baked font for instant-on and zero I/O
-    if (app.renderer().loadFontFromMemory(nullptr, 0, 16.0f, "default")) {
+    constexpr float baseFontAtlasSize = 32.0f;
+    const char* fontPaths[] = {
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/System/Library/Fonts/SFPro.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        nullptr
+    };
+    for (int i = 0; fontPaths[i]; i++) {
+        if (app.renderer().loadFont(fontPaths[i], baseFontAtlasSize)) {
+            fontLoaded = true;
+            std::cout << "Loaded font: " << fontPaths[i] << std::endl;
+            break;
+        }
+    }
+    if (!fontLoaded && app.renderer().loadFontFromMemory(nullptr, 0, baseFontAtlasSize, "default")) {
         fontLoaded = true;
         std::cout << "Using optimized pre-baked font atlas" << std::endl;
-    } else {
-        const char* fontPaths[] = {
-            "assets/fonts/Inter-Regular.ttf",
-            "C:/Windows/Fonts/segoeui.ttf",
-            "C:/Windows/Fonts/arial.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/TTF/DejaVuSans.ttf",
-            "/System/Library/Fonts/SFPro.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "assets/fonts/Roboto-Regular.ttf",
-            nullptr
-        };
-        for (int i = 0; fontPaths[i]; i++) {
-            if (app.renderer().loadFont(fontPaths[i], 16.0f)) {
-                fontLoaded = true;
-                std::cout << "Loaded font: " << fontPaths[i] << std::endl;
-                break;
-            }
-        }
     }
     if (!fontLoaded) {
         std::cerr << "Warning: No font loaded, text will not render" << std::endl;
     }
 
-    if (!app.loadStylesheet("assets/styles/theme.css")) {
-        std::cerr << "Warning: Could not load theme.css, using defaults" << std::endl;
-    }
+    app.addStylesheet(dataleakguardEmbeddedThemeCss());
 
     app.addRoute("/dashboard", [](Application& appRef, Widget* content) {
         buildDashboard(appRef, content);
