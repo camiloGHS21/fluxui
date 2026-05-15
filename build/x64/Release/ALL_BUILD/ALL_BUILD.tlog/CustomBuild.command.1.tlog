@@ -1,0 +1,10 @@
+^C:\USERS\ADMINISTRATOR\DOCUMENTS\PRUEBA\DATALEAKGUARD\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Administrator/Documents/prueba/DataleakGuard -BC:/Users/Administrator/Documents/prueba/DataleakGuard/build --check-stamp-file C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,11 @@
+{
+  "name": "dataleakguard",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "sdl2",
+    "nlohmann-json",
+    "vulkan-headers",
+    "vulkan-loader",
+    "glslang"
+  ]
+}

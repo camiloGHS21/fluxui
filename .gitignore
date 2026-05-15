@@ -1,0 +1,25 @@
+# Build and Output
+build/
+bin/
+obj/
+*.exe
+*.pdb
+*.spv
+*.bin
+.zig-cache-global/
+.zig-cache-local/
+
+# Dependencies
+vcpkg_installed/
+vcpkg/
+
+# IDEs
+.vscode/
+.vs/
+*.user
+*.suo
+*.sln
+
+# Misc
+*.log
+.DS_Store
