@@ -6,6 +6,7 @@
     "nlohmann-json",
     "vulkan-headers",
     "vulkan-loader",
+    "vulkan-memory-allocator",
     "glslang"
   ]
 }

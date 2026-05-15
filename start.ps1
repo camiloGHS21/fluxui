@@ -1,0 +1,1 @@
+cmake --build build --config Release --target font_baker ; .\build\Release\font_baker.exe ; cmake --build build --config Release ; .\build\Release\DataleakGuard.exe

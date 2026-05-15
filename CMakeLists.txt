@@ -59,6 +59,7 @@ if(FLUXUI_ENABLE_VULKAN)
     find_package(Vulkan QUIET)
     if(Vulkan_FOUND)
         set(FLUXUI_VULKAN_SDK_AVAILABLE ON)
+        find_package(VulkanMemoryAllocator CONFIG REQUIRED)
         find_package(glslang CONFIG QUIET)
         if(NOT glslang_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/glslang/glslang-config.cmake")
             set(glslang_DIR "${CMAKE_SOURCE_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/share/glslang"
@@ -147,6 +148,7 @@ function(configure_fluxui_target target_name)
         target_compile_definitions(${target_name} PUBLIC FLUXUI_HAS_VULKAN_SDK=1)
         target_link_libraries(${target_name} PUBLIC
             Vulkan::Vulkan
+            GPUOpen::VulkanMemoryAllocator
             glslang::glslang
             glslang::glslang-default-resource-limits
             glslang::SPIRV
@@ -213,3 +215,5 @@ if(WIN32)
             $<TARGET_FILE_DIR:DataLeakGuard>
     )
 endif()
+
+

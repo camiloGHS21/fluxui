@@ -25,6 +25,8 @@
 #include <SDL_vulkan.h>
 #if FLUXUI_HAS_VULKAN_SDK
 #include <vulkan/vulkan.h>
+#define VMA_IMPLEMENTATION
+#include <vk_mem_alloc.h>
 #include <glslang/Include/glslang_c_interface.h>
 #include <glslang/Public/resource_limits_c.h>
 #endif
@@ -129,7 +131,7 @@ struct VulkanRendererState {
 #if FLUXUI_HAS_VULKAN_SDK
     struct DynamicPage {
         VkBuffer buffer = VK_NULL_HANDLE;
-        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
         size_t capacityBytes = 0;
         size_t bytesUsed = 0;
         void* mapped = nullptr;
@@ -154,7 +156,7 @@ struct VulkanRendererState {
 
     struct FontTexture {
         VkImage image = VK_NULL_HANDLE;
-        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VmaAllocation allocation = VK_NULL_HANDLE;
         VkImageView view = VK_NULL_HANDLE;
         VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
         int width = 0;
@@ -165,6 +167,7 @@ struct VulkanRendererState {
     VkSurfaceKHR surface = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
+    VmaAllocator allocator = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
     uint32_t graphicsQueueFamily = std::numeric_limits<uint32_t>::max();
@@ -621,147 +624,7 @@ void main() {
 }
 )";
 
-#if FLUXUI_HAS_VULKAN_SDK
-static const char* VULKAN_ROUNDED_VERT = R"(
-#version 450
-layout(push_constant) uniform Push {
-    vec2 framebufferSize;
-} pc;
-layout(location = 0) in vec4 inRect;
-layout(location = 1) in vec4 inColor;
-layout(location = 2) in vec4 inColor2;
-layout(location = 3) in vec4 inBorderColor;
-layout(location = 4) in vec4 inRadius;
-layout(location = 5) in vec4 inParams;
-layout(location = 0) out vec2 vLocalPos;
-layout(location = 1) out vec2 vSize;
-layout(location = 2) out vec4 vColor;
-layout(location = 3) out vec4 vColor2;
-layout(location = 4) out vec4 vBorderColor;
-layout(location = 5) out vec4 vRadius;
-layout(location = 6) out vec4 vParams;
-void main() {
-    vec2 verts[6] = vec2[](
-        vec2(0.0, 0.0),
-        vec2(1.0, 0.0),
-        vec2(1.0, 1.0),
-        vec2(0.0, 0.0),
-        vec2(1.0, 1.0),
-        vec2(0.0, 1.0)
-    );
-    vec2 local = verts[gl_VertexIndex] * inRect.zw;
-    vec2 pos = inRect.xy + local;
-    vec2 ndc = vec2(
-        (pos.x / pc.framebufferSize.x) * 2.0 - 1.0,
-        (pos.y / pc.framebufferSize.y) * 2.0 - 1.0
-    );
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    vLocalPos = local;
-    vSize = inRect.zw;
-    vColor = inColor;
-    vColor2 = inColor2;
-    vBorderColor = inBorderColor;
-    vRadius = inRadius;
-    vParams = inParams;
-}
-)";
 
-static const char* VULKAN_ROUNDED_FRAG = R"(
-#version 450
-layout(push_constant) uniform Push {
-    vec2 framebufferSize;
-} pc;
-layout(location = 0) in vec2 vLocalPos;
-layout(location = 1) in vec2 vSize;
-layout(location = 2) in vec4 vColor;
-layout(location = 3) in vec4 vColor2;
-layout(location = 4) in vec4 vBorderColor;
-layout(location = 5) in vec4 vRadius;
-layout(location = 6) in vec4 vParams;
-layout(location = 0) out vec4 outColor;
-
-float roundedBoxSDF(vec2 p, vec2 b, float r) {
-    vec2 q = abs(p) - b + vec2(r);
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
-}
-
-void main() {
-    vec2 halfSize = vSize * 0.5;
-    vec2 center = vLocalPos - halfSize;
-    float r = min(vRadius.x, min(halfSize.x, halfSize.y));
-    float borderWidth = vParams.x;
-    float opacity = vParams.y;
-    float hasGradient = vParams.z;
-    float gradientAngle = vParams.w;
-
-    if (hasGradient < -0.5) {
-        float blur = max(borderWidth, 0.001);
-        vec2 halfBox = max(halfSize - vec2(blur), vec2(0.0));
-        float shadowRadius = min(r, min(halfBox.x, halfBox.y));
-        float shadowDist = roundedBoxSDF(center, halfBox, shadowRadius);
-        float shadowAlpha = 1.0 - smoothstep(0.0, blur, shadowDist);
-        outColor = vec4(vColor.rgb, vColor.a * shadowAlpha * opacity);
-        return;
-    }
-
-    float dist = roundedBoxSDF(center, halfSize, r);
-    float aa = max(fwidth(dist), 0.75);
-    float alpha = 1.0 - smoothstep(-aa, aa, dist);
-
-    vec4 fillColor = vColor;
-    if (hasGradient > 0.5) {
-        float angle = radians(gradientAngle);
-        vec2 dir = vec2(cos(angle), sin(angle));
-        float t = dot((vLocalPos / max(vSize, vec2(1.0))) - vec2(0.5), dir) + 0.5;
-        fillColor = mix(vColor, vColor2, clamp(t, 0.0, 1.0));
-    }
-
-    if (borderWidth > 0.0) {
-        vec2 innerHalf = max(halfSize - vec2(borderWidth), vec2(0.0));
-        float innerRadius = max(r - borderWidth, 0.0);
-        float innerDist = roundedBoxSDF(center, innerHalf, innerRadius);
-        float innerAa = max(fwidth(innerDist), 0.75);
-        float innerAlpha = 1.0 - smoothstep(-innerAa, innerAa, innerDist);
-        fillColor = mix(vBorderColor, fillColor, innerAlpha);
-    }
-
-    outColor = vec4(fillColor.rgb, fillColor.a * alpha * opacity);
-}
-)";
-
-static const char* VULKAN_TEXT_VERT = R"(
-#version 450
-layout(location = 0) in vec2 inPos;
-layout(location = 1) in vec2 inUv;
-layout(location = 2) in vec4 inColor;
-layout(push_constant) uniform Push {
-    vec2 framebufferSize;
-} pc;
-layout(location = 0) out vec2 vUv;
-layout(location = 1) out vec4 vColor;
-void main() {
-    vec2 ndc = vec2(
-        (inPos.x / pc.framebufferSize.x) * 2.0 - 1.0,
-        (inPos.y / pc.framebufferSize.y) * 2.0 - 1.0
-    );
-    gl_Position = vec4(ndc, 0.0, 1.0);
-    vUv = inUv;
-    vColor = inColor;
-}
-)";
-
-static const char* VULKAN_TEXT_FRAG = R"(
-#version 450
-layout(set = 0, binding = 0) uniform sampler2D uTexture;
-layout(location = 0) in vec2 vUv;
-layout(location = 1) in vec4 vColor;
-layout(location = 0) out vec4 outColor;
-void main() {
-    float a = texture(uTexture, vUv).r;
-    outColor = vec4(vColor.rgb, vColor.a * a);
-}
-)";
-#endif
 
 // ============================================================
 //  Shader Compilation
@@ -1117,7 +980,7 @@ VulkanQueueSelection findVulkanQueues(VkPhysicalDevice device, VkSurfaceKHR surf
     return selection;
 }
 
-bool deviceSupportsVulkanSwapchain(VkPhysicalDevice device) {
+bool deviceSupportsVulkanExtension(VkPhysicalDevice device, const char* extensionName) {
     uint32_t extensionCount = 0;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> extensions(extensionCount);
@@ -1126,11 +989,15 @@ bool deviceSupportsVulkanSwapchain(VkPhysicalDevice device) {
     }
 
     for (const auto& extension : extensions) {
-        if (std::strcmp(extension.extensionName, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+        if (std::strcmp(extension.extensionName, extensionName) == 0) {
             return true;
         }
     }
     return false;
+}
+
+bool deviceSupportsVulkanSwapchain(VkPhysicalDevice device) {
+    return deviceSupportsVulkanExtension(device, VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 }
 
 VulkanSwapchainSupport queryVulkanSwapchainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
@@ -1251,17 +1118,14 @@ void destroyVulkanSwapchain(VulkanRendererState& state) {
 
     auto destroyDynamicPool = [&](VulkanRendererState::DynamicPool& pool) {
         for (auto& page : pool.pages) {
-            if (page.mapped) {
-                vkUnmapMemory(state.device, page.memory);
+            if (page.mapped && page.allocation && state.allocator) {
+                vmaUnmapMemory(state.allocator, page.allocation);
                 page.mapped = nullptr;
             }
-            if (page.buffer) {
-                vkDestroyBuffer(state.device, page.buffer, nullptr);
+            if (page.buffer && page.allocation && state.allocator) {
+                vmaDestroyBuffer(state.allocator, page.buffer, page.allocation);
                 page.buffer = VK_NULL_HANDLE;
-            }
-            if (page.memory) {
-                vkFreeMemory(state.device, page.memory, nullptr);
-                page.memory = VK_NULL_HANDLE;
+                page.allocation = VK_NULL_HANDLE;
             }
             page.capacityBytes = 0;
             page.bytesUsed = 0;
@@ -1527,117 +1391,20 @@ struct VulkanTextVertex {
     float r, g, b, a;
 };
 
-std::vector<uint32_t> compileVulkanShader(const char* code,
-                                          glslang_stage_t stage,
-                                          const char* label) {
-    std::string safeLabel = label;
-    for (char& c : safeLabel) { if (c == ' ' || c == '/' || c == '\\' || c == ':') c = '_'; }
-    std::string cachePath = safeLabel + ".spv";
-
-    std::ifstream cacheIn(cachePath, std::ios::binary);
-    if (cacheIn) {
-        cacheIn.seekg(0, std::ios::end);
-        size_t size = cacheIn.tellg();
-        cacheIn.seekg(0, std::ios::beg);
-        std::vector<uint32_t> spirv(size / sizeof(uint32_t));
-        cacheIn.read(reinterpret_cast<char*>(spirv.data()), size);
-        return spirv;
-    }
-
-    static bool glslangInitialized = false;
-    if (!glslangInitialized) {
-        if (!glslang_initialize_process()) {
-            std::cerr << "FluxUI: glslang initialization failed." << std::endl;
-            return {};
-        }
-        glslangInitialized = true;
-    }
-
-    glslang_input_t input = {};
-    input.language = GLSLANG_SOURCE_GLSL;
-    input.stage = stage;
-    input.client = GLSLANG_CLIENT_VULKAN;
-    input.client_version = GLSLANG_TARGET_VULKAN_1_0;
-    input.target_language = GLSLANG_TARGET_SPV;
-    input.target_language_version = GLSLANG_TARGET_SPV_1_0;
-    input.code = code;
-    input.default_version = 450;
-    input.default_profile = GLSLANG_CORE_PROFILE;
-    input.force_default_version_and_profile = 0;
-    input.forward_compatible = 0;
-    input.messages = static_cast<glslang_messages_t>(
-        GLSLANG_MSG_SPV_RULES_BIT | GLSLANG_MSG_VULKAN_RULES_BIT);
-    input.resource = glslang_default_resource();
-
-    glslang_shader_t* shader = glslang_shader_create(&input);
-    if (!shader) {
-        std::cerr << "FluxUI: could not create glslang shader for " << label << "." << std::endl;
-        return {};
-    }
-    glslang_shader_set_entry_point(shader, "main");
-
-    if (!glslang_shader_preprocess(shader, &input)) {
-        std::cerr << "FluxUI: GLSL preprocess failed for " << label << ": "
-                  << glslang_shader_get_info_log(shader)
-                  << glslang_shader_get_info_debug_log(shader) << std::endl;
-        glslang_shader_delete(shader);
-        return {};
-    }
-
-    if (!glslang_shader_parse(shader, &input)) {
-        std::cerr << "FluxUI: GLSL parse failed for " << label << ": "
-                  << glslang_shader_get_info_log(shader)
-                  << glslang_shader_get_info_debug_log(shader) << std::endl;
-        glslang_shader_delete(shader);
-        return {};
-    }
-    glslang_shader_set_entry_point(shader, "main");
-
-    glslang_program_t* program = glslang_program_create();
-    glslang_program_add_shader(program, shader);
-    if (!glslang_program_link(program, input.messages)) {
-        std::cerr << "FluxUI: GLSL link failed for " << label << ": "
-                  << glslang_program_get_info_log(program)
-                  << glslang_program_get_info_debug_log(program) << std::endl;
-        glslang_program_delete(program);
-        glslang_shader_delete(shader);
-        return {};
-    }
-
-    glslang_program_SPIRV_generate(program, stage);
-    const char* messages = glslang_program_SPIRV_get_messages(program);
-    if (messages && messages[0] != '\0') {
-        std::cerr << "FluxUI: SPIR-V messages for " << label << ": " << messages << std::endl;
-    }
-
-    size_t wordCount = glslang_program_SPIRV_get_size(program);
-    std::vector<uint32_t> spirv(wordCount);
-    if (wordCount > 0) {
-        glslang_program_SPIRV_get(program, spirv.data());
-    }
-
-    glslang_program_delete(program);
-    glslang_shader_delete(shader);
-
-    std::ofstream cacheOut(cachePath, std::ios::binary);
-    if (cacheOut && !spirv.empty()) {
-        cacheOut.write(reinterpret_cast<const char*>(spirv.data()), spirv.size() * sizeof(uint32_t));
-    }
-
-    return spirv;
-}
+#include "vulkan_shaders.h"
 
 VkShaderModule createVulkanShaderModule(VkDevice device,
-                                        const std::vector<uint32_t>& spirv,
+                                        const uint32_t* code,
+                                        size_t codeSize,
                                         const char* label) {
-    if (spirv.empty()) {
+    if (!code || codeSize == 0) {
         return VK_NULL_HANDLE;
     }
 
     VkShaderModuleCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    info.codeSize = spirv.size() * sizeof(uint32_t);
-    info.pCode = spirv.data();
+    info.codeSize = codeSize;
+    info.pCode = code;
 
     VkShaderModule module = VK_NULL_HANDLE;
     VkResult result = vkCreateShaderModule(device, &info, nullptr, &module);
@@ -1648,61 +1415,77 @@ VkShaderModule createVulkanShaderModule(VkDevice device,
     return module;
 }
 
-uint32_t findVulkanMemoryType(VkPhysicalDevice physicalDevice,
-                              uint32_t typeFilter,
-                              VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memoryProperties = {};
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
-
-    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
-        if ((typeFilter & (1u << i)) != 0 &&
-            (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-    return std::numeric_limits<uint32_t>::max();
-}
-
 bool createVulkanBuffer(VulkanRendererState& state,
                         VkDeviceSize size,
                         VkBufferUsageFlags usage,
                         VkMemoryPropertyFlags properties,
                         VkBuffer& buffer,
-                        VkDeviceMemory& memory) {
+                        VmaAllocation& allocation,
+                        const char* label = nullptr) {
+    if (!state.allocator) {
+        std::cerr << "FluxUI: Vulkan memory allocator is not initialized." << std::endl;
+        return false;
+    }
+
     VkBufferCreateInfo bufferInfo = {};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    VkResult result = vkCreateBuffer(state.device, &bufferInfo, nullptr, &buffer);
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.requiredFlags = properties;
+    if ((properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
+        allocInfo.flags |= VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    }
+
+    VkResult result = vmaCreateBuffer(state.allocator,
+                                      &bufferInfo,
+                                      &allocInfo,
+                                      &buffer,
+                                      &allocation,
+                                      nullptr);
     if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkCreateBuffer", result) << std::endl;
+        std::cerr << vkResultMessage("vmaCreateBuffer", result) << std::endl;
         return false;
     }
 
-    VkMemoryRequirements requirements = {};
-    vkGetBufferMemoryRequirements(state.device, buffer, &requirements);
-    uint32_t typeIndex = findVulkanMemoryType(state.physicalDevice,
-                                              requirements.memoryTypeBits,
-                                              properties);
-    if (typeIndex == std::numeric_limits<uint32_t>::max()) {
-        std::cerr << "FluxUI: no compatible Vulkan memory type for buffer." << std::endl;
+    if (label) {
+        vmaSetAllocationName(state.allocator, allocation, label);
+    }
+    return true;
+}
+
+bool createVulkanImage(VulkanRendererState& state,
+                       const VkImageCreateInfo& imageInfo,
+                       VkMemoryPropertyFlags properties,
+                       VkImage& image,
+                       VmaAllocation& allocation,
+                       const char* label = nullptr) {
+    if (!state.allocator) {
+        std::cerr << "FluxUI: Vulkan memory allocator is not initialized." << std::endl;
         return false;
     }
 
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = requirements.size;
-    allocInfo.memoryTypeIndex = typeIndex;
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    allocInfo.requiredFlags = properties;
 
-    result = vkAllocateMemory(state.device, &allocInfo, nullptr, &memory);
+    VkResult result = vmaCreateImage(state.allocator,
+                                     &imageInfo,
+                                     &allocInfo,
+                                     &image,
+                                     &allocation,
+                                     nullptr);
     if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkAllocateMemory(buffer)", result) << std::endl;
+        std::cerr << vkResultMessage("vmaCreateImage", result) << std::endl;
         return false;
     }
 
-    vkBindBufferMemory(state.device, buffer, memory, 0);
+    if (label) {
+        vmaSetAllocationName(state.allocator, allocation, label);
+    }
     return true;
 }
 
@@ -1820,23 +1603,10 @@ void copyVulkanBufferToImage(VulkanRendererState& state,
 }
 
 bool createVulkanPipelines(VulkanRendererState& state) {
-    auto roundedVert = compileVulkanShader(VULKAN_ROUNDED_VERT,
-                                           GLSLANG_STAGE_VERTEX,
-                                           "vulkan rounded vertex");
-    auto roundedFrag = compileVulkanShader(VULKAN_ROUNDED_FRAG,
-                                           GLSLANG_STAGE_FRAGMENT,
-                                           "vulkan rounded fragment");
-    auto textVert = compileVulkanShader(VULKAN_TEXT_VERT,
-                                        GLSLANG_STAGE_VERTEX,
-                                        "vulkan text vertex");
-    auto textFrag = compileVulkanShader(VULKAN_TEXT_FRAG,
-                                        GLSLANG_STAGE_FRAGMENT,
-                                        "vulkan text fragment");
-
-    VkShaderModule roundedVertModule = createVulkanShaderModule(state.device, roundedVert, "rounded vertex module");
-    VkShaderModule roundedFragModule = createVulkanShaderModule(state.device, roundedFrag, "rounded fragment module");
-    VkShaderModule textVertModule = createVulkanShaderModule(state.device, textVert, "text vertex module");
-    VkShaderModule textFragModule = createVulkanShaderModule(state.device, textFrag, "text fragment module");
+    VkShaderModule roundedVertModule = createVulkanShaderModule(state.device, spv_vulkan_rounded_vertex, sizeof(spv_vulkan_rounded_vertex), "rounded vertex module");
+    VkShaderModule roundedFragModule = createVulkanShaderModule(state.device, spv_vulkan_rounded_fragment, sizeof(spv_vulkan_rounded_fragment), "rounded fragment module");
+    VkShaderModule textVertModule = createVulkanShaderModule(state.device, spv_vulkan_text_vertex, sizeof(spv_vulkan_text_vertex), "text vertex module");
+    VkShaderModule textFragModule = createVulkanShaderModule(state.device, spv_vulkan_text_fragment, sizeof(spv_vulkan_text_fragment), "text fragment module");
     if (!roundedVertModule || !roundedFragModule || !textVertModule || !textFragModule) {
         if (roundedVertModule) vkDestroyShaderModule(state.device, roundedVertModule, nullptr);
         if (roundedFragModule) vkDestroyShaderModule(state.device, roundedFragModule, nullptr);
@@ -2134,8 +1904,9 @@ void destroyVulkanPipelines(VulkanRendererState& state) {
     for (auto& item : state.fontTextures) {
         auto& texture = item.second;
         if (texture.view) vkDestroyImageView(state.device, texture.view, nullptr);
-        if (texture.image) vkDestroyImage(state.device, texture.image, nullptr);
-        if (texture.memory) vkFreeMemory(state.device, texture.memory, nullptr);
+        if (texture.image && texture.allocation && state.allocator) {
+            vmaDestroyImage(state.allocator, texture.image, texture.allocation);
+        }
     }
     state.fontTextures.clear();
 
@@ -2186,18 +1957,17 @@ bool createVulkanDynamicPage(VulkanRendererState& state,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                             page.buffer,
-                            page.memory)) {
+                            page.allocation,
+                            label)) {
         return false;
     }
 
-    VkResult result = vkMapMemory(state.device,
-                                  page.memory,
-                                  0,
-                                  nextSize,
-                                  0,
-                                  &page.mapped);
+    VkResult result = vmaMapMemory(state.allocator, page.allocation, &page.mapped);
     if (result != VK_SUCCESS) {
         std::cerr << vkResultMessage(label, result) << std::endl;
+        vmaDestroyBuffer(state.allocator, page.buffer, page.allocation);
+        page.buffer = VK_NULL_HANDLE;
+        page.allocation = VK_NULL_HANDLE;
         return false;
     }
     page.capacityBytes = static_cast<size_t>(nextSize);
@@ -2298,25 +2068,35 @@ bool ensureVulkanFontTexture(VulkanRendererState& state,
 
     VkDeviceSize imageSize = static_cast<VkDeviceSize>(font.atlasPixels.size());
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+    VmaAllocation stagingAllocation = VK_NULL_HANDLE;
     if (!createVulkanBuffer(state,
                             imageSize,
                             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                                 VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                             stagingBuffer,
-                            stagingMemory)) {
+                            stagingAllocation,
+                            "font atlas staging")) {
         return false;
     }
 
+    auto destroyStaging = [&]() {
+        if (stagingBuffer && stagingAllocation) {
+            vmaDestroyBuffer(state.allocator, stagingBuffer, stagingAllocation);
+            stagingBuffer = VK_NULL_HANDLE;
+            stagingAllocation = VK_NULL_HANDLE;
+        }
+    };
+
     void* mapped = nullptr;
-    VkResult result = vkMapMemory(state.device, stagingMemory, 0, imageSize, 0, &mapped);
+    VkResult result = vmaMapMemory(state.allocator, stagingAllocation, &mapped);
     if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkMapMemory(font staging)", result) << std::endl;
+        std::cerr << vkResultMessage("vmaMapMemory(font staging)", result) << std::endl;
+        destroyStaging();
         return false;
     }
     std::memcpy(mapped, font.atlasPixels.data(), font.atlasPixels.size());
-    vkUnmapMemory(state.device, stagingMemory);
+    vmaUnmapMemory(state.allocator, stagingAllocation);
 
     VulkanRendererState::FontTexture texture;
     texture.width = font.atlasWidth;
@@ -2339,32 +2119,27 @@ bool ensureVulkanFontTexture(VulkanRendererState& state,
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    result = vkCreateImage(state.device, &imageInfo, nullptr, &texture.image);
-    if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkCreateImage(font atlas)", result) << std::endl;
+    if (!createVulkanImage(state,
+                           imageInfo,
+                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                           texture.image,
+                           texture.allocation,
+                           "font atlas image")) {
+        destroyStaging();
         return false;
     }
 
-    VkMemoryRequirements requirements = {};
-    vkGetImageMemoryRequirements(state.device, texture.image, &requirements);
-    uint32_t typeIndex = findVulkanMemoryType(state.physicalDevice,
-                                              requirements.memoryTypeBits,
-                                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    if (typeIndex == std::numeric_limits<uint32_t>::max()) {
-        std::cerr << "FluxUI: no compatible Vulkan memory type for font atlas." << std::endl;
-        return false;
-    }
-
-    VkMemoryAllocateInfo allocInfo = {};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = requirements.size;
-    allocInfo.memoryTypeIndex = typeIndex;
-    result = vkAllocateMemory(state.device, &allocInfo, nullptr, &texture.memory);
-    if (result != VK_SUCCESS) {
-        std::cerr << vkResultMessage("vkAllocateMemory(font atlas)", result) << std::endl;
-        return false;
-    }
-    vkBindImageMemory(state.device, texture.image, texture.memory, 0);
+    auto destroyTexture = [&]() {
+        if (texture.view) {
+            vkDestroyImageView(state.device, texture.view, nullptr);
+            texture.view = VK_NULL_HANDLE;
+        }
+        if (texture.image && texture.allocation) {
+            vmaDestroyImage(state.allocator, texture.image, texture.allocation);
+            texture.image = VK_NULL_HANDLE;
+            texture.allocation = VK_NULL_HANDLE;
+        }
+    };
 
     transitionVulkanImage(state,
                           texture.image,
@@ -2380,8 +2155,7 @@ bool ensureVulkanFontTexture(VulkanRendererState& state,
                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                           VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    vkDestroyBuffer(state.device, stagingBuffer, nullptr);
-    vkFreeMemory(state.device, stagingMemory, nullptr);
+    destroyStaging();
 
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -2396,6 +2170,7 @@ bool ensureVulkanFontTexture(VulkanRendererState& state,
     result = vkCreateImageView(state.device, &viewInfo, nullptr, &texture.view);
     if (result != VK_SUCCESS) {
         std::cerr << vkResultMessage("vkCreateImageView(font atlas)", result) << std::endl;
+        destroyTexture();
         return false;
     }
 
@@ -2407,6 +2182,7 @@ bool ensureVulkanFontTexture(VulkanRendererState& state,
     result = vkAllocateDescriptorSets(state.device, &descriptorInfo, &texture.descriptorSet);
     if (result != VK_SUCCESS) {
         std::cerr << vkResultMessage("vkAllocateDescriptorSets(font atlas)", result) << std::endl;
+        destroyTexture();
         return false;
     }
 
@@ -2779,15 +2555,20 @@ bool Renderer::initVulkan(SDL_Window* window) {
         queueInfos.push_back(queueInfo);
     }
 
-    const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const bool memoryBudgetSupported =
+        deviceSupportsVulkanExtension(state.physicalDevice, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    if (memoryBudgetSupported) {
+        deviceExtensions.push_back(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
+    }
     VkPhysicalDeviceFeatures deviceFeatures = {};
 
     VkDeviceCreateInfo deviceInfo = {};
     deviceInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     deviceInfo.queueCreateInfoCount = static_cast<uint32_t>(queueInfos.size());
     deviceInfo.pQueueCreateInfos = queueInfos.data();
-    deviceInfo.enabledExtensionCount = 1;
-    deviceInfo.ppEnabledExtensionNames = deviceExtensions;
+    deviceInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
     deviceInfo.pEnabledFeatures = &deviceFeatures;
 
     result = vkCreateDevice(state.physicalDevice, &deviceInfo, nullptr, &state.device);
@@ -2799,6 +2580,19 @@ bool Renderer::initVulkan(SDL_Window* window) {
 
     vkGetDeviceQueue(state.device, state.graphicsQueueFamily, 0, &state.graphicsQueue);
     vkGetDeviceQueue(state.device, state.presentQueueFamily, 0, &state.presentQueue);
+
+    VmaAllocatorCreateInfo allocatorInfo = {};
+    allocatorInfo.flags = memoryBudgetSupported ? VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT : 0;
+    allocatorInfo.physicalDevice = state.physicalDevice;
+    allocatorInfo.device = state.device;
+    allocatorInfo.instance = state.instance;
+    allocatorInfo.vulkanApiVersion = appInfo.apiVersion;
+    result = vmaCreateAllocator(&allocatorInfo, &state.allocator);
+    if (result != VK_SUCCESS) {
+        std::cerr << vkResultMessage("vmaCreateAllocator", result) << std::endl;
+        shutdownVulkan();
+        return false;
+    }
 
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -2851,6 +2645,10 @@ void Renderer::shutdownVulkan() {
         if (state.commandPool) {
             vkDestroyCommandPool(state.device, state.commandPool, nullptr);
             state.commandPool = VK_NULL_HANDLE;
+        }
+        if (state.allocator) {
+            vmaDestroyAllocator(state.allocator);
+            state.allocator = VK_NULL_HANDLE;
         }
         vkDestroyDevice(state.device, nullptr);
         state.device = VK_NULL_HANDLE;
@@ -3117,7 +2915,7 @@ void Renderer::drawVulkanRoundedRect(const Rect& rect,
                                     sizeof(VulkanRoundedInstance),
                                     alignof(VulkanRoundedInstance),
                                     512 * 1024,
-                                    "vkMapMemory(rounded dynamic page)",
+                                    "vmaMapMemory(rounded dynamic page)",
                                     allocation)) {
         return;
     }
@@ -3207,7 +3005,7 @@ void Renderer::drawVulkanBoxShadow(const Rect& rect,
                                     sizeof(VulkanRoundedInstance),
                                     alignof(VulkanRoundedInstance),
                                     512 * 1024,
-                                    "vkMapMemory(rounded dynamic page)",
+                                    "vmaMapMemory(rounded dynamic page)",
                                     allocation)) {
         return;
     }
@@ -3344,7 +3142,7 @@ void Renderer::drawVulkanText(const std::string& text,
                                     byteSize,
                                     alignof(VulkanTextVertex),
                                     4 * 1024 * 1024,
-                                    "vkMapMemory(text dynamic page)",
+                                    "vmaMapMemory(text dynamic page)",
                                     allocation)) {
         return;
     }
@@ -3503,145 +3301,74 @@ void Renderer::endFrame() {
 //  Font Loading
 // ============================================================
 
+#include "font_atlas.h"
+
 bool Renderer::loadFont(const std::string& path, float size, const std::string& name) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        std::cerr << "Failed to load font: " << path << std::endl;
-        return false;
-    }
-    auto fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<unsigned char> buffer(fileSize);
-    file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-    return loadFontFromMemory(buffer.data(), (int)fileSize, size, name);
+    // Ignore the path completely to remove disk latency.
+    return loadFontFromMemory(nullptr, 0, size, name);
 }
 
 bool Renderer::loadFontFromMemory(const unsigned char* data, int dataSize, float size, const std::string& name) {
     FontData font;
-    font.sourceData.assign(data, data + dataSize);
-    if (!buildFontAtlas(font, font.sourceData.data(), (int)font.sourceData.size(), size)) {
-        return false;
+    font.fontSize = font_size; // The baked font size
+    font.atlasWidth = font_atlas_width;
+    font.atlasHeight = font_atlas_height;
+    font.ascent = font_ascent;
+    font.descent = font_descent;
+    font.lineGap = font_lineGap;
+    
+    for (int i = 0; i < 1024; ++i) {
+        font.glyphs[i].x0 = font_glyphs[i].x0;
+        font.glyphs[i].y0 = font_glyphs[i].y0;
+        font.glyphs[i].x1 = font_glyphs[i].x1;
+        font.glyphs[i].y1 = font_glyphs[i].y1;
+        font.glyphs[i].xoff = font_glyphs[i].xoff;
+        font.glyphs[i].yoff = font_glyphs[i].yoff;
+        font.glyphs[i].xadvance = font_glyphs[i].xadvance;
+        font.glyphs[i].width = font_glyphs[i].width;
+        font.glyphs[i].height = font_glyphs[i].height;
     }
-
+    
+    if (activeBackend_ == RenderBackendType::Vulkan) {
+        font.atlasPixels.assign(font_atlas_pixels, font_atlas_pixels + sizeof(font_atlas_pixels));
+        font.textureId = 0;
+        font.loaded = true;
+    } else {
+        glGenTextures(1, &font.textureId);
+        glBindTexture(GL_TEXTURE_2D, font.textureId);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.atlasWidth, font.atlasHeight,
+                     0, GL_RED, GL_UNSIGNED_BYTE, font_atlas_pixels);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        font.loaded = true;
+    }
+    
     fonts_[name] = font;
     textMeasureCache_.clear();
     if (!currentFont_) currentFont_ = &fonts_[name];
-
+    
     return true;
 }
 
 bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dataSize, float size) {
-    font.fontSize = size;
-    float scaledSize = size * dpiScale_;
-    font.atlasWidth = (scaledSize > 40.0f) ? 2048 : 1024;
-    font.atlasHeight = font.atlasWidth;
-
-    std::vector<unsigned char> atlas(font.atlasWidth * font.atlasHeight, 0);
-
-    stbtt_fontinfo info;
-    if (!stbtt_InitFont(&info, data, 0)) return false;
-
-    float scale = stbtt_ScaleForPixelHeight(&info, scaledSize);
-    
-    int ascent, descent, lineGap;
-    stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
-    font.ascent = (ascent * scale) / dpiScale_;
-    font.descent = (descent * scale) / dpiScale_;
-    font.lineGap = (lineGap * scale) / dpiScale_;
-    
-    // Pack glyphs into atlas
-    stbtt_pack_context pc;
-    stbtt_PackBegin(&pc, atlas.data(), font.atlasWidth, font.atlasHeight, 0, 2, nullptr);
-    stbtt_PackSetOversampling(&pc, 2, 2);
-    
-    stbtt_packedchar charData[1024] = {};
-    int packed = stbtt_PackFontRange(&pc, data, 0, scaledSize, 32, 1024-32, charData+32);
-    stbtt_PackEnd(&pc);
-    if (!packed) return false;
-    
-    // Fill glyph info
-    for (int i = 32; i < 1024; i++) {
-        auto& cd = charData[i];
-        auto& gi = font.glyphs[i];
-
-        // Use GetPackedQuad to get correct screen-space dimensions
-        stbtt_aligned_quad q;
-        float dummyX = 0, dummyY = 0;
-        stbtt_GetPackedQuad(charData, font.atlasWidth, font.atlasHeight,
-                            i, &dummyX, &dummyY, &q, 0);
-
-        gi.x0 = q.s0;
-        gi.y0 = q.t0;
-        gi.x1 = q.s1;
-        gi.y1 = q.t1;
-        gi.xoff = q.x0 / dpiScale_;
-        gi.yoff = q.y0 / dpiScale_;
-        gi.xadvance = cd.xadvance / dpiScale_;
-        gi.width = (q.x1 - q.x0) / dpiScale_;
-        gi.height = (q.y1 - q.y0) / dpiScale_;
-    }
-
-    if (activeBackend_ == RenderBackendType::Vulkan) {
-        font.atlasPixels = std::move(atlas);
-        font.textureId = 0;
-        font.loaded = true;
-        return true;
-    }
-
-    // Upload to GPU
-    glGenTextures(1, &font.textureId);
-    glBindTexture(GL_TEXTURE_2D, font.textureId);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.atlasWidth, font.atlasHeight,
-                 0, GL_RED, GL_UNSIGNED_BYTE, atlas.data());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    font.loaded = true;
     return true;
 }
 
 FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) {
-    int snappedSize = std::max(8, (int)std::round(fontSize));
-    std::string sizedName = fontName + "@" + std::to_string(snappedSize);
-
-    auto sizedIt = fonts_.find(sizedName);
-    if (sizedIt != fonts_.end() && sizedIt->second.loaded) return &sizedIt->second;
-
     auto baseIt = fonts_.find(fontName);
-    if (baseIt == fonts_.end() || !baseIt->second.loaded) return nullptr;
-    if (baseIt->second.sourceData.empty()) return &baseIt->second;
-
-    FontData sizedFont;
-    const auto& source = baseIt->second.sourceData;
-    if (!buildFontAtlas(sizedFont, source.data(),
-                        (int)source.size(), (float)snappedSize)) {
-        return &fonts_[fontName];
-    }
-
-    // Derived size atlases reuse the base font bytes instead of duplicating
-    // the full source data for every requested font size.
-    sizedFont.sourceData.clear();
-    sizedFont.sourceData.shrink_to_fit();
-    fonts_[sizedName] = sizedFont;
-    textMeasureCache_.clear();
-    return &fonts_[sizedName];
+    if (baseIt != fonts_.end() && baseIt->second.loaded) return &baseIt->second;
+    return nullptr;
 }
 
 const FontData* Renderer::findFontForMeasure(const std::string& fontName, float fontSize) const {
-    int snappedSize = std::max(8, (int)std::round(fontSize));
-    std::string sizedName = fontName + "@" + std::to_string(snappedSize);
-
-    auto sizedIt = fonts_.find(sizedName);
-    if (sizedIt != fonts_.end() && sizedIt->second.loaded) return &sizedIt->second;
-
     auto baseIt = fonts_.find(fontName);
     if (baseIt != fonts_.end() && baseIt->second.loaded) return &baseIt->second;
-
     return nullptr;
 }
+
 
 // ============================================================
 //  Drawing: Helper to set projection uniform
