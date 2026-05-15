@@ -1,6 +1,0 @@
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/glad.dir
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/fluxui.dir
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/fluxui_shared.dir
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/DataLeakGuard.dir
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/ALL_BUILD.dir
-C:/Users/Administrator/Documents/prueba/DataleakGuard/build/CMakeFiles/ZERO_CHECK.dir
