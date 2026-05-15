@@ -865,7 +865,40 @@ void Widget::update(const InputState& input) {
         visibleContent.y += scrollY;
     }
 
-    for (auto& child : children) {
+    size_t startIndex = 0;
+    size_t endIndex = children.size();
+    
+    const bool isColumn = (computedStyle.flexDirection == FlexDirection::Column);
+    if (children.size() > 256 && isColumn && computedStyle.overflow == Overflow::Scroll) {
+        auto itStart = std::lower_bound(children.begin(), children.end(), visibleContent.y - 128.0f,
+            [](const std::shared_ptr<Widget>& w, float y) {
+                return w->bounds.y + w->bounds.h < y;
+            });
+        startIndex = std::distance(children.begin(), itStart);
+        
+        auto itEnd = std::upper_bound(itStart, children.end(), visibleContent.y + visibleContent.h + 128.0f,
+            [](float y, const std::shared_ptr<Widget>& w) {
+                return y < w->bounds.y;
+            });
+        endIndex = std::distance(children.begin(), itEnd);
+        
+        // Reset state for non-visible children that were skipped
+        // In a real Ferrari, we might want to do this more selectively, 
+        // but for now we only process the range.
+    }
+
+    for (size_t i = 0; i < children.size(); i++) {
+        auto& child = children[i];
+        
+        // If outside the virtualized range, skip update logic but keep focus/dragging
+        if (i < startIndex || i >= endIndex) {
+            if (!child->focused && !child->scrollbarDragging) {
+                child->hovered = false;
+                child->pressed = false;
+                continue;
+            }
+        }
+
         if (computedStyle.overflow == Overflow::Scroll &&
             !rectIntersects(child->bounds, visibleContent, 128.0f) &&
             !child->focused && !child->scrollbarDragging) {
@@ -1017,7 +1050,29 @@ void Widget::renderChildren(Renderer& renderer) {
         renderer.pushTranslation({0, -scrollY});
     }
 
-    for (auto& child : children) {
+    // List Virtualization: Use binary search for O(log N) visibility check in large lists
+    size_t startIndex = 0;
+    size_t endIndex = children.size();
+    
+    const bool isColumn = (computedStyle.flexDirection == FlexDirection::Column);
+    if (children.size() > 256 && isColumn && computedStyle.overflow == Overflow::Scroll) {
+        // Find first child that could be visible
+        auto itStart = std::lower_bound(children.begin(), children.end(), visibleContent.y - 64.0f,
+            [](const std::shared_ptr<Widget>& w, float y) {
+                return w->bounds.y + w->bounds.h < y;
+            });
+        startIndex = std::distance(children.begin(), itStart);
+        
+        // Find first child that is definitely not visible anymore
+        auto itEnd = std::upper_bound(itStart, children.end(), visibleContent.y + visibleContent.h + 64.0f,
+            [](float y, const std::shared_ptr<Widget>& w) {
+                return y < w->bounds.y;
+            });
+        endIndex = std::distance(children.begin(), itEnd);
+    }
+
+    for (size_t i = startIndex; i < endIndex; i++) {
+        auto& child = children[i];
         if (!child->visible) continue;
         if (clip && !rectIntersects(child->bounds, visibleContent, 64.0f)) continue;
         child->render(renderer);
