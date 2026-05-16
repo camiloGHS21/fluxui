@@ -151,7 +151,8 @@ public:
     // Layout
     virtual void layout(const Rect& parentBounds);
 
-    // Update (animations, hover state)
+    // Returns true if any spring animation (hover, scroll) is still settling
+    bool hasActiveAnimations() const;
     virtual void update(const InputState& input);
 
     // Hit-tested cursor for native pointer feedback
@@ -380,6 +381,10 @@ public:
     std::function<void(float dt)> onUpdate;
     std::function<void()> onRender;
 
+    // Frame pacing: request a redraw when state changes
+    void requestRedraw() { needsRedraw_ = true; }
+    bool needsRedraw() const { return needsRedraw_; }
+
     bool running = true;
 
 private:
@@ -397,6 +402,7 @@ private:
     RouteBuilder notFoundRoute_;
     std::string currentRoute_;
     bool routeDirty_ = false;
+    bool needsRedraw_ = true;  // Start true for first frame
 
     struct EventListener {
         size_t id = 0;

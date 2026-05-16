@@ -45,6 +45,67 @@ static const char* navIcons[] = {
 };
 
 // ============================================================
+//  Retained UI Shell — persistent widget references
+// ============================================================
+
+struct RetainedShell {
+    bool initialized = false;
+
+    // Top-level containers (built once, never destroyed)
+    Panel* sidebar = nullptr;
+    Panel* contentArea = nullptr;
+    Panel* statusBar = nullptr;
+
+    // Nav items for highlight-only updates
+    Button* navButtons[6] = {};
+    Icon*   navIcons[6] = {};
+    Text*   navTexts[6] = {};
+
+    // Sidebar posture card (updates when blockMode changes)
+    Text* postureTitle = nullptr;
+
+    // Scanner page live refs (valid only while scanner page is displayed)
+    ProgressBar* scanProgressBar = nullptr;
+    Text*        scanCaption = nullptr;
+    Text*        scanHeroTitle = nullptr;
+    Icon*        scanOrbIcon = nullptr;
+
+    void clearPageRefs() {
+        scanProgressBar = nullptr;
+        scanCaption = nullptr;
+        scanHeroTitle = nullptr;
+        scanOrbIcon = nullptr;
+    }
+
+    // Update sidebar nav highlights without rebuilding
+    void updateNavHighlights(const std::string& activeRoute) {
+        for (int i = 0; i < 6; i++) {
+            if (!navButtons[i]) continue;
+            bool active = (activeRoute == navRoutes[i]);
+            navButtons[i]->className = active ? "nav-item active" : "nav-item";
+            navButtons[i]->markStyleDirty();
+            if (navIcons[i]) {
+                navIcons[i]->className = active ? "nav-icon active-icon" : "nav-icon";
+                navIcons[i]->markStyleDirty();
+            }
+            if (navTexts[i]) {
+                navTexts[i]->className = active ? "nav-text active-text" : "nav-text";
+                navTexts[i]->markStyleDirty();
+            }
+        }
+    }
+
+    // Update posture text from blockMode
+    void syncPosture() {
+        if (postureTitle) {
+            postureTitle->content = blockMode ? "Containment active" : "Monitor only";
+        }
+    }
+};
+
+static RetainedShell shell;
+
+// ============================================================
 //  Small UI Helpers
 // ============================================================
 
@@ -144,7 +205,8 @@ static void addActivityRow(Widget* parent,
 static void addToggleRow(Widget* parent,
                          const std::string& title,
                          const std::string& description,
-                         bool& value) {
+                         bool& value,
+                         bool affectsPosture = false) {
     auto* row = parent->add<Panel>("toggle-row");
     row->reserveChildren(2);
     auto* copy = row->add<Panel>("toggle-copy");
@@ -154,9 +216,12 @@ static void addToggleRow(Widget* parent,
 
     auto* toggle = row->add<Button>("", value ? "toggle toggle-on" : "toggle toggle-off");
     toggle->add<Panel>("toggle-knob");
-    toggle->onClick = [&value]() {
+    toggle->onClick = [&value, toggle, affectsPosture]() {
         value = !value;
-        uiDirty = true;
+        // In-place update — no full rebuild needed
+        toggle->className = value ? "toggle toggle-on" : "toggle toggle-off";
+        toggle->markStyleDirty();
+        if (affectsPosture) shell.syncPosture();
     };
 }
 
@@ -178,9 +243,11 @@ static void addRuleRow(Widget* parent,
     addPill(meta, hits, "warning");
     auto* toggle = row->add<Button>("", ruleEnabled[index] ? "toggle toggle-on" : "toggle toggle-off");
     toggle->add<Panel>("toggle-knob");
-    toggle->onClick = [index]() {
+    toggle->onClick = [index, toggle]() {
         ruleEnabled[index] = !ruleEnabled[index];
-        uiDirty = true;
+        // In-place update — no full rebuild
+        toggle->className = ruleEnabled[index] ? "toggle toggle-on" : "toggle toggle-off";
+        toggle->markStyleDirty();
     };
 }
 
@@ -232,6 +299,7 @@ static void buildStatusBar(Widget* content) {
 
 static void buildSidebar(Widget* root, Application& app) {
     auto* sidebar = root->add<Panel>("sidebar");
+    shell.sidebar = static_cast<Panel*>(sidebar);
     sidebar->reserveChildren(3);
 
     auto* header = sidebar->add<Panel>("sidebar-header");
@@ -257,18 +325,23 @@ static void buildSidebar(Widget* root, Application& app) {
         if (active) cls += " active";
         auto* item = nav->add<Button>("", cls);
         item->reserveChildren(2);
-        item->add<Icon>(navIcons[i], active ? "nav-icon active-icon" : "nav-icon");
-        item->add<Text>(navItems[i], active ? "nav-text active-text" : "nav-text");
+        auto* icon = item->add<Icon>(navIcons[i], active ? "nav-icon active-icon" : "nav-icon");
+        auto* text = item->add<Text>(navItems[i], active ? "nav-text active-text" : "nav-text");
         std::string route = navRoutes[i];
         item->onClick = [&app, route]() {
             app.navigate(route);
         };
+        // Retain references for in-place nav highlight updates
+        shell.navButtons[i] = item;
+        shell.navIcons[i] = icon;
+        shell.navTexts[i] = text;
     }
 
     auto* posture = sidebar->add<Panel>("posture-card");
     posture->reserveChildren(4);
     posture->add<Text>("POSTURE", "nav-label");
-    posture->add<Text>(blockMode ? "Containment active" : "Monitor only", "posture-title");
+    auto* postureTitle = posture->add<Text>(blockMode ? "Containment active" : "Monitor only", "posture-title");
+    shell.postureTitle = postureTitle;
     posture->add<Text>("4 high-risk events require review", "posture-copy");
     auto* posturePills = posture->add<Panel>("posture-pills");
     posturePills->reserveChildren(2);
@@ -303,12 +376,17 @@ static void buildDashboard(Application& app, Widget* content) {
                   scanProgress = 0.06f;
                   app.navigate("/scanner");
               });
-    addButton(heroActions, blockMode ? "Monitor Mode" : "Block Mode",
+    auto* blockHeroBtn = addButton(heroActions, blockMode ? "Monitor Mode" : "Block Mode",
               "block", "btn btn-danger",
-              []() {
-                  blockMode = !blockMode;
-                  uiDirty = true;
-              });
+              nullptr);
+    // In-place update for block mode hero button
+    blockHeroBtn->onClick = [blockHeroBtn]() {
+        blockMode = !blockMode;
+        // Update button label in-place
+        auto* label = static_cast<Text*>(blockHeroBtn->children.back().get());
+        label->content = blockMode ? "Monitor Mode" : "Block Mode";
+        shell.syncPosture();
+    };
 
     auto* statsRow = main->add<Panel>("stats-row");
     statsRow->add<StatCard>("Files Monitored", "12,847", "+234 this week", Color::fromHex("#37C6A3"));
@@ -326,7 +404,7 @@ static void buildDashboard(Application& app, Widget* content) {
 
     auto* responsePanel = dashboardGrid->add<Panel>("panel-card panel-side");
     addSectionHeader(responsePanel, "Live Containment", "Automations ready for escalation");
-    addToggleRow(responsePanel, "Block removable media", "Stop copy operations to untrusted USB devices.", blockMode);
+    addToggleRow(responsePanel, "Block removable media", "Stop copy operations to untrusted USB devices.", blockMode, true);
     addToggleRow(responsePanel, "Auto quarantine", "Move high-confidence matches to isolated storage.", quarantineMode);
     addToggleRow(responsePanel, "Endpoint isolation", "Cut network access for repeat offenders.", endpointIsolation);
 
@@ -350,28 +428,40 @@ static void buildScanner(Widget* content) {
 
     auto* cockpit = main->add<Panel>("scanner-cockpit");
     auto* scanOrb = cockpit->add<Panel>("scan-orb");
-    scanOrb->add<Icon>(scannerRunning ? "pause" : "scanner", "scan-orb-icon");
+    auto* orbIcon = scanOrb->add<Icon>(scannerRunning ? "pause" : "scanner", "scan-orb-icon");
+    shell.scanOrbIcon = orbIcon;
 
     auto* scanCopy = cockpit->add<Panel>("scanner-copy");
-    scanCopy->add<Text>(scannerRunning ? "Active scan in progress" : "Ready for targeted scan", "hero-title");
+    auto* heroTitle = scanCopy->add<Text>(scannerRunning ? "Active scan in progress" : "Ready for targeted scan", "hero-title");
+    shell.scanHeroTitle = heroTitle;
     scanCopy->add<Text>("Current scope: C:\\Users\\Finance\\Documents, shared drives, and removable media.",
                         "hero-text");
-    addProgress(scanCopy, scanProgress, "progress-large", Color::fromHex("#37C6A3"));
-    scanCopy->add<Text>(percentText(scanProgress) + " complete - 184,000 objects in queue", "progress-caption");
+    auto* progressBar = addProgress(scanCopy, scanProgress, "progress-large", Color::fromHex("#37C6A3"));
+    shell.scanProgressBar = progressBar;
+    auto* caption = scanCopy->add<Text>(percentText(scanProgress) + " complete - 184,000 objects in queue", "progress-caption");
+    shell.scanCaption = caption;
 
     auto* scanActions = cockpit->add<Panel>("hero-actions");
-    addButton(scanActions, scannerRunning ? "Pause Scan" : "Start Scan",
-              scannerRunning ? "pause" : "play", "btn btn-primary",
-              []() {
-                  scannerRunning = !scannerRunning;
-                  if (scannerRunning && scanProgress >= 1.0f) scanProgress = 0.0f;
-                  uiDirty = true;
-              });
+    auto* startBtn = addButton(scanActions, scannerRunning ? "Pause Scan" : "Start Scan",
+              scannerRunning ? "pause" : "play", "btn btn-primary", nullptr);
+    startBtn->onClick = [startBtn]() {
+        scannerRunning = !scannerRunning;
+        if (scannerRunning && scanProgress >= 1.0f) scanProgress = 0.0f;
+        // Update button in-place
+        auto* label = static_cast<Text*>(startBtn->children.back().get());
+        auto* icon = static_cast<Icon*>(startBtn->children.front().get());
+        label->content = scannerRunning ? "Pause Scan" : "Start Scan";
+        icon->glyph = scannerRunning ? "pause" : "play";
+        // Update orb and hero title
+        if (shell.scanOrbIcon) shell.scanOrbIcon->glyph = scannerRunning ? "pause" : "scanner";
+        if (shell.scanHeroTitle) shell.scanHeroTitle->content = scannerRunning ? "Active scan in progress" : "Ready for targeted scan";
+    };
     addButton(scanActions, "Rescan High Risk", "reload", "btn btn-secondary",
               []() {
                   scannerRunning = true;
                   scanProgress = 0.12f;
-                  uiDirty = true;
+                  if (shell.scanOrbIcon) shell.scanOrbIcon->glyph = "pause";
+                  if (shell.scanHeroTitle) shell.scanHeroTitle->content = "Active scan in progress";
               });
 
     auto* scanGrid = main->add<Panel>("three-grid");
@@ -513,11 +603,11 @@ static void buildReports(Widget* content) {
     auto* actions = reportHero->add<Panel>("hero-actions");
     addButton(actions, "Generate Packet", "report", "btn btn-primary",
               []() { std::cout << "[DataLeak Guard] Compliance packet generated" << std::endl; });
-    addButton(actions, "Schedule", "clock", "btn btn-secondary",
-              []() {
-                  reportScheduler = !reportScheduler;
-                  uiDirty = true;
-              });
+    auto* schedBtn = addButton(actions, "Schedule", "clock", "btn btn-secondary", nullptr);
+    schedBtn->onClick = [schedBtn]() {
+        reportScheduler = !reportScheduler;
+        // No rebuild needed — toggle state only affects delivery toggles below
+    };
 
     auto* reportGrid = main->add<Panel>("three-grid");
     auto* exec = reportGrid->add<Panel>("panel-card");
@@ -555,7 +645,7 @@ static void buildSettings(Widget* content) {
     auto* settingsGrid = main->add<Panel>("dashboard-grid");
     auto* enforcement = settingsGrid->add<Panel>("panel-card panel-wide");
     addSectionHeader(enforcement, "Enforcement Defaults", "Global behavior for newly discovered risks");
-    addToggleRow(enforcement, "Block mode", "Apply blocking actions when confidence exceeds policy threshold.", blockMode);
+    addToggleRow(enforcement, "Block mode", "Apply blocking actions when confidence exceeds policy threshold.", blockMode, true);
     addToggleRow(enforcement, "Quarantine mode", "Move restricted files to isolated encrypted storage.", quarantineMode);
     addToggleRow(enforcement, "Endpoint isolation", "Disconnect endpoints with repeated critical violations.", endpointIsolation);
     addToggleRow(enforcement, "Leadership digest", "Send summarized posture notes to executives.", digestEnabled);
@@ -565,11 +655,14 @@ static void buildSettings(Widget* content) {
     addMetricStrip(integrations, "SIEM stream", "Healthy", "ok", 1.0f);
     addMetricStrip(integrations, "Cloud sync", cloudSync ? "Enabled" : "Paused", cloudSync ? "info" : "warning", cloudSync ? 0.88f : 0.42f);
     addMetricStrip(integrations, "Directory sync", "Healthy", "ok", 0.96f);
-    addButton(integrations, cloudSync ? "Pause Cloud Sync" : "Enable Cloud Sync", "cloud", "btn btn-secondary btn-full",
-              []() {
-                  cloudSync = !cloudSync;
-                  uiDirty = true;
-              });
+    auto* cloudBtn = addButton(integrations, cloudSync ? "Pause Cloud Sync" : "Enable Cloud Sync", "cloud", "btn btn-secondary btn-full",
+              nullptr);
+    cloudBtn->onClick = [cloudBtn]() {
+        cloudSync = !cloudSync;
+        // Update button label in-place
+        auto* label = static_cast<Text*>(cloudBtn->children.back().get());
+        label->content = cloudSync ? "Pause Cloud Sync" : "Enable Cloud Sync";
+    };
 
     addSectionHeader(main, "Retention And Privacy");
     auto* privacy = main->add<Panel>("data-table");
@@ -715,38 +808,60 @@ int main(int argc, char** argv) {
     });
 
     int renderedFrames = 0;
-    float lastScanUiProgress = -1.0f;
-    bool lastScanUiRunning = scannerRunning;
 
     app.onUpdate = [&](float dt) {
+        // ── Scan progress: update live references directly ──
         if (scannerRunning) {
             bool wasRunning = scannerRunning;
             scanProgress = std::min(1.0f, scanProgress + dt * 0.055f);
             if (scanProgress >= 1.0f) {
                 scannerRunning = false;
             }
-            if (scannerRunning != wasRunning ||
-                scannerRunning != lastScanUiRunning ||
-                std::abs(scanProgress - lastScanUiProgress) >= 0.01f) {
-                uiDirty = true;
-                lastScanUiProgress = scanProgress;
-                lastScanUiRunning = scannerRunning;
+
+            // Direct widget updates — NO full rebuild!
+            if (shell.scanProgressBar) {
+                shell.scanProgressBar->progress = scanProgress;
             }
+            if (shell.scanCaption) {
+                shell.scanCaption->content = percentText(scanProgress) + " complete - 184,000 objects in queue";
+            }
+
+            // Scan completed — update button/icon states
+            if (wasRunning && !scannerRunning) {
+                if (shell.scanOrbIcon) shell.scanOrbIcon->glyph = "scanner";
+                if (shell.scanHeroTitle) shell.scanHeroTitle->content = "Scan complete";
+            }
+            app.requestRedraw();
         }
 
-        if (app.routeDirty() || uiDirty) {
-            uiDirty = false;
-
+        // ── Build shell once, then only rebuild on route change ──
+        if (!shell.initialized) {
+            // First frame: build entire shell
             auto* root = app.root();
             root->clearChildren();
             root->reserveChildren(2);
 
             buildSidebar(root, app);
 
-            auto* content = root->add<Panel>("content");
-            content->reserveChildren(3);
-            app.renderRoute(content);
-            buildStatusBar(content);
+            shell.contentArea = root->add<Panel>("content");
+            shell.contentArea->reserveChildren(3);
+            app.renderRoute(shell.contentArea);
+            buildStatusBar(shell.contentArea);
+
+            shell.initialized = true;
+            uiDirty = false;
+        } else if (app.routeDirty()) {
+            // Route change: update nav highlights + rebuild content only
+            shell.clearPageRefs();
+            shell.updateNavHighlights(app.currentRoute());
+
+            // Only clear and rebuild the content area — sidebar is retained
+            shell.contentArea->clearChildren();
+            shell.contentArea->reserveChildren(3);
+            app.renderRoute(shell.contentArea);
+            buildStatusBar(shell.contentArea);
+
+            uiDirty = false;
         }
 
         if (frameLimit > 0 && ++renderedFrames >= frameLimit) {

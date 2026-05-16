@@ -714,6 +714,23 @@ void Widget::clampScroll() {
 //  Widget - Update
 // ============================================================
 
+bool Widget::hasActiveAnimations() const {
+    // Check hover spring
+    float hoverTarget = hovered ? 1.0f : 0.0f;
+    if (std::abs(hoverAnim - hoverTarget) > 0.001f || std::abs(hoverVelocity) > 0.001f) {
+        return true;
+    }
+    // Check scroll spring
+    if (std::abs(scrollY - targetScrollY) > 0.1f || std::abs(scrollVelocity) > 0.1f) {
+        return true;
+    }
+    // Check children
+    for (auto& child : children) {
+        if (child && child->hasActiveAnimations()) return true;
+    }
+    return false;
+}
+
 void Widget::update(const InputState& input) {
     if (!visible) return;
 
@@ -1883,6 +1900,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.type = UIEventType::WindowResized;
         event.position = app->input().windowSize;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_MOUSEMOVE: {
@@ -1894,6 +1912,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.position = app->input().mousePos;
         event.delta = app->input().mouseDelta;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_LBUTTONDOWN:
@@ -1909,6 +1928,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.button = btn + 1;
         event.clickCount = 1;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_LBUTTONUP:
@@ -1922,6 +1942,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.position = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
         event.button = btn + 1;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_MOUSEWHEEL: {
@@ -1931,6 +1952,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.type = UIEventType::MouseWheel;
         event.delta = {0, delta};
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_CHAR: {
@@ -1942,6 +1964,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
             event.type = UIEventType::TextInput;
             event.text = utf8;
             app->emit(std::move(event));
+            app->requestRedraw();
         }
         break;
     }
@@ -1958,6 +1981,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.keyCode = app->input().keyCode;
         event.modifiers = app->input().modifiers;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
     case WM_KEYUP:
@@ -1966,8 +1990,12 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.type = UIEventType::KeyUp;
         event.keyCode = (int)wParam;
         app->emit(std::move(event));
+        app->requestRedraw();
         break;
     }
+    case WM_PAINT:
+        app->requestRedraw();
+        break;
     }
 }
 #else
@@ -2101,6 +2129,7 @@ bool Application::navigate(const std::string& path) {
     event.route = currentRoute_;
     event.previousRoute = previous;
     emit(std::move(event));
+    needsRedraw_ = true;
     return found;
 }
 
@@ -2123,17 +2152,37 @@ bool Application::renderRoute(Widget* container) {
     return true;
 }
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 void Application::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
 
     while (running) {
+        processEvents();
+
+        bool hasAnimations = root_ && root_->hasActiveAnimations();
+        
+        // If nothing needs to be drawn and no animations are active, sleep until an event occurs
+        if (!needsRedraw_ && !hasAnimations && !firstFrame) {
+#ifdef _WIN32
+            WaitMessage();
+#else
+            std::this_thread::sleep_for(std::chrono::milliseconds(16)); // Fallback
+#endif
+            lastTime = std::chrono::high_resolution_clock::now(); // Reset time to avoid massive delta
+            continue;
+        }
+
         auto now = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> elapsed = now - lastTime;
         input_.deltaTime = elapsed.count();
         lastTime = now;
 
-        processEvents();
+        // Consume the redraw flag
+        needsRedraw_ = false;
         if (onUpdate) onUpdate(input_.deltaTime);
 
         // Resolve styles

@@ -175,6 +175,7 @@ struct VulkanRendererState {
     VkDescriptorSetLayout textDescriptorSetLayout = VK_NULL_HANDLE;
     VkPipelineLayout textPipelineLayout = VK_NULL_HANDLE;
     VkPipeline textPipeline = VK_NULL_HANDLE;
+    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     VkSampler fontSampler = VK_NULL_HANDLE;
     std::unordered_map<std::string, FontTexture> fontTextures;
@@ -1275,6 +1276,7 @@ struct VulkanTextVertex {
 };
 
 #include "vulkan_shaders.h"
+#include "vulkan_pipeline_cache.h"
 
 VkShaderModule createVulkanShaderModule(VkDevice device,
                                         const uint32_t* code,
@@ -1490,6 +1492,22 @@ bool createVulkanPipelines(VulkanRendererState& state) {
     VkShaderModule roundedFragModule = createVulkanShaderModule(state.device, spv_vulkan_rounded_fragment, sizeof(spv_vulkan_rounded_fragment), "rounded fragment module");
     VkShaderModule textVertModule = createVulkanShaderModule(state.device, spv_vulkan_text_vertex, sizeof(spv_vulkan_text_vertex), "text vertex module");
     VkShaderModule textFragModule = createVulkanShaderModule(state.device, spv_vulkan_text_fragment, sizeof(spv_vulkan_text_fragment), "text fragment module");
+
+    // Create pipeline cache from embedded data for faster pipeline creation
+    if (state.pipelineCache == VK_NULL_HANDLE) {
+        VkPipelineCacheCreateInfo cacheInfo = {};
+        cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+        cacheInfo.initialDataSize = kEmbeddedVulkanPipelineCacheSize;
+        cacheInfo.pInitialData = kEmbeddedVulkanPipelineCache;
+        VkResult cacheResult = vkCreatePipelineCache(state.device, &cacheInfo, nullptr, &state.pipelineCache);
+        if (cacheResult != VK_SUCCESS) {
+            // Fall back to empty cache
+            std::cerr << "[FluxUI] Embedded pipeline cache rejected (vendor mismatch?), creating empty cache" << std::endl;
+            cacheInfo.initialDataSize = 0;
+            cacheInfo.pInitialData = nullptr;
+            vkCreatePipelineCache(state.device, &cacheInfo, nullptr, &state.pipelineCache);
+        }
+    }
     if (!roundedVertModule || !roundedFragModule || !textVertModule || !textFragModule) {
         if (roundedVertModule) vkDestroyShaderModule(state.device, roundedVertModule, nullptr);
         if (roundedFragModule) vkDestroyShaderModule(state.device, roundedFragModule, nullptr);
@@ -1677,7 +1695,7 @@ bool createVulkanPipelines(VulkanRendererState& state) {
     pipelineInfo.subpass = 0;
 
     result = vkCreateGraphicsPipelines(state.device,
-                                       VK_NULL_HANDLE,
+                                       state.pipelineCache,
                                        1,
                                        &pipelineInfo,
                                        nullptr,
@@ -1722,7 +1740,7 @@ bool createVulkanPipelines(VulkanRendererState& state) {
     pipelineInfo.pVertexInputState = &textVertexInput;
     pipelineInfo.layout = state.textPipelineLayout;
     result = vkCreateGraphicsPipelines(state.device,
-                                       VK_NULL_HANDLE,
+                                       state.pipelineCache,
                                        1,
                                        &pipelineInfo,
                                        nullptr,
@@ -1820,6 +1838,10 @@ void destroyVulkanPipelines(VulkanRendererState& state) {
     if (state.textDescriptorSetLayout) {
         vkDestroyDescriptorSetLayout(state.device, state.textDescriptorSetLayout, nullptr);
         state.textDescriptorSetLayout = VK_NULL_HANDLE;
+    }
+    if (state.pipelineCache) {
+        vkDestroyPipelineCache(state.device, state.pipelineCache, nullptr);
+        state.pipelineCache = VK_NULL_HANDLE;
     }
 }
 
