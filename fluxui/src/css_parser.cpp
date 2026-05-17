@@ -808,14 +808,22 @@ void StyleSheet::indexRule(size_t ruleIndex) {
 }
 
 std::string StyleSheet::resolveValue(const std::string& value,
-                                     const std::unordered_map<std::string, std::string>& customProperties) const {
-    return resolveValueInternal(value, &customProperties, 0);
+                                     const std::unordered_map<std::string, std::string>& customProperties,
+                                     bool* valid) const {
+    bool localValid = true;
+    std::string resolved = resolveValueInternal(value, &customProperties, &localValid, 0);
+    if (valid) *valid = localValid;
+    return resolved;
 }
 
 std::string StyleSheet::resolveValueInternal(const std::string& value,
                                              const std::unordered_map<std::string, std::string>* customProperties,
+                                             bool* valid,
                                              int depth) const {
-    if (depth > 8) return trim(value);
+    if (depth > 8) {
+        if (valid) *valid = false;
+        return "";
+    }
 
     std::string out;
     size_t pos = 0;
@@ -859,7 +867,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         if (customProperties) {
             auto customIt = customProperties->find(name);
             if (customIt != customProperties->end()) {
-                out += resolveValueInternal(customIt->second, customProperties, depth + 1);
+                out += resolveValueInternal(customIt->second, customProperties, valid, depth + 1);
                 pos = cursor + 1;
                 continue;
             }
@@ -867,15 +875,24 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
 
         auto it = variables_.find(name);
         if (it != variables_.end()) {
-            out += resolveValueInternal(it->second, customProperties, depth + 1);
+            out += resolveValueInternal(it->second, customProperties, valid, depth + 1);
         } else if (!fallback.empty()) {
-            out += resolveValueInternal(fallback, customProperties, depth + 1);
+            out += resolveValueInternal(fallback, customProperties, valid, depth + 1);
+        } else {
+            if (valid) *valid = false;
+            return "";
         }
         pos = cursor + 1;
     }
 
     return trim(out);
 }
+
+static bool applyCSSWideProperty(Style& target,
+                                 const std::string& name,
+                                 const std::string& keyword,
+                                 const Style* parentStyle,
+                                 const Style& initialStyle);
 
 Style StyleSheet::resolve(const std::string& className,
                           const std::string& id,
@@ -895,7 +912,8 @@ Style StyleSheet::resolve(const std::string& className,
                           const std::string& id,
                           const std::string& type,
                           const std::vector<CSSSelectorNode>& ancestors,
-                          const std::unordered_map<std::string, std::string>* inheritedCustomProperties) const {
+                          const Style* parentStyle) const {
+    const auto* inheritedCustomProperties = parentStyle ? &parentStyle->customProperties : nullptr;
     std::string key = cacheKey(className, id, type, ancestors);
     if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
         std::vector<std::pair<std::string, std::string>> inherited(
@@ -907,6 +925,34 @@ Style StyleSheet::resolve(const std::string& className,
             key.push_back('=');
             key += entry.second;
         }
+    }
+    if (parentStyle) {
+        key.push_back('\x1c');
+        auto appendFloat = [&key](float value) {
+            key += std::to_string((int)std::round(value * 1000.0f));
+            key.push_back(',');
+        };
+        auto appendColor = [&](const Color& color) {
+            appendFloat(color.r);
+            appendFloat(color.g);
+            appendFloat(color.b);
+            appendFloat(color.a);
+        };
+        appendColor(parentStyle->color);
+        appendFloat(parentStyle->fontSize);
+        key += std::to_string((int)parentStyle->fontWeight) + ",";
+        key += std::to_string((int)parentStyle->textAlign) + ",";
+        appendFloat(parentStyle->lineHeight);
+        key += parentStyle->fontFamily;
+        key.push_back(',');
+        appendFloat(parentStyle->margin.top);
+        appendFloat(parentStyle->margin.right);
+        appendFloat(parentStyle->margin.bottom);
+        appendFloat(parentStyle->margin.left);
+        appendFloat(parentStyle->padding.top);
+        appendFloat(parentStyle->padding.right);
+        appendFloat(parentStyle->padding.bottom);
+        appendFloat(parentStyle->padding.left);
     }
     auto cached = resolvedCache_.find(key);
     if (cached != resolvedCache_.end()) {
@@ -971,20 +1017,32 @@ Style StyleSheet::resolve(const std::string& className,
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
         for (const auto& item : properties) {
             if (item.property->name.rfind("--", 0) != 0) continue;
-            std::string value = resolveValueInternal(item.property->value, &customProperties);
+            bool valid = true;
+            std::string value = resolveValueInternal(item.property->value, &customProperties, &valid);
+            if (!valid) continue;
             stripImportant(value);
             customProperties[item.property->name] = value;
         }
     };
 
+    Style initialStyle;
     auto applyProperties = [&](std::vector<CascadedProperty>& properties,
                                auto mergeFn,
                                const std::unordered_map<std::string, std::string>& customProperties) {
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
         for (const auto& item : properties) {
             if (item.property->name.rfind("--", 0) == 0) continue;
-            std::string value = resolveValueInternal(item.property->value, &customProperties);
+            bool valid = true;
+            std::string value = resolveValueInternal(item.property->value, &customProperties, &valid);
+            if (!valid) continue;
             stripImportant(value);
+            if (applyCSSWideProperty(style,
+                                     item.property->name,
+                                     lowerAscii(value),
+                                     parentStyle,
+                                     initialStyle)) {
+                continue;
+            }
             mergeFn(style, item.property->name, value);
         }
     };
@@ -1048,6 +1106,141 @@ void StyleSheet::collectCandidateRules(const std::string& className,
 
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
+}
+
+static bool isInheritedCSSProperty(const std::string& name) {
+    return name == "color" || name == "font-size" ||
+           name == "font-weight" || name == "font-family" ||
+           name == "line-height" || name == "text-align";
+}
+
+static const Style& cssWideSource(const std::string& name,
+                                  const std::string& keyword,
+                                  const Style* parentStyle,
+                                  const Style& initialStyle) {
+    if (keyword == "inherit") {
+        return parentStyle ? *parentStyle : initialStyle;
+    }
+    if (keyword == "unset" && isInheritedCSSProperty(name)) {
+        return parentStyle ? *parentStyle : initialStyle;
+    }
+    return initialStyle;
+}
+
+static void copyAllNonCustomProperties(Style& target, const Style& source) {
+    auto customProperties = std::move(target.customProperties);
+    target = source;
+    target.customProperties = std::move(customProperties);
+}
+
+static bool applyCSSWideProperty(Style& target,
+                                 const std::string& name,
+                                 const std::string& keyword,
+                                 const Style* parentStyle,
+                                 const Style& initialStyle) {
+    if (keyword != "inherit" && keyword != "initial" && keyword != "unset") {
+        return false;
+    }
+
+    const Style& source = cssWideSource(name, keyword, parentStyle, initialStyle);
+    if (name == "all") {
+        copyAllNonCustomProperties(target, source);
+    } else if (name == "color") {
+        target.color = source.color;
+        target.hasColor = true;
+    } else if (name == "background" || name == "background-color" || name == "background-image") {
+        target.backgroundColor = source.backgroundColor;
+        target.backgroundGradient = source.backgroundGradient;
+    } else if (name == "border" || name == "border-top" ||
+               name == "border-right" || name == "border-bottom" ||
+               name == "border-left" || name == "border-color" ||
+               name == "border-width") {
+        target.border = source.border;
+    } else if (name == "outline" || name == "outline-color" ||
+               name == "outline-width" || name == "outline-offset") {
+        target.outline = source.outline;
+        target.outlineOffset = source.outlineOffset;
+    } else if (name == "border-radius") {
+        target.borderRadius = source.borderRadius;
+    } else if (name == "box-shadow") {
+        target.boxShadow = source.boxShadow;
+    } else if (name == "padding" || name == "padding-top" ||
+               name == "padding-right" || name == "padding-bottom" ||
+               name == "padding-left") {
+        target.padding = source.padding;
+    } else if (name == "margin" || name == "margin-top" ||
+               name == "margin-right" || name == "margin-bottom" ||
+               name == "margin-left") {
+        target.margin = source.margin;
+    } else if (name == "width") {
+        target.width = source.width;
+    } else if (name == "height") {
+        target.height = source.height;
+    } else if (name == "min-width") {
+        target.minWidth = source.minWidth;
+    } else if (name == "min-height") {
+        target.minHeight = source.minHeight;
+    } else if (name == "max-width") {
+        target.maxWidth = source.maxWidth;
+    } else if (name == "max-height") {
+        target.maxHeight = source.maxHeight;
+    } else if (name == "inset" || name == "top" ||
+               name == "right" || name == "bottom" || name == "left") {
+        target.top = source.top;
+        target.right = source.right;
+        target.bottom = source.bottom;
+        target.left = source.left;
+    } else if (name == "font-size") {
+        target.fontSize = source.fontSize;
+        target.hasFontSize = true;
+    } else if (name == "font-weight") {
+        target.fontWeight = source.fontWeight;
+        target.hasFontWeight = true;
+    } else if (name == "font-family") {
+        target.fontFamily = source.fontFamily;
+        target.hasFontFamily = true;
+    } else if (name == "line-height") {
+        target.lineHeight = source.lineHeight;
+        target.hasLineHeight = true;
+    } else if (name == "text-align") {
+        target.textAlign = source.textAlign;
+        target.hasTextAlign = true;
+    } else if (name == "opacity") {
+        target.opacity = source.opacity;
+    } else if (name == "display") {
+        target.display = source.display;
+    } else if (name == "position") {
+        target.position = source.position;
+    } else if (name == "flex-direction") {
+        target.flexDirection = source.flexDirection;
+    } else if (name == "justify-content") {
+        target.justifyContent = source.justifyContent;
+    } else if (name == "align-items") {
+        target.alignItems = source.alignItems;
+    } else if (name == "gap" || name == "row-gap" || name == "column-gap") {
+        target.gap = source.gap;
+    } else if (name == "flex") {
+        target.flexGrow = source.flexGrow;
+        target.flexShrink = source.flexShrink;
+        target.flexBasis = source.flexBasis;
+    } else if (name == "flex-grow") {
+        target.flexGrow = source.flexGrow;
+    } else if (name == "flex-shrink") {
+        target.flexShrink = source.flexShrink;
+    } else if (name == "flex-basis") {
+        target.flexBasis = source.flexBasis;
+    } else if (name == "overflow" || name == "overflow-x" || name == "overflow-y") {
+        target.overflow = source.overflow;
+    } else if (name == "cursor") {
+        target.cursor = source.cursor;
+    } else if (name == "transition") {
+        target.transitionDuration = source.transitionDuration;
+    } else if (name == "scale" || name == "transform") {
+        target.scale = source.scale;
+    } else {
+        return false;
+    }
+    return true;
 }
 
 void StyleSheet::applyUserAgentDefaults(Style& style, const std::string& type) {

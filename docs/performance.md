@@ -155,6 +155,20 @@ the current widget's computed custom properties:
 Inline `widget->css("--accent: ...")` also invalidates the subtree so
 descendants that consume the token recompute their styles.
 
+Computed-value handling now follows more browser rules:
+
+```css
+.btn { color: var(--missing); }          /* declaration is ignored */
+.btn { color: var(--missing, white); }   /* fallback is used */
+.child { color: inherit; }
+.panel { all: unset; }
+```
+
+If `var()` cannot resolve and no fallback exists, FluxUI skips that
+declaration instead of applying an accidental transparent/black value.
+CSS-wide keywords (`inherit`, `initial`, `unset`, plus `all`) are handled for
+the supported base properties, including inline `widget->css(...)` styles.
+
 Basic user-agent defaults and inherited text properties are also modeled:
 `h1`/`h2`/`h3` get browser-like default sizes and weight, while `color`,
 `font-size`, `font-weight`, `font-family`, `line-height`, and `text-align`

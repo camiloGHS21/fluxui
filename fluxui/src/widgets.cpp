@@ -278,8 +278,8 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             ancestors.push_back({node->className, node->id, node->type});
         }
 
-        const auto* inheritedCustomProperties = parent ? &parent->computedStyle.customProperties : nullptr;
-        computedStyle = sheet.resolve(className, id, type, ancestors, inheritedCustomProperties);
+        const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
+        computedStyle = sheet.resolve(className, id, type, ancestors, parentStyle);
 
         if (parent) {
             const Style& inherited = parent->computedStyle;
@@ -333,15 +333,56 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.scale != 1.0f) computedStyle.scale = style.scale;
         for (const auto& prop : inlineProperties) {
             if (prop.name.rfind("--", 0) == 0) {
+                bool valid = true;
+                std::string value = sheet.resolveValue(prop.value, computedStyle.customProperties, &valid);
+                if (!valid) continue;
                 computedStyle.customProperties[prop.name] =
-                    sheet.resolveValue(prop.value, computedStyle.customProperties);
+                    std::move(value);
             }
         }
         for (const auto& prop : inlineProperties) {
             if (prop.name.rfind("--", 0) == 0) continue;
+            bool valid = true;
+            std::string value = sheet.resolveValue(prop.value, computedStyle.customProperties, &valid);
+            if (!valid) continue;
+            std::string lowerValue = value;
+            for (char& c : lowerValue) c = (char)std::tolower((unsigned char)c);
+            if (lowerValue == "inherit" || lowerValue == "initial" || lowerValue == "unset") {
+                Style initialStyle;
+                bool inherited = prop.name == "color" || prop.name == "font-size" ||
+                                 prop.name == "font-weight" || prop.name == "font-family" ||
+                                 prop.name == "line-height" || prop.name == "text-align";
+                const Style& source = (parent && (lowerValue == "inherit" ||
+                                      (lowerValue == "unset" && inherited)))
+                    ? parent->computedStyle
+                    : initialStyle;
+                if (prop.name == "all") {
+                    auto customProperties = std::move(computedStyle.customProperties);
+                    computedStyle = source;
+                    computedStyle.customProperties = std::move(customProperties);
+                    continue;
+                }
+                if (prop.name == "color") { computedStyle.color = source.color; computedStyle.hasColor = true; continue; }
+                if (prop.name == "font-size") { computedStyle.fontSize = source.fontSize; computedStyle.hasFontSize = true; continue; }
+                if (prop.name == "font-weight") { computedStyle.fontWeight = source.fontWeight; computedStyle.hasFontWeight = true; continue; }
+                if (prop.name == "font-family") { computedStyle.fontFamily = source.fontFamily; computedStyle.hasFontFamily = true; continue; }
+                if (prop.name == "line-height") { computedStyle.lineHeight = source.lineHeight; computedStyle.hasLineHeight = true; continue; }
+                if (prop.name == "text-align") { computedStyle.textAlign = source.textAlign; computedStyle.hasTextAlign = true; continue; }
+                if (prop.name == "display") { computedStyle.display = source.display; continue; }
+                if (prop.name == "position") { computedStyle.position = source.position; continue; }
+                if (prop.name == "opacity") { computedStyle.opacity = source.opacity; continue; }
+                if (prop.name == "margin") { computedStyle.margin = source.margin; continue; }
+                if (prop.name == "padding") { computedStyle.padding = source.padding; continue; }
+                if (prop.name == "background" || prop.name == "background-color") {
+                    computedStyle.backgroundColor = source.backgroundColor;
+                    computedStyle.backgroundGradient = source.backgroundGradient;
+                    continue;
+                }
+                if (prop.name == "border") { computedStyle.border = source.border; continue; }
+            }
             StyleSheet::mergeProperty(computedStyle,
                                       prop.name,
-                                      sheet.resolveValue(prop.value, computedStyle.customProperties));
+                                      value);
         }
 
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);

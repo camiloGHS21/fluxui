@@ -70,9 +70,10 @@ public:
                   const std::string& id,
                   const std::string& type,
                   const std::vector<CSSSelectorNode>& ancestors,
-                  const std::unordered_map<std::string, std::string>* inheritedCustomProperties) const;
+                  const Style* parentStyle) const;
     std::string resolveValue(const std::string& value,
-                             const std::unordered_map<std::string, std::string>& customProperties) const;
+                             const std::unordered_map<std::string, std::string>& customProperties,
+                             bool* valid = nullptr) const;
 
     // Merge a resolved style onto a base style
     static void mergeProperty(Style& style, const std::string& name, const std::string& value);
@@ -90,6 +91,7 @@ private:
     void indexRule(size_t ruleIndex);
     std::string resolveValueInternal(const std::string& value,
                                      const std::unordered_map<std::string, std::string>* customProperties,
+                                     bool* valid = nullptr,
                                      int depth = 0) const;
     static std::string cacheKey(const std::string& className,
                                 const std::string& id,
