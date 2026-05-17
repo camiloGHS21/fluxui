@@ -132,6 +132,10 @@ set(FLUXUI_SOURCES
 
 if(WIN32)
     list(APPEND FLUXUI_SOURCES fluxui/src/platform_win32.cpp)
+elseif(APPLE)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform_macos.mm)
+elseif(ANDROID)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform_android.cpp)
 else()
     list(APPEND FLUXUI_SOURCES fluxui/src/platform_linux.cpp)
 endif()
