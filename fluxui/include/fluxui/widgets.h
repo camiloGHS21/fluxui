@@ -254,9 +254,9 @@ public:
     std::string label;
     std::string icon; // icon character (FontAwesome)
 
-    Button() { type = "button"; style.cursor = CursorType::Pointer; }
+    Button() { type = "button"; }
     Button(const std::string& lbl, const std::string& cls = "")
-        : label(lbl) { type = "button"; className = cls; style.cursor = CursorType::Pointer; }
+        : label(lbl) { type = "button"; className = cls; }
 
     void layout(const Rect& parentBounds) override;
     void render(Renderer& renderer) override;

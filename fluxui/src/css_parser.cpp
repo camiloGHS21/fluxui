@@ -1477,10 +1477,27 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     } else if (t == "span") {
         style.display = Display::InlineBlock;
     } else if (t == "button") {
-        style.cursor = CursorType::Pointer;
+        style.cursor = CursorType::Default;
         style.display = Display::Flex;
+        style.textAlign = TextAlign::Center;
+        style.hasTextAlign = true;
+        style.padding = EdgeInsets(2.0f, 6.0f, 3.0f, 6.0f);
+        style.border = Border(2.0f, Color(0.63f, 0.63f, 0.63f, 1.0f));
+        style.backgroundColor = Color(0.94f, 0.94f, 0.94f, 1.0f);
+        style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
+        style.hasColor = true;
+        style.lineHeight = 1.2f;
+        style.hasLineHeight = true;
     } else if (t == "input") {
         style.cursor = CursorType::Text;
+        style.display = Display::InlineBlock;
+        style.padding = EdgeInsets(1.0f);
+        style.border = Border(2.0f, Color(0.62f, 0.62f, 0.62f, 1.0f));
+        style.backgroundColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
+        style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
+        style.hasColor = true;
+        style.lineHeight = 1.2f;
+        style.hasLineHeight = true;
     }
 }
 
@@ -1569,7 +1586,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else style.textAlign = TextAlign::Left;
         style.hasTextAlign = true;
     } else if (name == "line-height") {
-        style.lineHeight = parseFloat(value);
+        style.lineHeight = parseLineHeight(value, style.fontSize);
         style.hasLineHeight = true;
     } else if (name == "opacity") {
         style.opacity = parseFloat(value);
@@ -1916,6 +1933,20 @@ float StyleSheet::parseLengthPixels(const std::string& val, float emBase) {
     }
     if (lower.back() == '%') {
         return parseFloat(lower) * emBase / 100.0f;
+    }
+    return parseFloat(lower);
+}
+
+float StyleSheet::parseLineHeight(const std::string& val, float fontSize) {
+    std::string v = trim(val);
+    std::string lower = lowerAscii(v);
+    float base = std::max(1.0f, fontSize);
+    if (lower.empty() || lower == "normal") return 1.2f;
+    if (lower.back() == '%') return parseFloat(lower) / 100.0f;
+    if ((lower.size() > 2 && lower.substr(lower.size() - 2) == "px") ||
+        (lower.size() > 3 && lower.substr(lower.size() - 3) == "rem") ||
+        (lower.size() > 2 && lower.substr(lower.size() - 2) == "em")) {
+        return std::max(0.0f, parseLengthPixels(lower, base) / base);
     }
     return parseFloat(lower);
 }

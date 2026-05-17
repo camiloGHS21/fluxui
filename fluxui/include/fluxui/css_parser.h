@@ -134,6 +134,7 @@ private:
     static Color parseColor(const std::string& val);
     static CSSValue parseCSSValue(const std::string& val);
     static float parseLengthPixels(const std::string& val, float emBase = 16.0f);
+    static float parseLineHeight(const std::string& val, float fontSize);
     static EdgeInsets parseEdgeInsets(const std::string& val);
     static BorderRadius parseBorderRadius(const std::string& val);
     static Border parseBorder(const std::string& val);
