@@ -197,19 +197,27 @@ static bool canHitTestWidget(const Widget* widget) {
 
 static bool clipsOverflow(Overflow overflow) {
     return overflow == Overflow::Hidden || overflow == Overflow::Scroll ||
-           overflow == Overflow::Auto;
+           overflow == Overflow::Auto || overflow == Overflow::Clip;
+}
+
+static bool isOverflowVisibleOrClip(Overflow overflow) {
+    return overflow == Overflow::Visible || overflow == Overflow::Clip;
+}
+
+static Overflow normalizedOverflowAxis(Overflow axis, Overflow otherAxis) {
+    if (!isOverflowVisibleOrClip(otherAxis)) {
+        if (axis == Overflow::Visible) return Overflow::Auto;
+        if (axis == Overflow::Clip) return Overflow::Hidden;
+    }
+    return axis;
 }
 
 static Overflow effectiveOverflowX(const Style& style) {
-    if (style.overflowX != Overflow::Visible) return style.overflowX;
-    if (style.overflowY == Overflow::Visible) return style.overflow;
-    return style.overflowX;
+    return normalizedOverflowAxis(style.overflowX, style.overflowY);
 }
 
 static Overflow effectiveOverflowY(const Style& style) {
-    if (style.overflowY != Overflow::Visible) return style.overflowY;
-    if (style.overflowX == Overflow::Visible) return style.overflow;
-    return style.overflowY;
+    return normalizedOverflowAxis(style.overflowY, style.overflowX);
 }
 
 static bool clipsOverflow(const Style& style) {

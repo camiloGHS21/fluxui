@@ -1599,6 +1599,34 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     }
 }
 
+static Overflow parseOverflowKeyword(const std::string& value) {
+    if (value == "hidden") return Overflow::Hidden;
+    if (value == "scroll") return Overflow::Scroll;
+    if (value == "auto") return Overflow::Auto;
+    if (value == "clip") return Overflow::Clip;
+    return Overflow::Visible;
+}
+
+static bool isOverflowVisibleOrClip(Overflow overflow) {
+    return overflow == Overflow::Visible || overflow == Overflow::Clip;
+}
+
+static Overflow normalizeOverflowAxis(Overflow axis, Overflow otherAxis) {
+    if (!isOverflowVisibleOrClip(otherAxis)) {
+        if (axis == Overflow::Visible) return Overflow::Auto;
+        if (axis == Overflow::Clip) return Overflow::Hidden;
+    }
+    return axis;
+}
+
+static void normalizeOverflowAxes(Style& style) {
+    Overflow x = style.overflowX;
+    Overflow y = style.overflowY;
+    style.overflowX = normalizeOverflowAxis(x, y);
+    style.overflowY = normalizeOverflowAxis(y, x);
+    style.overflow = style.overflowY;
+}
+
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value) {
     if (name.rfind("--", 0) == 0) {
         style.customProperties[name] = value;
@@ -1873,32 +1901,18 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "flex-basis") {
         style.flexBasis = parseCSSValue(value);
     } else if (name == "overflow") {
-        auto parseOvf = [](const std::string& v) {
-            if (v == "hidden") return Overflow::Hidden;
-            if (v == "scroll") return Overflow::Scroll;
-            if (v == "auto") return Overflow::Auto;
-            if (v == "clip") return Overflow::Hidden;
-            return Overflow::Visible;
-        };
         std::istringstream ss(value);
         std::string first, second;
         ss >> first >> second;
-        style.overflowX = parseOvf(first);
-        style.overflowY = second.empty() ? style.overflowX : parseOvf(second);
-        style.overflow = style.overflowY;
+        style.overflowX = parseOverflowKeyword(first);
+        style.overflowY = second.empty() ? style.overflowX : parseOverflowKeyword(second);
+        normalizeOverflowAxes(style);
     } else if (name == "overflow-x") {
-        if (value == "hidden") style.overflowX = Overflow::Hidden;
-        else if (value == "scroll") style.overflowX = Overflow::Scroll;
-        else if (value == "auto") style.overflowX = Overflow::Auto;
-        else if (value == "clip") style.overflowX = Overflow::Hidden;
-        else style.overflowX = Overflow::Visible;
+        style.overflowX = parseOverflowKeyword(value);
+        normalizeOverflowAxes(style);
     } else if (name == "overflow-y") {
-        if (value == "hidden") style.overflowY = Overflow::Hidden;
-        else if (value == "scroll") style.overflowY = Overflow::Scroll;
-        else if (value == "auto") style.overflowY = Overflow::Auto;
-        else if (value == "clip") style.overflowY = Overflow::Hidden;
-        else style.overflowY = Overflow::Visible;
-        style.overflow = style.overflowY; // backward compat
+        style.overflowY = parseOverflowKeyword(value);
+        normalizeOverflowAxes(style);
     } else if (name == "box-shadow") {
         style.boxShadow = parseBoxShadow(value);
     } else if (name == "cursor") {

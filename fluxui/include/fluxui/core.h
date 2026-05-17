@@ -199,7 +199,7 @@ enum class AlignItems { FlexStart, FlexEnd, Center, Stretch, Baseline };
 enum class AlignContent { FlexStart, FlexEnd, Center, Stretch, SpaceBetween, SpaceAround, SpaceEvenly };
 enum class AlignSelf { Auto, FlexStart, FlexEnd, Center, Stretch, Baseline };
 enum class Position { Static, Relative, Absolute, Fixed, Sticky };
-enum class Overflow { Visible, Hidden, Scroll, Auto };
+enum class Overflow { Visible, Hidden, Scroll, Auto, Clip };
 enum class TextAlign { Left, Center, Right, Justify };
 enum class FontWeight { Normal, Bold };
 enum class CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, Crosshair };
