@@ -14,6 +14,7 @@ static Display* g_display = nullptr;
 static Atom g_wmDeleteMessage;
 
 bool Platform::init() {
+    XInitThreads();
     g_display = XOpenDisplay(nullptr);
     if (!g_display) {
         std::cerr << "FluxUI: Failed to open X11 display." << std::endl;

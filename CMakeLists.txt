@@ -171,7 +171,7 @@ function(configure_fluxui_target target_name)
     elseif(WIN32)
         target_link_libraries(${target_name} PUBLIC opengl32)
     else()
-        target_link_libraries(${target_name} PUBLIC GL)
+        target_link_libraries(${target_name} PUBLIC GL X11)
     endif()
 
     if(FLUXUI_ENABLE_MSAA)
