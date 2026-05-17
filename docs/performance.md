@@ -127,6 +127,20 @@ matching id, matching class, and matching type buckets before running the
 selector checker. This keeps cascade behavior the same while avoiding a full
 stylesheet scan for every widget.
 
+The selector checker now handles a practical subset of Selectors Level 4
+functional pseudo-classes in the same spirit as Blink's `SelectorChecker`:
+
+```css
+.btn:is(.primary, .danger) { font-weight: 700; }
+.nav-item:not(.active) { opacity: 0.72; }
+:where(.panel-card) .section-title { letter-spacing: 0; }
+```
+
+`:is()` and `:where()` match when any selector in the argument list matches the
+current compound selector; `:not()` rejects the rule when any argument matches.
+Specificity follows the browser rules: `:is()` and `:not()` use the most
+specific argument, while `:where()` contributes zero specificity.
+
 Basic user-agent defaults and inherited text properties are also modeled:
 `h1`/`h2`/`h3` get browser-like default sizes and weight, while `color`,
 `font-size`, `font-weight`, `font-family`, `line-height`, and `text-align`

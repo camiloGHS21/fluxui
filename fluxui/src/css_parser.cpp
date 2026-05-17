@@ -109,13 +109,17 @@ static std::string functionInner(const std::string& value) {
     return value.substr(start + 1, end - start - 1);
 }
 
+static void splitSelectorChain(const std::string& selector,
+                               std::vector<std::string>& parts,
+                               std::vector<char>& combinators);
+static std::vector<std::string> splitSelectorListLocal(const std::string& selectorList);
+
 static bool matchCompoundSelector(const std::string& compound,
                                   const std::string& className,
                                   const std::string& id,
                                   const std::string& type) {
     std::string s = trimLocal(compound);
     if (s.empty() || s == "*") return s == "*";
-    if (s.find_first_of("[]+~") != std::string::npos) return false;
 
     std::string requiredType;
     std::string requiredId;
@@ -131,9 +135,52 @@ static bool matchCompoundSelector(const std::string& compound,
             size_t start = ++i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
             requiredId = s.substr(start, i - start);
+        } else if (s[i] == ':') {
+            size_t nameStart = ++i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
+            std::string pseudoName = lowerAscii(s.substr(nameStart, i - nameStart));
+            if (i >= s.size() || s[i] != '(') return false;
+
+            size_t innerStart = ++i;
+            int depth = 1;
+            while (i < s.size() && depth > 0) {
+                if (s[i] == '(') depth++;
+                else if (s[i] == ')') depth--;
+                if (depth > 0) i++;
+            }
+            if (i >= s.size()) return false;
+            std::string inner = s.substr(innerStart, i - innerStart);
+            ++i;
+
+            if (pseudoName != "is" && pseudoName != "where" && pseudoName != "not") {
+                return false;
+            }
+
+            bool matchedAny = false;
+            for (const auto& selector : splitSelectorListLocal(inner)) {
+                std::vector<std::string> parts;
+                std::vector<char> combinators;
+                splitSelectorChain(selector, parts, combinators);
+                if (parts.size() == 1 &&
+                    matchCompoundSelector(parts[0], className, id, type)) {
+                    matchedAny = true;
+                    break;
+                }
+            }
+
+            if (pseudoName == "not") {
+                if (matchedAny) return false;
+            } else if (!matchedAny) {
+                return false;
+            }
+        } else if (s[i] == '[' || s[i] == '+' || s[i] == '~') {
+            return false;
         } else {
             size_t start = i;
-            while (i < s.size() && s[i] != '.' && s[i] != '#') i++;
+            while (i < s.size() && s[i] != '.' && s[i] != '#' && s[i] != ':' &&
+                   s[i] != '[' && s[i] != '+' && s[i] != '~') {
+                i++;
+            }
             requiredType = lowerAscii(trimLocal(s.substr(start, i - start)));
         }
     }
@@ -203,6 +250,65 @@ static void splitSelectorChain(const std::string& selector,
         current += c;
     }
     pushCurrent();
+}
+
+static std::vector<std::string> splitSelectorListLocal(const std::string& selectorList) {
+    std::vector<std::string> parts;
+    std::string current;
+    int depth = 0;
+    char quote = 0;
+    bool escaped = false;
+
+    for (char c : selectorList) {
+        if (quote != 0) {
+            current += c;
+            if (escaped) escaped = false;
+            else if (c == '\\') escaped = true;
+            else if (c == quote) quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            current += c;
+            continue;
+        }
+        if (c == '(' || c == '[') depth++;
+        else if ((c == ')' || c == ']') && depth > 0) depth--;
+
+        if (c == ',' && depth == 0) {
+            std::string item = trimLocal(current);
+            if (!item.empty()) parts.push_back(item);
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+
+    std::string item = trimLocal(current);
+    if (!item.empty()) parts.push_back(item);
+    return parts;
+}
+
+static bool extractTrailingStatePseudo(std::string& selector, std::string* pseudo) {
+    int depth = 0;
+    size_t colon = std::string::npos;
+    for (size_t i = 0; i < selector.size(); ++i) {
+        char c = selector[i];
+        if (c == '(' || c == '[') depth++;
+        else if ((c == ')' || c == ']') && depth > 0) depth--;
+        else if (c == ':' && depth == 0) colon = i;
+    }
+
+    if (colon == std::string::npos) return false;
+
+    std::string name = lowerAscii(trimLocal(selector.substr(colon + 1)));
+    if (name == "hover" || name == "focus" ||
+        name == "focus-visible" || name == "active") {
+        if (pseudo) *pseudo = name;
+        selector = trimLocal(selector.substr(0, colon));
+        return true;
+    }
+    return false;
 }
 
 static std::vector<std::string> splitColorTokens(const std::string& inner) {
@@ -321,11 +427,7 @@ bool StyleSheet::selectorMatches(const std::string& selector,
     if (pseudo) *pseudo = "";
     if (s.empty()) return false;
 
-    auto colon = s.find(':');
-    if (colon != std::string::npos) {
-        if (pseudo) *pseudo = lowerAscii(trim(s.substr(colon + 1)));
-        s = trim(s.substr(0, colon));
-    }
+    extractTrailingStatePseudo(s, pseudo);
 
     std::vector<std::string> parts;
     std::vector<char> combinators;
@@ -432,7 +534,40 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
 
             if (pseudoElement) {
                 types++;
-            } else if (name != "where") {
+            } else if (name == "is" || name == "not" || name == "has") {
+                int maxInner = 0;
+                if (i < s.size() && s[i] == '(') {
+                    size_t innerStart = ++i;
+                    int depth = 1;
+                    while (i < s.size() && depth > 0) {
+                        if (s[i] == '(') depth++;
+                        else if (s[i] == ')') depth--;
+                        if (depth > 0) ++i;
+                    }
+                    std::string inner = s.substr(innerStart, i - innerStart);
+                    for (const auto& item : splitSelectorListLocal(inner)) {
+                        maxInner = std::max(maxInner, selectorSpecificity(item));
+                    }
+                    if (i < s.size() && s[i] == ')') ++i;
+                }
+                ids += maxInner / 10000;
+                classes += (maxInner % 10000) / 100;
+                types += maxInner % 100;
+                atTokenStart = false;
+                continue;
+            } else if (name == "where") {
+                if (i < s.size() && s[i] == '(') {
+                    int depth = 1;
+                    ++i;
+                    while (i < s.size() && depth > 0) {
+                        if (s[i] == '(') depth++;
+                        else if (s[i] == ')') depth--;
+                        ++i;
+                    }
+                }
+                atTokenStart = false;
+                continue;
+            } else {
                 classes++;
             }
 
@@ -467,10 +602,7 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
 
 CSSRuleIndexKey StyleSheet::selectorIndexKey(const std::string& selector) {
     std::string s = trim(selector);
-    auto colon = s.find(':');
-    if (colon != std::string::npos) {
-        s = trim(s.substr(0, colon));
-    }
+    extractTrailingStatePseudo(s, nullptr);
 
     std::vector<std::string> parts;
     std::vector<char> combinators;
