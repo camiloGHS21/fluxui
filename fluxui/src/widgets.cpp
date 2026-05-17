@@ -603,10 +603,23 @@ void Widget::layoutFlexChildren() {
             childH = cs.height.isSet() ? cs.height.resolve(contentH) : contentH;
             if (childH <= 0 && !cs.height.isSet()) childH = 0;
 
+            // Resolve align-self (Blink: per-item override of align-items)
+            AlignItems effectiveAlign = s.alignItems;
+            if (cs.alignSelf != AlignSelf::Auto) {
+                switch (cs.alignSelf) {
+                    case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
+                    case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
+                    case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
+                    case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
+                    case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
+                    default: break;
+                }
+            }
+
             float cy = contentY;
-            if (s.alignItems == AlignItems::Center && contentH > childH) {
+            if (effectiveAlign == AlignItems::Center && contentH > childH) {
                 cy = contentY + (contentH - childH) / 2;
-            } else if (s.alignItems == AlignItems::FlexEnd && contentH > childH) {
+            } else if (effectiveAlign == AlignItems::FlexEnd && contentH > childH) {
                 cy = contentY + contentH - childH;
             }
 
@@ -634,10 +647,23 @@ void Widget::layoutFlexChildren() {
                 childH = measuredMain[i];
             }
 
+            // Resolve align-self (Blink: per-item override of align-items)
+            AlignItems effectiveAlign = s.alignItems;
+            if (cs.alignSelf != AlignSelf::Auto) {
+                switch (cs.alignSelf) {
+                    case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
+                    case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
+                    case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
+                    case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
+                    case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
+                    default: break;
+                }
+            }
+
             float cx = contentX;
-            if (s.alignItems == AlignItems::Center && contentW > childW) {
+            if (effectiveAlign == AlignItems::Center && contentW > childW) {
                 cx = contentX + (contentW - childW) / 2;
-            } else if (s.alignItems == AlignItems::FlexEnd && contentW > childW) {
+            } else if (effectiveAlign == AlignItems::FlexEnd && contentW > childW) {
                 cx = contentX + contentW - childW;
             }
 

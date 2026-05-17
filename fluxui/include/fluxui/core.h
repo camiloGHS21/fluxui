@@ -191,24 +191,41 @@ struct Gradient {
 //  CSS Enums
 // ============================================================
 
-enum class Display { Block, Flex, InlineBlock, None };
+enum class Display { Block, Flex, InlineBlock, Inline, None };
 enum class FlexDirection { Row, Column, RowReverse, ColumnReverse };
+enum class FlexWrap { NoWrap, Wrap, WrapReverse };
 enum class JustifyContent { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly };
-enum class AlignItems { FlexStart, FlexEnd, Center, Stretch };
-enum class Position { Static, Relative, Absolute, Fixed };
-enum class Overflow { Visible, Hidden, Scroll };
-enum class TextAlign { Left, Center, Right };
+enum class AlignItems { FlexStart, FlexEnd, Center, Stretch, Baseline };
+enum class AlignContent { FlexStart, FlexEnd, Center, Stretch, SpaceBetween, SpaceAround, SpaceEvenly };
+enum class AlignSelf { Auto, FlexStart, FlexEnd, Center, Stretch, Baseline };
+enum class Position { Static, Relative, Absolute, Fixed, Sticky };
+enum class Overflow { Visible, Hidden, Scroll, Auto };
+enum class TextAlign { Left, Center, Right, Justify };
 enum class FontWeight { Normal, Bold };
-enum class CursorType { Default, Pointer, Text };
+enum class CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, Crosshair };
+enum class BoxSizing { ContentBox, BorderBox };
+enum class Visibility { Visible, Hidden, Collapse };
+enum class TextOverflow { Clip, Ellipsis };
+enum class WhiteSpace { Normal, NoWrap, Pre, PreWrap, PreLine };
+enum class TextDecoration { None, Underline, LineThrough, Overline };
+enum class TextTransform { None, Uppercase, Lowercase, Capitalize };
+enum class PointerEvents { Auto, None };
+enum class WordBreak { Normal, BreakAll, KeepAll, BreakWord };
 
 // ============================================================
 //  CSS Value (supports px, %, auto)
 // ============================================================
 
 struct CSSValue {
-    enum Unit { Px, Percent, Auto, None };
+    enum Unit { Px, Percent, Auto, None, Vw, Vh, Em, Rem, MinContent, MaxContent, FitContent };
     float value = 0;
     Unit unit = None;
+
+    // For calc() support: stores calc operands
+    enum CalcOp { CalcNone, CalcAdd, CalcSub, CalcMul, CalcDiv };
+    CalcOp calcOp = CalcNone;
+    float calcValue2 = 0;
+    Unit calcUnit2 = None;
 
     CSSValue() = default;
     CSSValue(float v, Unit u = Px) : value(v), unit(u) {}
@@ -216,15 +233,44 @@ struct CSSValue {
     static CSSValue px(float v) { return {v, Px}; }
     static CSSValue pct(float v) { return {v, Percent}; }
     static CSSValue autoVal() { return {0, Auto}; }
+    static CSSValue vw(float v) { return {v, Vw}; }
+    static CSSValue vh(float v) { return {v, Vh}; }
+    static CSSValue em(float v) { return {v, Em}; }
+    static CSSValue rem(float v) { return {v, Rem}; }
+    static CSSValue minContent() { return {0, MinContent}; }
+    static CSSValue maxContent() { return {0, MaxContent}; }
+    static CSSValue fitContent() { return {0, FitContent}; }
 
-    float resolve(float parentSize) const {
-        if (unit == Percent) return value * parentSize / 100.0f;
-        if (unit == Px) return value;
-        return 0;
+    float resolve(float parentSize, float viewportW = 1920.0f, float viewportH = 1080.0f, float emBase = 16.0f) const {
+        float primary = resolveUnit(value, unit, parentSize, viewportW, viewportH, emBase);
+        if (calcOp == CalcNone) return primary;
+        float secondary = resolveUnit(calcValue2, calcUnit2, parentSize, viewportW, viewportH, emBase);
+        switch (calcOp) {
+            case CalcAdd: return primary + secondary;
+            case CalcSub: return primary - secondary;
+            case CalcMul: return primary * secondary;
+            case CalcDiv: return secondary != 0.0f ? primary / secondary : 0.0f;
+            default: return primary;
+        }
     }
+
 
     bool isAuto() const { return unit == Auto; }
     bool isSet() const { return unit != None; }
+    bool isIntrinsic() const { return unit == MinContent || unit == MaxContent || unit == FitContent; }
+
+private:
+    static float resolveUnit(float val, Unit u, float parentSize, float vpW, float vpH, float emBase) {
+        switch (u) {
+            case Percent: return val * parentSize / 100.0f;
+            case Px: return val;
+            case Vw: return val * vpW / 100.0f;
+            case Vh: return val * vpH / 100.0f;
+            case Em: return val * emBase;
+            case Rem: return val * 16.0f;
+            default: return 0;
+        }
+    }
 };
 
 // ============================================================
@@ -232,17 +278,31 @@ struct CSSValue {
 // ============================================================
 
 struct Style {
-    // Display & Layout
+    // Display & Layout (matching Blink ComputedStyle)
     Display display = Display::Block;
     Position position = Position::Static;
     FlexDirection flexDirection = FlexDirection::Column;
+    FlexWrap flexWrap = FlexWrap::NoWrap;
     JustifyContent justifyContent = JustifyContent::FlexStart;
     AlignItems alignItems = AlignItems::Stretch;
+    AlignContent alignContent = AlignContent::Stretch;
+    AlignSelf alignSelf = AlignSelf::Auto;
     float flexGrow = 0;
     float flexShrink = 1;
     CSSValue flexBasis;
+    int order = 0;
     float gap = 0;
+    float rowGap = 0;   // Blink separates row-gap and column-gap
+    float columnGap = 0;
     Overflow overflow = Overflow::Visible;
+    Overflow overflowX = Overflow::Visible;
+    Overflow overflowY = Overflow::Visible;
+    BoxSizing boxSizing = BoxSizing::ContentBox;
+    Visibility visibility = Visibility::Visible;
+    PointerEvents pointerEvents = PointerEvents::Auto;
+    int zIndex = 0;
+    bool hasZIndex = false;
+    float aspectRatio = 0;  // 0 means auto
 
     // Dimensions
     CSSValue width, height;
@@ -261,24 +321,43 @@ struct Style {
     Color backgroundColor = Color(0, 0, 0, 0);   // transparent by default
     Gradient backgroundGradient;
     Border border;
+    Border borderTop, borderRight, borderBottom, borderLeft;
+    bool hasBorderTop = false, hasBorderRight = false;
+    bool hasBorderBottom = false, hasBorderLeft = false;
     Border outline;
     BorderRadius borderRadius;
     BoxShadow boxShadow;
     float opacity = 1.0f;
     float outlineOffset = 0;
 
-    // Typography
+    // Typography (matching Blink inherited properties)
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
     TextAlign textAlign = TextAlign::Left;
     float lineHeight = 1.4f;
     std::string fontFamily;
+    TextOverflow textOverflow = TextOverflow::Clip;
+    WhiteSpace whiteSpace = WhiteSpace::Normal;
+    TextDecoration textDecoration = TextDecoration::None;
+    TextTransform textTransform = TextTransform::None;
+    WordBreak wordBreak = WordBreak::Normal;
+    float letterSpacing = 0;     // Blink: letter-spacing
+    float wordSpacing = 0;       // Blink: word-spacing
+    Color textDecorationColor;   // defaults to currentColor
+    bool hasTextDecorationColor = false;
     bool hasColor = false;
     bool hasFontSize = false;
     bool hasFontWeight = false;
     bool hasTextAlign = false;
     bool hasLineHeight = false;
     bool hasFontFamily = false;
+    bool hasLetterSpacing = false;
+    bool hasWordSpacing = false;
+    bool hasTextOverflow = false;
+    bool hasWhiteSpace = false;
+    bool hasTextDecoration = false;
+    bool hasTextTransform = false;
+    bool hasWordBreak = false;
     std::unordered_map<std::string, std::string> customProperties;
 
     // Interaction

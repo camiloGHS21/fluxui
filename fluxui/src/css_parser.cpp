@@ -206,7 +206,7 @@ static void splitSelectorChain(const std::string& selector,
         std::string part = trimLocal(current);
         if (part.empty()) return;
         if (!parts.empty()) {
-            combinators.push_back(pendingCombinator == '>' ? '>' : ' ');
+            combinators.push_back(pendingCombinator ? pendingCombinator : ' ');
         }
         parts.push_back(part);
         current.clear();
@@ -237,9 +237,9 @@ static void splitSelectorChain(const std::string& selector,
             current += c;
             continue;
         }
-        if (depth == 0 && c == '>') {
+        if (depth == 0 && (c == '>' || c == '+' || c == '~')) {
             pushCurrent();
-            pendingCombinator = '>';
+            pendingCombinator = c;
             continue;
         }
         if (depth == 0 && std::isspace((unsigned char)c)) {
@@ -1293,7 +1293,13 @@ bool StyleSheet::mediaQueryMatches(const std::string& query) const {
 static bool isInheritedCSSProperty(const std::string& name) {
     return name == "color" || name == "font-size" ||
            name == "font-weight" || name == "font-family" ||
-           name == "line-height" || name == "text-align";
+           name == "line-height" || name == "text-align" ||
+           name == "visibility" || name == "cursor" ||
+           name == "letter-spacing" || name == "word-spacing" ||
+           name == "text-decoration" || name == "text-decoration-line" ||
+           name == "text-transform" || name == "white-space" ||
+           name == "text-overflow" || name == "word-break" ||
+           name == "pointer-events";
 }
 
 static const Style& cssWideSource(const std::string& name,
@@ -1395,12 +1401,20 @@ static bool applyCSSWideProperty(Style& target,
         target.position = source.position;
     } else if (name == "flex-direction") {
         target.flexDirection = source.flexDirection;
+    } else if (name == "flex-wrap") {
+        target.flexWrap = source.flexWrap;
     } else if (name == "justify-content") {
         target.justifyContent = source.justifyContent;
     } else if (name == "align-items") {
         target.alignItems = source.alignItems;
+    } else if (name == "align-content") {
+        target.alignContent = source.alignContent;
+    } else if (name == "align-self") {
+        target.alignSelf = source.alignSelf;
     } else if (name == "gap" || name == "row-gap" || name == "column-gap") {
         target.gap = source.gap;
+        target.rowGap = source.rowGap;
+        target.columnGap = source.columnGap;
     } else if (name == "flex") {
         target.flexGrow = source.flexGrow;
         target.flexShrink = source.flexShrink;
@@ -1411,14 +1425,43 @@ static bool applyCSSWideProperty(Style& target,
         target.flexShrink = source.flexShrink;
     } else if (name == "flex-basis") {
         target.flexBasis = source.flexBasis;
+    } else if (name == "order") {
+        target.order = source.order;
     } else if (name == "overflow" || name == "overflow-x" || name == "overflow-y") {
         target.overflow = source.overflow;
+        target.overflowX = source.overflowX;
+        target.overflowY = source.overflowY;
     } else if (name == "cursor") {
         target.cursor = source.cursor;
     } else if (name == "transition") {
         target.transitionDuration = source.transitionDuration;
     } else if (name == "scale" || name == "transform") {
         target.scale = source.scale;
+    } else if (name == "box-sizing") {
+        target.boxSizing = source.boxSizing;
+    } else if (name == "visibility") {
+        target.visibility = source.visibility;
+    } else if (name == "text-overflow") {
+        target.textOverflow = source.textOverflow;
+    } else if (name == "white-space") {
+        target.whiteSpace = source.whiteSpace;
+    } else if (name == "text-decoration" || name == "text-decoration-line") {
+        target.textDecoration = source.textDecoration;
+    } else if (name == "text-transform") {
+        target.textTransform = source.textTransform;
+    } else if (name == "letter-spacing") {
+        target.letterSpacing = source.letterSpacing;
+    } else if (name == "word-spacing") {
+        target.wordSpacing = source.wordSpacing;
+    } else if (name == "pointer-events") {
+        target.pointerEvents = source.pointerEvents;
+    } else if (name == "z-index") {
+        target.zIndex = source.zIndex;
+        target.hasZIndex = source.hasZIndex;
+    } else if (name == "aspect-ratio") {
+        target.aspectRatio = source.aspectRatio;
+    } else if (name == "word-break") {
+        target.wordBreak = source.wordBreak;
     } else {
         return false;
     }
@@ -1583,6 +1626,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "text-align") {
         if (value == "center") style.textAlign = TextAlign::Center;
         else if (value == "right") style.textAlign = TextAlign::Right;
+        else if (value == "justify") style.textAlign = TextAlign::Justify;
         else style.textAlign = TextAlign::Left;
         style.hasTextAlign = true;
     } else if (name == "line-height") {
@@ -1594,6 +1638,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         if (value == "flex") style.display = Display::Flex;
         else if (value == "none") style.display = Display::None;
         else if (value == "inline-block") style.display = Display::InlineBlock;
+        else if (value == "inline") style.display = Display::Inline;
         else style.display = Display::Block;
     } else if (name == "flex-direction") {
         if (value == "row") style.flexDirection = FlexDirection::Row;
@@ -1645,15 +1690,36 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.flexShrink = parseFloat(value);
     } else if (name == "flex-basis") {
         style.flexBasis = parseCSSValue(value);
-    } else if (name == "overflow" || name == "overflow-x" || name == "overflow-y") {
-        if (value == "hidden") style.overflow = Overflow::Hidden;
-        else if (value == "scroll") style.overflow = Overflow::Scroll;
-        else style.overflow = Overflow::Visible;
+    } else if (name == "overflow") {
+        auto parseOvf = [](const std::string& v) {
+            if (v == "hidden") return Overflow::Hidden;
+            if (v == "scroll") return Overflow::Scroll;
+            if (v == "auto") return Overflow::Auto;
+            return Overflow::Visible;
+        };
+        style.overflow = parseOvf(value);
+        style.overflowX = style.overflow;
+        style.overflowY = style.overflow;
+    } else if (name == "overflow-x") {
+        if (value == "hidden") style.overflowX = Overflow::Hidden;
+        else if (value == "scroll") style.overflowX = Overflow::Scroll;
+        else if (value == "auto") style.overflowX = Overflow::Auto;
+        else style.overflowX = Overflow::Visible;
+    } else if (name == "overflow-y") {
+        if (value == "hidden") style.overflowY = Overflow::Hidden;
+        else if (value == "scroll") style.overflowY = Overflow::Scroll;
+        else if (value == "auto") style.overflowY = Overflow::Auto;
+        else style.overflowY = Overflow::Visible;
+        style.overflow = style.overflowY; // backward compat
     } else if (name == "box-shadow") {
         style.boxShadow = parseBoxShadow(value);
     } else if (name == "cursor") {
         if (value == "pointer") style.cursor = CursorType::Pointer;
         else if (value == "text") style.cursor = CursorType::Text;
+        else if (value == "grab") style.cursor = CursorType::Grab;
+        else if (value == "grabbing") style.cursor = CursorType::Grabbing;
+        else if (value == "not-allowed") style.cursor = CursorType::NotAllowed;
+        else if (value == "crosshair") style.cursor = CursorType::Crosshair;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {
         for (const auto& part : splitTopLevel(value, ',')) {
@@ -1672,6 +1738,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         if (value == "relative") style.position = Position::Relative;
         else if (value == "absolute") style.position = Position::Absolute;
         else if (value == "fixed") style.position = Position::Fixed;
+        else if (value == "sticky") style.position = Position::Sticky;
         else style.position = Position::Static;
     } else if (name == "top") {
         style.top = parseCSSValue(value);
@@ -1695,6 +1762,109 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
                 style.scale = parseFloat(value.substr(start, end - start));
             }
         }
+    }
+    // Blink CSS properties: box-sizing, visibility, text-overflow, white-space, etc.
+    else if (name == "box-sizing") {
+        if (value == "border-box") style.boxSizing = BoxSizing::BorderBox;
+        else style.boxSizing = BoxSizing::ContentBox;
+    } else if (name == "visibility") {
+        if (value == "hidden") style.visibility = Visibility::Hidden;
+        else if (value == "collapse") style.visibility = Visibility::Collapse;
+        else style.visibility = Visibility::Visible;
+    } else if (name == "text-overflow") {
+        if (value == "ellipsis") style.textOverflow = TextOverflow::Ellipsis;
+        else style.textOverflow = TextOverflow::Clip;
+        style.hasTextOverflow = true;
+    } else if (name == "white-space") {
+        if (value == "nowrap") style.whiteSpace = WhiteSpace::NoWrap;
+        else if (value == "pre") style.whiteSpace = WhiteSpace::Pre;
+        else if (value == "pre-wrap") style.whiteSpace = WhiteSpace::PreWrap;
+        else if (value == "pre-line") style.whiteSpace = WhiteSpace::PreLine;
+        else style.whiteSpace = WhiteSpace::Normal;
+        style.hasWhiteSpace = true;
+    } else if (name == "text-decoration" || name == "text-decoration-line") {
+        if (value == "underline") style.textDecoration = TextDecoration::Underline;
+        else if (value == "line-through") style.textDecoration = TextDecoration::LineThrough;
+        else if (value == "overline") style.textDecoration = TextDecoration::Overline;
+        else style.textDecoration = TextDecoration::None;
+        style.hasTextDecoration = true;
+    } else if (name == "text-decoration-color") {
+        style.textDecorationColor = parseColor(value);
+        style.hasTextDecorationColor = true;
+    } else if (name == "text-transform") {
+        if (value == "uppercase") style.textTransform = TextTransform::Uppercase;
+        else if (value == "lowercase") style.textTransform = TextTransform::Lowercase;
+        else if (value == "capitalize") style.textTransform = TextTransform::Capitalize;
+        else style.textTransform = TextTransform::None;
+        style.hasTextTransform = true;
+    } else if (name == "letter-spacing") {
+        style.letterSpacing = parseLengthPixels(value);
+        style.hasLetterSpacing = true;
+    } else if (name == "word-spacing") {
+        style.wordSpacing = parseLengthPixels(value);
+        style.hasWordSpacing = true;
+    } else if (name == "pointer-events") {
+        if (value == "none") style.pointerEvents = PointerEvents::None;
+        else style.pointerEvents = PointerEvents::Auto;
+    } else if (name == "flex-wrap") {
+        if (value == "wrap") style.flexWrap = FlexWrap::Wrap;
+        else if (value == "wrap-reverse") style.flexWrap = FlexWrap::WrapReverse;
+        else style.flexWrap = FlexWrap::NoWrap;
+    } else if (name == "align-self") {
+        if (value == "flex-start") style.alignSelf = AlignSelf::FlexStart;
+        else if (value == "flex-end") style.alignSelf = AlignSelf::FlexEnd;
+        else if (value == "center") style.alignSelf = AlignSelf::Center;
+        else if (value == "stretch") style.alignSelf = AlignSelf::Stretch;
+        else if (value == "baseline") style.alignSelf = AlignSelf::Baseline;
+        else style.alignSelf = AlignSelf::Auto;
+    } else if (name == "align-content") {
+        if (value == "flex-start") style.alignContent = AlignContent::FlexStart;
+        else if (value == "flex-end") style.alignContent = AlignContent::FlexEnd;
+        else if (value == "center") style.alignContent = AlignContent::Center;
+        else if (value == "space-between") style.alignContent = AlignContent::SpaceBetween;
+        else if (value == "space-around") style.alignContent = AlignContent::SpaceAround;
+        else if (value == "space-evenly") style.alignContent = AlignContent::SpaceEvenly;
+        else style.alignContent = AlignContent::Stretch;
+    } else if (name == "order") {
+        style.order = (int)parseFloat(value);
+    } else if (name == "z-index") {
+        style.zIndex = (int)parseFloat(value);
+        style.hasZIndex = true;
+    } else if (name == "aspect-ratio") {
+        if (value == "auto") {
+            style.aspectRatio = 0;
+        } else {
+            auto slashPos = value.find('/');
+            if (slashPos != std::string::npos) {
+                float w = parseFloat(trim(value.substr(0, slashPos)));
+                float h = parseFloat(trim(value.substr(slashPos + 1)));
+                style.aspectRatio = h > 0 ? w / h : 0;
+            } else {
+                style.aspectRatio = parseFloat(value);
+            }
+        }
+    } else if (name == "row-gap") {
+        style.rowGap = parseLengthPixels(value);
+    } else if (name == "column-gap") {
+        style.columnGap = parseLengthPixels(value);
+    } else if (name == "word-break") {
+        if (value == "break-all") style.wordBreak = WordBreak::BreakAll;
+        else if (value == "keep-all") style.wordBreak = WordBreak::KeepAll;
+        else if (value == "break-word") style.wordBreak = WordBreak::BreakWord;
+        else style.wordBreak = WordBreak::Normal;
+        style.hasWordBreak = true;
+    } else if (name == "border-top") {
+        style.borderTop = parseBorder(value);
+        style.hasBorderTop = true;
+    } else if (name == "border-right") {
+        style.borderRight = parseBorder(value);
+        style.hasBorderRight = true;
+    } else if (name == "border-bottom") {
+        style.borderBottom = parseBorder(value);
+        style.hasBorderBottom = true;
+    } else if (name == "border-left") {
+        style.borderLeft = parseBorder(value);
+        style.hasBorderLeft = true;
     }
     // Hover states (custom extension: hover-background-color, hover-color)
     else if (name == "hover-background-color" || name == "--hover-bg") {
@@ -1852,17 +2022,73 @@ Color StyleSheet::parseColor(const std::string& val) {
     // Hex colors
     if (v[0] == '#') return Color::fromHex(v);
 
-    // Named colors
-    if (lower == "transparent") return Color(0, 0, 0, 0);
-    if (lower == "white") return Color(1, 1, 1, 1);
-    if (lower == "black") return Color(0, 0, 0, 1);
-    if (lower == "red") return Color(1, 0, 0, 1);
-    if (lower == "green") return Color(0, 0.5f, 0, 1);
-    if (lower == "blue") return Color(0, 0, 1, 1);
-    if (lower == "yellow") return Color(1, 1, 0, 1);
-    if (lower == "cyan") return Color(0, 1, 1, 1);
-    if (lower == "magenta") return Color(1, 0, 1, 1);
-    if (lower == "gray" || lower == "grey") return Color(0.5f, 0.5f, 0.5f, 1);
+    // All 148 CSS named colors (matching Blink css_value_keywords.json5)
+    static const std::unordered_map<std::string, uint32_t> namedColors = {
+        {"transparent",0x00000000},{"aliceblue",0xFFF0F8FF},{"antiquewhite",0xFFFAEBD7},
+        {"aqua",0xFF00FFFF},{"aquamarine",0xFF7FFFD4},{"azure",0xFFF0FFFF},
+        {"beige",0xFFF5F5DC},{"bisque",0xFFFFE4C4},{"black",0xFF000000},
+        {"blanchedalmond",0xFFFFEBCD},{"blue",0xFF0000FF},{"blueviolet",0xFF8A2BE2},
+        {"brown",0xFFA52A2A},{"burlywood",0xFFDEB887},{"cadetblue",0xFF5F9EA0},
+        {"chartreuse",0xFF7FFF00},{"chocolate",0xFFD2691E},{"coral",0xFFFF7F50},
+        {"cornflowerblue",0xFF6495ED},{"cornsilk",0xFFFFF8DC},{"crimson",0xFFDC143C},
+        {"cyan",0xFF00FFFF},{"darkblue",0xFF00008B},{"darkcyan",0xFF008B8B},
+        {"darkgoldenrod",0xFFB8860B},{"darkgray",0xFFA9A9A9},{"darkgrey",0xFFA9A9A9},
+        {"darkgreen",0xFF006400},{"darkkhaki",0xFFBDB76B},{"darkmagenta",0xFF8B008B},
+        {"darkolivegreen",0xFF556B2F},{"darkorange",0xFFFF8C00},{"darkorchid",0xFF9932CC},
+        {"darkred",0xFF8B0000},{"darksalmon",0xFFE9967A},{"darkseagreen",0xFF8FBC8F},
+        {"darkslateblue",0xFF483D8B},{"darkslategray",0xFF2F4F4F},{"darkslategrey",0xFF2F4F4F},
+        {"darkturquoise",0xFF00CED1},{"darkviolet",0xFF9400D3},{"deeppink",0xFFFF1493},
+        {"deepskyblue",0xFF00BFFF},{"dimgray",0xFF696969},{"dimgrey",0xFF696969},
+        {"dodgerblue",0xFF1E90FF},{"firebrick",0xFFB22222},{"floralwhite",0xFFFFFAF0},
+        {"forestgreen",0xFF228B22},{"fuchsia",0xFFFF00FF},{"gainsboro",0xFFDCDCDC},
+        {"ghostwhite",0xFFF8F8FF},{"gold",0xFFFFD700},{"goldenrod",0xFFDAA520},
+        {"gray",0xFF808080},{"grey",0xFF808080},{"green",0xFF008000},
+        {"greenyellow",0xFFADFF2F},{"honeydew",0xFFF0FFF0},{"hotpink",0xFFFF69B4},
+        {"indianred",0xFFCD5C5C},{"indigo",0xFF4B0082},{"ivory",0xFFFFFFF0},
+        {"khaki",0xFFF0E68C},{"lavender",0xFFE6E6FA},{"lavenderblush",0xFFFFF0F5},
+        {"lawngreen",0xFF7CFC00},{"lemonchiffon",0xFFFFFACD},{"lightblue",0xFFADD8E6},
+        {"lightcoral",0xFFF08080},{"lightcyan",0xFFE0FFFF},{"lightgoldenrodyellow",0xFFFAFAD2},
+        {"lightgray",0xFFD3D3D3},{"lightgrey",0xFFD3D3D3},{"lightgreen",0xFF90EE90},
+        {"lightpink",0xFFFFB6C1},{"lightsalmon",0xFFFFA07A},{"lightseagreen",0xFF20B2AA},
+        {"lightskyblue",0xFF87CEFA},{"lightslategray",0xFF778899},{"lightslategrey",0xFF778899},
+        {"lightsteelblue",0xFFB0C4DE},{"lightyellow",0xFFFFFFE0},{"lime",0xFF00FF00},
+        {"limegreen",0xFF32CD32},{"linen",0xFFFAF0E6},{"magenta",0xFFFF00FF},
+        {"maroon",0xFF800000},{"mediumaquamarine",0xFF66CDAA},{"mediumblue",0xFF0000CD},
+        {"mediumorchid",0xFFBA55D3},{"mediumpurple",0xFF9370DB},{"mediumseagreen",0xFF3CB371},
+        {"mediumslateblue",0xFF7B68EE},{"mediumspringgreen",0xFF00FA9A},
+        {"mediumturquoise",0xFF48D1CC},{"mediumvioletred",0xFFC71585},
+        {"midnightblue",0xFF191970},{"mintcream",0xFFF5FFFA},{"mistyrose",0xFFFFE4E1},
+        {"moccasin",0xFFFFE4B5},{"navajowhite",0xFFFFDEAD},{"navy",0xFF000080},
+        {"oldlace",0xFFFDF5E6},{"olive",0xFF808000},{"olivedrab",0xFF6B8E23},
+        {"orange",0xFFFFA500},{"orangered",0xFFFF4500},{"orchid",0xFFDA70D6},
+        {"palegoldenrod",0xFFEEE8AA},{"palegreen",0xFF98FB98},{"paleturquoise",0xFFAFEEEE},
+        {"palevioletred",0xFFDB7093},{"papayawhip",0xFFFFEFD5},{"peachpuff",0xFFFFDAB9},
+        {"peru",0xFFCD853F},{"pink",0xFFFFC0CB},{"plum",0xFFDDA0DD},
+        {"powderblue",0xFFB0E0E6},{"purple",0xFF800080},{"rebeccapurple",0xFF663399},
+        {"red",0xFFFF0000},{"rosybrown",0xFFBC8F8F},{"royalblue",0xFF4169E1},
+        {"saddlebrown",0xFF8B4513},{"salmon",0xFFFA8072},{"sandybrown",0xFFF4A460},
+        {"seagreen",0xFF2E8B57},{"seashell",0xFFFFF5EE},{"sienna",0xFFA0522D},
+        {"silver",0xFFC0C0C0},{"skyblue",0xFF87CEEB},{"slateblue",0xFF6A5ACD},
+        {"slategray",0xFF708090},{"slategrey",0xFF708090},{"snow",0xFFFFFAFA},
+        {"springgreen",0xFF00FF7F},{"steelblue",0xFF4682B4},{"tan",0xFFD2B48C},
+        {"teal",0xFF008080},{"thistle",0xFFD8BFD8},{"tomato",0xFFFF6347},
+        {"turquoise",0xFF40E0D0},{"violet",0xFFEE82EE},{"wheat",0xFFF5DEB3},
+        {"white",0xFFFFFFFF},{"whitesmoke",0xFFF5F5F5},{"yellow",0xFFFFFF00},
+        {"yellowgreen",0xFF9ACD32}
+    };
+
+    auto it = namedColors.find(lower);
+    if (it != namedColors.end()) {
+        uint32_t c = it->second;
+        float a = ((c >> 24) & 0xFF) / 255.0f;
+        float r = ((c >> 16) & 0xFF) / 255.0f;
+        float g = ((c >> 8) & 0xFF) / 255.0f;
+        float b = ((c) & 0xFF) / 255.0f;
+        return Color(r, g, b, a);
+    }
+
+    // currentcolor keyword (Blink supports this)
+    if (lower == "currentcolor") return Color(1, 1, 1, 1); // placeholder, resolved later
 
     // rgb()/rgba() with comma or modern space-slash syntax.
     if (lower.rfind("rgb", 0) == 0) {
@@ -1897,15 +2123,100 @@ CSSValue StyleSheet::parseCSSValue(const std::string& val) {
     if (lower == "auto") return CSSValue::autoVal();
     if (v.empty()) return CSSValue();
 
+    // Intrinsic sizing keywords (Blink)
+    if (lower == "min-content") return CSSValue::minContent();
+    if (lower == "max-content") return CSSValue::maxContent();
+    if (lower == "fit-content") return CSSValue::fitContent();
+
+    // calc() support - simplified but covers calc(100% - 200px) pattern
+    if (lower.rfind("calc(", 0) == 0) {
+        std::string inner = functionInner(v);
+        inner = trim(inner);
+        // Find + or - operator (skip the first char to allow negative numbers)
+        size_t opPos = std::string::npos;
+        CSSValue::CalcOp op = CSSValue::CalcNone;
+        int depth = 0;
+        for (size_t i = 1; i < inner.size(); ++i) {
+            if (inner[i] == '(') depth++;
+            else if (inner[i] == ')') depth--;
+            if (depth == 0 && (inner[i] == '+' || inner[i] == '-') &&
+                i > 0 && inner[i-1] == ' ') {
+                opPos = i;
+                op = (inner[i] == '+') ? CSSValue::CalcAdd : CSSValue::CalcSub;
+                break;
+            }
+            if (depth == 0 && inner[i] == '*') {
+                opPos = i;
+                op = CSSValue::CalcMul;
+                break;
+            }
+            if (depth == 0 && inner[i] == '/') {
+                opPos = i;
+                op = CSSValue::CalcDiv;
+                break;
+            }
+        }
+        if (opPos != std::string::npos && op != CSSValue::CalcNone) {
+            CSSValue left = parseCSSValue(trim(inner.substr(0, opPos)));
+            CSSValue right = parseCSSValue(trim(inner.substr(opPos + 1)));
+            CSSValue result;
+            result.value = left.value;
+            result.unit = left.unit;
+            result.calcOp = op;
+            result.calcValue2 = right.value;
+            result.calcUnit2 = right.unit;
+            return result;
+        }
+        return parseCSSValue(inner);
+    }
+
+    // min() / max() / clamp() - evaluate with fixed viewport for now
+    if (lower.rfind("min(", 0) == 0) {
+        auto parts = splitTopLevel(functionInner(v), ',');
+        if (parts.size() >= 2) {
+            CSSValue a = parseCSSValue(trim(parts[0]));
+            CSSValue b = parseCSSValue(trim(parts[1]));
+            float va = a.resolve(0), vb = b.resolve(0);
+            return va < vb ? a : b;
+        }
+    }
+    if (lower.rfind("max(", 0) == 0) {
+        auto parts = splitTopLevel(functionInner(v), ',');
+        if (parts.size() >= 2) {
+            CSSValue a = parseCSSValue(trim(parts[0]));
+            CSSValue b = parseCSSValue(trim(parts[1]));
+            float va = a.resolve(0), vb = b.resolve(0);
+            return va > vb ? a : b;
+        }
+    }
+    if (lower.rfind("clamp(", 0) == 0) {
+        auto parts = splitTopLevel(functionInner(v), ',');
+        if (parts.size() >= 3) {
+            CSSValue lo = parseCSSValue(trim(parts[0]));
+            CSSValue val2 = parseCSSValue(trim(parts[1]));
+            CSSValue hi = parseCSSValue(trim(parts[2]));
+            // Return the preferred value - clamping needs runtime resolution
+            return val2;
+        }
+    }
+
     if (v.back() == '%') {
         return CSSValue::pct(std::stof(v.substr(0, v.size() - 1)));
     }
 
+    // vw / vh units (Blink viewport units)
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vw") {
+        return CSSValue::vw(parseFloat(lower));
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vh") {
+        return CSSValue::vh(parseFloat(lower));
+    }
+
     if (lower.size() > 3 && lower.substr(lower.size() - 3) == "rem") {
-        return CSSValue::px(parseFloat(lower) * 16.0f);
+        return CSSValue::rem(parseFloat(lower));
     }
     if (lower.size() > 2 && lower.substr(lower.size() - 2) == "em") {
-        return CSSValue::px(parseFloat(lower) * 16.0f);
+        return CSSValue::em(parseFloat(lower));
     }
 
     // Remove px suffix
