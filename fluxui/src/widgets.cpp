@@ -278,7 +278,8 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             ancestors.push_back({node->className, node->id, node->type});
         }
 
-        computedStyle = sheet.resolve(className, id, type, ancestors);
+        const auto* inheritedCustomProperties = parent ? &parent->computedStyle.customProperties : nullptr;
+        computedStyle = sheet.resolve(className, id, type, ancestors, inheritedCustomProperties);
 
         if (parent) {
             const Style& inherited = parent->computedStyle;
@@ -331,7 +332,16 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.hoverOpacity >= 0) computedStyle.hoverOpacity = style.hoverOpacity;
         if (style.scale != 1.0f) computedStyle.scale = style.scale;
         for (const auto& prop : inlineProperties) {
-            StyleSheet::mergeProperty(computedStyle, prop.name, prop.value);
+            if (prop.name.rfind("--", 0) == 0) {
+                computedStyle.customProperties[prop.name] =
+                    sheet.resolveValue(prop.value, computedStyle.customProperties);
+            }
+        }
+        for (const auto& prop : inlineProperties) {
+            if (prop.name.rfind("--", 0) == 0) continue;
+            StyleSheet::mergeProperty(computedStyle,
+                                      prop.name,
+                                      sheet.resolveValue(prop.value, computedStyle.customProperties));
         }
 
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);

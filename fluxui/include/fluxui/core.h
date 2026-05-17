@@ -279,6 +279,7 @@ struct Style {
     bool hasTextAlign = false;
     bool hasLineHeight = false;
     bool hasFontFamily = false;
+    std::unordered_map<std::string, std::string> customProperties;
 
     // Interaction
     CursorType cursor = CursorType::Default;

@@ -497,7 +497,7 @@ inline Widget* Widget::css(const std::string& declarations) {
             inlineProperties.push_back({name, value, 0});
         }
     }
-    markStyleDirty();
+    markStyleDirtyRecursive();
     return this;
 }
 

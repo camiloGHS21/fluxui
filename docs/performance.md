@@ -141,6 +141,20 @@ current compound selector; `:not()` rejects the rule when any argument matches.
 Specificity follows the browser rules: `:is()` and `:not()` use the most
 specific argument, while `:where()` contributes zero specificity.
 
+Custom properties now follow the browser model more closely. `:root` variables
+seed the tree, selector-scoped `--tokens` participate in cascade, descendants
+inherit the computed token map, and `var(--token, fallback)` is resolved against
+the current widget's computed custom properties:
+
+```css
+:root { --accent: #00ffa8; }
+.danger-zone { --accent: #ff3b53; }
+.danger-zone .btn { background-color: var(--accent); }
+```
+
+Inline `widget->css("--accent: ...")` also invalidates the subtree so
+descendants that consume the token recompute their styles.
+
 Basic user-agent defaults and inherited text properties are also modeled:
 `h1`/`h2`/`h3` get browser-like default sizes and weight, while `color`,
 `font-size`, `font-weight`, `font-family`, `line-height`, and `text-align`

@@ -753,23 +753,23 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body)
         properties.push_back(prop);
     }
 
-    for (const auto& prop : properties) {
-        if (prop.name.rfind("--", 0) == 0) {
-            variables_[prop.name] = prop.value;
-        }
-    }
-
     for (const auto& sel : splitTopLevel(selector, ',')) {
         std::string cleanSelector = trim(sel);
-        if (cleanSelector.empty() || cleanSelector == ":root") continue;
+        if (cleanSelector.empty()) continue;
+        if (cleanSelector == ":root") {
+            for (const auto& prop : properties) {
+                if (prop.name.rfind("--", 0) == 0) {
+                    variables_[prop.name] = prop.value;
+                }
+            }
+            continue;
+        }
 
         CSSRule rule;
         rule.selector = cleanSelector;
         rule.specificity = selectorSpecificity(cleanSelector);
         for (const auto& prop : properties) {
-            if (prop.name.rfind("--", 0) != 0) {
-                rule.properties.push_back(prop);
-            }
+            rule.properties.push_back(prop);
         }
         if (!rule.properties.empty()) {
             rules.push_back(std::move(rule));
@@ -807,7 +807,16 @@ void StyleSheet::indexRule(size_t ruleIndex) {
     universalRuleIndex_.push_back(ruleIndex);
 }
 
-std::string StyleSheet::resolveValue(const std::string& value) const {
+std::string StyleSheet::resolveValue(const std::string& value,
+                                     const std::unordered_map<std::string, std::string>& customProperties) const {
+    return resolveValueInternal(value, &customProperties, 0);
+}
+
+std::string StyleSheet::resolveValueInternal(const std::string& value,
+                                             const std::unordered_map<std::string, std::string>* customProperties,
+                                             int depth) const {
+    if (depth > 8) return trim(value);
+
     std::string out;
     size_t pos = 0;
 
@@ -835,14 +844,33 @@ std::string StyleSheet::resolveValue(const std::string& value) const {
         std::string inner = trim(value.substr(varStart + 4, cursor - varStart - 4));
         std::string name = inner;
         std::string fallback;
-        auto comma = inner.find(',');
-        if (comma != std::string::npos) {
-            name = trim(inner.substr(0, comma));
-            fallback = trim(inner.substr(comma + 1));
+        auto args = splitTopLevel(inner, ',');
+        if (!args.empty()) {
+            name = trim(args[0]);
+            if (args.size() > 1) {
+                fallback = args[1];
+                for (size_t i = 2; i < args.size(); ++i) {
+                    fallback += ", " + args[i];
+                }
+                fallback = trim(fallback);
+            }
+        }
+
+        if (customProperties) {
+            auto customIt = customProperties->find(name);
+            if (customIt != customProperties->end()) {
+                out += resolveValueInternal(customIt->second, customProperties, depth + 1);
+                pos = cursor + 1;
+                continue;
+            }
         }
 
         auto it = variables_.find(name);
-        out += (it != variables_.end()) ? it->second : fallback;
+        if (it != variables_.end()) {
+            out += resolveValueInternal(it->second, customProperties, depth + 1);
+        } else if (!fallback.empty()) {
+            out += resolveValueInternal(fallback, customProperties, depth + 1);
+        }
         pos = cursor + 1;
     }
 
@@ -860,7 +888,26 @@ Style StyleSheet::resolve(const std::string& className,
                           const std::string& id,
                           const std::string& type,
                           const std::vector<CSSSelectorNode>& ancestors) const {
+    return resolve(className, id, type, ancestors, nullptr);
+}
+
+Style StyleSheet::resolve(const std::string& className,
+                          const std::string& id,
+                          const std::string& type,
+                          const std::vector<CSSSelectorNode>& ancestors,
+                          const std::unordered_map<std::string, std::string>* inheritedCustomProperties) const {
     std::string key = cacheKey(className, id, type, ancestors);
+    if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
+        std::vector<std::pair<std::string, std::string>> inherited(
+            inheritedCustomProperties->begin(), inheritedCustomProperties->end());
+        std::sort(inherited.begin(), inherited.end());
+        for (const auto& entry : inherited) {
+            key.push_back('\x1d');
+            key += entry.first;
+            key.push_back('=');
+            key += entry.second;
+        }
+    }
     auto cached = resolvedCache_.find(key);
     if (cached != resolvedCache_.end()) {
         return cached->second;
@@ -868,6 +915,12 @@ Style StyleSheet::resolve(const std::string& className,
 
     Style style;
     applyUserAgentDefaults(style, type);
+    style.customProperties = variables_;
+    if (inheritedCustomProperties) {
+        for (const auto& entry : *inheritedCustomProperties) {
+            style.customProperties[entry.first] = entry.second;
+        }
+    }
 
     struct CascadedProperty {
         const CSSProperty* property = nullptr;
@@ -898,7 +951,7 @@ Style StyleSheet::resolve(const std::string& className,
                 pseudo != "active") continue;
 
             for (const auto& prop : rule.properties) {
-                std::string value = resolveValue(prop.value);
+                std::string value = prop.value;
                 CascadedProperty cascaded{&prop, rule.specificity, stripImportant(value)};
                 if (pseudo == "hover") {
                     hoverProperties.push_back(cascaded);
@@ -913,27 +966,50 @@ Style StyleSheet::resolve(const std::string& className,
         }
     }
 
-    auto applyProperties = [&](std::vector<CascadedProperty>& properties, auto mergeFn) {
+    auto applyCustomProperties = [&](std::vector<CascadedProperty>& properties,
+                                     std::unordered_map<std::string, std::string>& customProperties) {
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
         for (const auto& item : properties) {
-            std::string value = resolveValue(item.property->value);
+            if (item.property->name.rfind("--", 0) != 0) continue;
+            std::string value = resolveValueInternal(item.property->value, &customProperties);
+            stripImportant(value);
+            customProperties[item.property->name] = value;
+        }
+    };
+
+    auto applyProperties = [&](std::vector<CascadedProperty>& properties,
+                               auto mergeFn,
+                               const std::unordered_map<std::string, std::string>& customProperties) {
+        std::sort(properties.begin(), properties.end(), lessCascadePriority);
+        for (const auto& item : properties) {
+            if (item.property->name.rfind("--", 0) == 0) continue;
+            std::string value = resolveValueInternal(item.property->value, &customProperties);
             stripImportant(value);
             mergeFn(style, item.property->name, value);
         }
     };
 
+    applyCustomProperties(baseProperties, style.customProperties);
     applyProperties(baseProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeProperty(target, name, value);
-    });
+    }, style.customProperties);
+
+    auto hoverCustomProperties = style.customProperties;
+    auto focusCustomProperties = style.customProperties;
+    auto activeCustomProperties = style.customProperties;
+    applyCustomProperties(hoverProperties, hoverCustomProperties);
+    applyCustomProperties(focusProperties, focusCustomProperties);
+    applyCustomProperties(activeProperties, activeCustomProperties);
+
     applyProperties(hoverProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeHoverProperty(target, name, value);
-    });
+    }, hoverCustomProperties);
     applyProperties(focusProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeFocusProperty(target, name, value);
-    });
+    }, focusCustomProperties);
     applyProperties(activeProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeActiveProperty(target, name, value);
-    });
+    }, activeCustomProperties);
 
     resolvedCache_[std::move(key)] = style;
     return style;
@@ -1015,7 +1091,9 @@ void StyleSheet::applyUserAgentDefaults(Style& style, const std::string& type) {
 }
 
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value) {
-    if (name == "color") {
+    if (name.rfind("--", 0) == 0) {
+        style.customProperties[name] = value;
+    } else if (name == "color") {
         style.color = parseColor(value);
         style.hasColor = true;
     } else if (name == "background-color" || name == "background") {

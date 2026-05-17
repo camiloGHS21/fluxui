@@ -66,6 +66,13 @@ public:
                   const std::string& id,
                   const std::string& type,
                   const std::vector<CSSSelectorNode>& ancestors) const;
+    Style resolve(const std::string& className,
+                  const std::string& id,
+                  const std::string& type,
+                  const std::vector<CSSSelectorNode>& ancestors,
+                  const std::unordered_map<std::string, std::string>* inheritedCustomProperties) const;
+    std::string resolveValue(const std::string& value,
+                             const std::unordered_map<std::string, std::string>& customProperties) const;
 
     // Merge a resolved style onto a base style
     static void mergeProperty(Style& style, const std::string& name, const std::string& value);
@@ -81,7 +88,9 @@ private:
 
     void parseRule(const std::string& selector, const std::string& body);
     void indexRule(size_t ruleIndex);
-    std::string resolveValue(const std::string& value) const;
+    std::string resolveValueInternal(const std::string& value,
+                                     const std::unordered_map<std::string, std::string>* customProperties,
+                                     int depth = 0) const;
     static std::string cacheKey(const std::string& className,
                                 const std::string& id,
                                 const std::string& type,
