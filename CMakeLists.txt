@@ -52,6 +52,7 @@ endif()
 # ============================================================
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(Freetype REQUIRED)
 
 option(FLUXUI_ENABLE_MSAA "Enable 4x multisample antialiasing for smoother UI edges" ON)
 option(FLUXUI_ENABLE_VSYNC "Enable swap interval vsync by default" ON)
@@ -151,6 +152,7 @@ function(configure_fluxui_target target_name)
 
     target_link_libraries(${target_name} PUBLIC
         glad
+        Freetype::Freetype
     )
 
     if(WIN32)

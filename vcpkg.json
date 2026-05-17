@@ -5,6 +5,8 @@
     "nlohmann-json",
     "vulkan-headers",
     "vulkan-loader",
-    "vulkan-memory-allocator"
+    "vulkan-memory-allocator",
+    "freetype"
   ]
 }
+

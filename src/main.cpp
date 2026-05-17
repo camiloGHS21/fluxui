@@ -759,7 +759,6 @@ int main(int argc, char** argv) {
         app.renderer().warmFontCache(std::vector<float>{
             11.0f, 12.0f, 13.0f, 14.0f, 16.0f, 20.0f, 28.0f, 29.0f, 32.0f
         });
-        app.renderer().releaseFontSources();
         std::cout << "Loaded default UI font" << std::endl;
     } else {
         std::cerr << "Warning: No font loaded, text will not render" << std::endl;

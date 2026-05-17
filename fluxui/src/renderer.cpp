@@ -21,8 +21,8 @@
 #endif
 #include "fluxui/platform.h"
 
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "stb_truetype.h"
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 #include <fstream>
 #include <iostream>
@@ -604,7 +604,6 @@ out vec4 FragColor;
 uniform sampler2D uTexture;
 void main() {
     float a = texture(uTexture, vTexCoord).r;
-    a = smoothstep(0.02, 0.98, a);
     FragColor = vec4(vColor.rgb, vColor.a * a);
 }
 )";
@@ -2997,7 +2996,13 @@ void Renderer::drawVulkanText(const std::string& text,
         return;
     }
 
-    float fontScale = fontSize / font.fontSize;
+    float logicalFontHeight = font.fontSize / std::max(1.0f, dpiScale_);
+    float fontScale;
+    if (std::abs(fontSize - logicalFontHeight) < 1.01f) {
+        fontScale = 1.0f / std::max(1.0f, dpiScale_);
+    } else {
+        fontScale = fontSize / font.fontSize;
+    }
     auto& vertices = textVertexScratch_;
     vertices.clear();
     vertices.reserve(text.size() * 48);
@@ -3356,93 +3361,191 @@ void Renderer::releaseFontSources() {
     }
 }
 
+// Platform-specific FreeType hinting to match Chromium/Blink perfectly
+#if defined(_WIN32)
+    // Windows: Use native TrueType bytecode hinting for sharp ClearType-like grid fitting
+    #define FLUXUI_FT_LOAD_FLAGS (FT_LOAD_RENDER | FT_LOAD_TARGET_NORMAL)
+#elif defined(__APPLE__)
+    // macOS/iOS (CoreText): Apple prefers pure vector shapes without grid-fitting (relying on Retina screens)
+    #define FLUXUI_FT_LOAD_FLAGS (FT_LOAD_RENDER | FT_LOAD_NO_HINTING | FT_LOAD_NO_AUTOHINT)
+#elif defined(__ANDROID__)
+    // Android: Prefers light auto-hinting
+    #define FLUXUI_FT_LOAD_FLAGS (FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT)
+#else
+    // Linux/Other: Often prefers light hinting or normal, TARGET_LIGHT is a safe modern default
+    #define FLUXUI_FT_LOAD_FLAGS (FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT)
+#endif
+
 bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dataSize, float size) {
     if (!data || dataSize <= 0) return false;
 
-    stbtt_fontinfo info;
-    int fontOffset = stbtt_GetFontOffsetForIndex(data, 0);
-    if (fontOffset < 0 || !stbtt_InitFont(&info, data, fontOffset)) {
+    FT_Library library;
+    if (FT_Init_FreeType(&library)) {
+        return false;
+    }
+
+    FT_Face face;
+    if (FT_New_Memory_Face(library, data, dataSize, 0, &face)) {
+        FT_Done_FreeType(library);
         return false;
     }
 
     float bakedSize = std::max(8.0f, size);
     float dpiScale = std::max(1.0f, dpiScale_);
     float pixelSize = (float)std::max(8, (int)std::round(bakedSize * dpiScale));
-    int oversample = pixelSize <= 20.0f ? 3 : (pixelSize <= 40.0f ? 2 : 1);
+
+    if (FT_Set_Pixel_Sizes(face, 0, (FT_UInt)pixelSize)) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        return false;
+    }
+
     int atlasSize = pixelSize > 48.0f ? 2048 : (pixelSize > 20.0f ? 1024 : 512);
     std::vector<unsigned char> atlas((size_t)atlasSize * (size_t)atlasSize, 0);
+
     constexpr int maxGlyphs = 1024;
     constexpr int firstGlyph = 32;
     const int glyphLimit = std::clamp(FLUXUI_FONT_GLYPH_LIMIT,
                                       firstGlyph + 1,
                                       maxGlyphs);
-    std::vector<stbtt_packedchar> packed((size_t)glyphLimit);
-
-    stbtt_pack_context pc;
-    if (!stbtt_PackBegin(&pc, atlas.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
-        return false;
-    }
-    stbtt_PackSetOversampling(&pc, oversample, oversample);
-    bool packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, firstGlyph,
-                                        glyphLimit - firstGlyph,
-                                        packed.data() + firstGlyph) != 0;
-    stbtt_PackEnd(&pc);
-
-    if (!packedOk && atlasSize < 2048) {
-        atlasSize = atlasSize < 1024 ? 1024 : 2048;
-        atlas.assign((size_t)atlasSize * (size_t)atlasSize, 0);
-        if (!stbtt_PackBegin(&pc, atlas.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
-            return false;
-        }
-        stbtt_PackSetOversampling(&pc, oversample, oversample);
-        packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, firstGlyph,
-                                       glyphLimit - firstGlyph,
-                                       packed.data() + firstGlyph) != 0;
-        stbtt_PackEnd(&pc);
-    }
-    if (!packedOk) return false;
-
-    for (unsigned char& alpha : atlas) {
-        float a = alpha / 255.0f;
-        a = std::pow(std::clamp(a, 0.0f, 1.0f), 0.80f);
-        a = std::clamp((a - 0.006f) * 1.16f, 0.0f, 1.0f);
-        alpha = (unsigned char)std::round(a * 255.0f);
-    }
-
-    int ascent = 0;
-    int descent = 0;
-    int lineGap = 0;
-    stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
-    float scale = stbtt_ScaleForPixelHeight(&info, pixelSize);
-
-    font.fontSize = pixelSize;
-    font.atlasWidth = atlasSize;
-    font.atlasHeight = atlasSize;
-    font.ascent = ascent * scale;
-    font.descent = descent * scale;
-    font.lineGap = lineGap * scale;
 
     for (int i = 0; i < maxGlyphs; ++i) {
         font.glyphs[i] = {};
     }
 
-    for (int i = firstGlyph; i < glyphLimit; ++i) {
-        stbtt_aligned_quad q;
-        float x = 0.0f;
-        float y = 0.0f;
-        stbtt_GetPackedQuad(packed.data(), atlasSize, atlasSize, i, &x, &y, &q, 0);
+    int currentX = 1;
+    int currentY = 1;
+    int rowHeight = 0;
+    bool packedOk = true;
 
-        const auto& ch = packed[i];
-        font.glyphs[i].x0 = q.s0;
-        font.glyphs[i].y0 = q.t0;
-        font.glyphs[i].x1 = q.s1;
-        font.glyphs[i].y1 = q.t1;
-        font.glyphs[i].xoff = q.x0;
-        font.glyphs[i].yoff = q.y0;
-        font.glyphs[i].xadvance = ch.xadvance;
-        font.glyphs[i].width = q.x1 - q.x0;
-        font.glyphs[i].height = q.y1 - q.y0;
+    for (int i = firstGlyph; i < glyphLimit; ++i) {
+        FT_UInt glyphIndex = FT_Get_Char_Index(face, i);
+        if (FT_Load_Glyph(face, glyphIndex, FLUXUI_FT_LOAD_FLAGS)) {
+            continue;
+        }
+
+        FT_GlyphSlot slot = face->glyph;
+        int w = slot->bitmap.width;
+        int h = slot->bitmap.rows;
+
+        if (currentX + w + 1 >= atlasSize) {
+            currentX = 1;
+            currentY += rowHeight + 1;
+            rowHeight = 0;
+        }
+
+        if (currentY + h + 1 >= atlasSize) {
+            if (atlasSize < 2048) {
+                atlasSize = atlasSize < 1024 ? 1024 : 2048;
+                atlas.assign((size_t)atlasSize * (size_t)atlasSize, 0);
+                currentX = 1;
+                currentY = 1;
+                rowHeight = 0;
+                for (int j = firstGlyph; j <= i; ++j) {
+                    FT_UInt reGlyphIndex = FT_Get_Char_Index(face, j);
+                    if (FT_Load_Glyph(face, reGlyphIndex, FLUXUI_FT_LOAD_FLAGS)) {
+                        continue;
+                    }
+                    FT_GlyphSlot reSlot = face->glyph;
+                    int reW = reSlot->bitmap.width;
+                    int reH = reSlot->bitmap.rows;
+
+                    if (currentX + reW + 1 >= atlasSize) {
+                        currentX = 1;
+                        currentY += rowHeight + 1;
+                        rowHeight = 0;
+                    }
+                    if (currentY + reH + 1 >= atlasSize) {
+                        packedOk = false;
+                        break;
+                    }
+                    if (reH > rowHeight) {
+                        rowHeight = reH;
+                    }
+
+                    for (int r = 0; r < reH; ++r) {
+                        for (int c = 0; c < reW; ++c) {
+                            atlas[(currentY + r) * atlasSize + (currentX + c)] = reSlot->bitmap.buffer[r * reSlot->bitmap.pitch + c];
+                        }
+                    }
+
+                    font.glyphs[j].x0 = (float)currentX / atlasSize;
+                    font.glyphs[j].y0 = (float)currentY / atlasSize;
+                    font.glyphs[j].x1 = (float)(currentX + reW) / atlasSize;
+                    font.glyphs[j].y1 = (float)(currentY + reH) / atlasSize;
+                    font.glyphs[j].xoff = (float)reSlot->bitmap_left;
+                    font.glyphs[j].yoff = (float)-reSlot->bitmap_top;
+                    font.glyphs[j].xadvance = (float)(reSlot->advance.x >> 6);
+                    font.glyphs[j].width = (float)reW;
+                    font.glyphs[j].height = (float)reH;
+
+                    currentX += reW + 1;
+                }
+                if (!packedOk) break;
+                slot = face->glyph;
+                w = slot->bitmap.width;
+                h = slot->bitmap.rows;
+                continue;
+            } else {
+                packedOk = false;
+                break;
+            }
+        }
+
+        if (h > rowHeight) {
+            rowHeight = h;
+        }
+
+        for (int r = 0; r < h; ++r) {
+            for (int c = 0; c < w; ++c) {
+                atlas[(currentY + r) * atlasSize + (currentX + c)] = slot->bitmap.buffer[r * slot->bitmap.pitch + c];
+            }
+        }
+
+        font.glyphs[i].x0 = (float)currentX / atlasSize;
+        font.glyphs[i].y0 = (float)currentY / atlasSize;
+        font.glyphs[i].x1 = (float)(currentX + w) / atlasSize;
+        font.glyphs[i].y1 = (float)(currentY + h) / atlasSize;
+        font.glyphs[i].xoff = (float)slot->bitmap_left;
+        font.glyphs[i].yoff = (float)-slot->bitmap_top;
+        font.glyphs[i].xadvance = (float)(slot->advance.x >> 6);
+        font.glyphs[i].width = (float)w;
+        font.glyphs[i].height = (float)h;
+
+        currentX += w + 1;
     }
+
+    if (!packedOk) {
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        return false;
+    }
+
+    float sharpenStrength = std::clamp((24.0f - pixelSize) / (24.0f - 13.0f), 0.0f, 1.0f);
+    if (sharpenStrength > 0.0f) {
+        float sub = 0.10f * sharpenStrength;
+        float mul = 1.0f + 0.30f * sharpenStrength;
+        float powVal = 1.0f + 0.15f * sharpenStrength;
+        for (unsigned char& alpha : atlas) {
+            float a = alpha / 255.0f;
+            if (a > 0.0f) {
+                a = (a - sub) * mul;
+                a = std::clamp(a, 0.0f, 1.0f);
+                a = std::pow(a, powVal);
+            }
+            alpha = (unsigned char)std::round(a * 255.0f);
+        }
+    }
+
+    font.fontSize = pixelSize;
+    font.atlasWidth = atlasSize;
+    font.atlasHeight = atlasSize;
+    font.ascent = (float)face->size->metrics.ascender / 64.0f;
+    font.descent = (float)face->size->metrics.descender / 64.0f;
+    font.lineGap = ((float)face->size->metrics.height - (font.ascent - font.descent)) / 64.0f;
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
 
     if (activeBackend_ == RenderBackendType::Vulkan) {
         font.atlasPixels = std::move(atlas);
@@ -3739,7 +3842,13 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
     if (!fontPtr || !fontPtr->loaded) return;
     auto& font = *fontPtr;
 
-    float scale = fontSize / font.fontSize;
+    float logicalFontHeight = font.fontSize / std::max(1.0f, dpiScale_);
+    float scale;
+    if (std::abs(fontSize - logicalFontHeight) < 1.01f) {
+        scale = 1.0f / std::max(1.0f, dpiScale_);
+    } else {
+        scale = fontSize / font.fontSize;
+    }
 
     // Build vertex data for all glyphs into reusable scratch memory.
     auto& vertices = textVertexScratch_;
@@ -3880,7 +3989,13 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
     const FontData* fontPtr = findFontForMeasure(fontName, fontSize);
     if (!fontPtr || !fontPtr->loaded) return {0, fontSize};
     auto& font = *fontPtr;
-    float scale = fontSize / font.fontSize;
+    float logicalFontHeight = font.fontSize / std::max(1.0f, dpiScale_);
+    float scale;
+    if (std::abs(fontSize - logicalFontHeight) < 1.01f) {
+        scale = 1.0f / std::max(1.0f, dpiScale_);
+    } else {
+        scale = fontSize / font.fontSize;
+    }
     float width = 0;
     auto getNextCodepoint = [](const std::string& s, size_t& i) -> uint32_t {
         unsigned char c = (unsigned char)s[i];
