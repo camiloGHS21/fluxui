@@ -8,7 +8,9 @@
 #include <cstdint>
 #include <memory>
 
-
+#ifndef FLUXUI_FONT_GLYPH_LIMIT
+#define FLUXUI_FONT_GLYPH_LIMIT 384
+#endif
 
 namespace FluxUI {
 
@@ -69,7 +71,7 @@ struct FontData {
     int atlasWidth = 0, atlasHeight = 0;
     float fontSize = 0;
     float ascent = 0, descent = 0, lineGap = 0;
-    GlyphInfo glyphs[1024]; // Expanded Unicode range
+    GlyphInfo glyphs[1024]; // Packed range defaults to Latin + Latin Extended-A.
     std::vector<unsigned char> sourceData;
     std::vector<unsigned char> atlasPixels;
     bool loaded = false;
@@ -149,8 +151,11 @@ public:
     void endFrame();
 
     // Font loading
+    bool loadDefaultFont(float size, const std::string& name = "default");
     bool loadFont(const std::string& path, float size, const std::string& name = "default");
     bool loadFontFromMemory(const unsigned char* data, int dataSize, float size, const std::string& name = "default");
+    void warmFontCache(const std::vector<float>& sizes, const std::string& name = "default");
+    void releaseFontSources();
 
     // Drawing primitives
     void drawRoundedRect(const Rect& rect, const Color& color, const BorderRadius& radius,
@@ -284,6 +289,7 @@ private:
     bool buildFontAtlas(FontData& font, const unsigned char* data, int dataSize, float size);
     FontData* getFontForSize(const std::string& fontName, float fontSize);
     const FontData* findFontForMeasure(const std::string& fontName, float fontSize) const;
+    std::string resolveFontName(const std::string& fontName, FontWeight weight) const;
     bool initVulkan(void* windowHandle);
     void shutdownVulkan();
     bool beginVulkanFrame(int windowWidth, int windowHeight);

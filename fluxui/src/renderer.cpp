@@ -35,6 +35,7 @@
 #include <limits>
 #include <set>
 #include <cstddef>
+#include <cstdlib>
 
 #ifndef FLUXUI_ENABLE_MSAA
 #define FLUXUI_ENABLE_MSAA 1
@@ -603,6 +604,7 @@ out vec4 FragColor;
 uniform sampler2D uTexture;
 void main() {
     float a = texture(uTexture, vTexCoord).r;
+    a = smoothstep(0.02, 0.98, a);
     FragColor = vec4(vColor.rgb, vColor.a * a);
 }
 )";
@@ -1770,11 +1772,12 @@ bool createVulkanPipelines(VulkanRendererState& state) {
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     samplerInfo.magFilter = VK_FILTER_LINEAR;
     samplerInfo.minFilter = VK_FILTER_LINEAR;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
     samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    samplerInfo.maxLod = 1.0f;
+    samplerInfo.minLod = 0.0f;
+    samplerInfo.maxLod = 0.0f;
     result = vkCreateSampler(state.device, &samplerInfo, nullptr, &state.fontSampler);
     if (result != VK_SUCCESS) {
         std::cerr << vkResultMessage("vkCreateSampler", result) << std::endl;
@@ -2810,10 +2813,11 @@ void Renderer::drawVulkanRoundedRect(const Rect& rect,
     flushVulkanTextBatch(state, scissorStack_, dpiScale_);
 
     VulkanRoundedInstance instance = {};
-    instance.rect[0] = drawRect.x * dpiScale_;
-    instance.rect[1] = drawRect.y * dpiScale_;
-    instance.rect[2] = drawRect.w * dpiScale_;
-    instance.rect[3] = drawRect.h * dpiScale_;
+    auto snapPx = [](float value) { return std::floor(value + 0.5f); };
+    instance.rect[0] = snapPx(drawRect.x * dpiScale_);
+    instance.rect[1] = snapPx(drawRect.y * dpiScale_);
+    instance.rect[2] = std::max(1.0f, snapPx(drawRect.w * dpiScale_));
+    instance.rect[3] = std::max(1.0f, snapPx(drawRect.h * dpiScale_));
     instance.color[0] = color.r;
     instance.color[1] = color.g;
     instance.color[2] = color.b;
@@ -2908,10 +2912,11 @@ void Renderer::drawVulkanBoxShadow(const Rect& rect,
     flushVulkanTextBatch(state, scissorStack_, dpiScale_);
 
     VulkanRoundedInstance instance = {};
-    instance.rect[0] = drawRect.x * dpiScale_;
-    instance.rect[1] = drawRect.y * dpiScale_;
-    instance.rect[2] = drawRect.w * dpiScale_;
-    instance.rect[3] = drawRect.h * dpiScale_;
+    auto snapPx = [](float value) { return std::floor(value + 0.5f); };
+    instance.rect[0] = snapPx(drawRect.x * dpiScale_);
+    instance.rect[1] = snapPx(drawRect.y * dpiScale_);
+    instance.rect[2] = std::max(1.0f, snapPx(drawRect.w * dpiScale_));
+    instance.rect[3] = std::max(1.0f, snapPx(drawRect.h * dpiScale_));
     instance.color[0] = shadow.color.r;
     instance.color[1] = shadow.color.g;
     instance.color[2] = shadow.color.b;
@@ -2968,18 +2973,19 @@ void Renderer::drawVulkanText(const std::string& text,
         return;
     }
 
-    FontData* fontPtr = getFontForSize(fontName, fontSize);
+    std::string resolvedFontName = resolveFontName(fontName, weight);
+    FontData* fontPtr = getFontForSize(resolvedFontName, fontSize);
     if (!fontPtr || !fontPtr->loaded) {
         return;
     }
     FontData& font = *fontPtr;
 
-    int snappedSize = std::max(8, (int)std::round(fontSize));
-    std::string sizedTextureKey = fontName + "@" + std::to_string(snappedSize);
+    int snappedSize = std::max(8, (int)std::round(font.fontSize));
+    std::string sizedTextureKey = resolvedFontName + "@" + std::to_string(snappedSize);
     std::string textureKey = sizedTextureKey;
-    auto baseFontIt = fonts_.find(fontName);
+    auto baseFontIt = fonts_.find(resolvedFontName);
     if (baseFontIt != fonts_.end() && fontPtr == &baseFontIt->second) {
-        textureKey = fontName;
+        textureKey = resolvedFontName;
     }
 
     auto& state = *vulkan_;
@@ -2999,7 +3005,9 @@ void Renderer::drawVulkanText(const std::string& text,
 
     float cursorX = snap(pos.x + translation_.x);
     float baselineY = snap(pos.y + font.ascent * fontScale + translation_.y);
-    float boldOffset = (weight == FontWeight::Bold) ? std::max(0.35f, fontSize * 0.018f) : 0.0f;
+    float boldOffset = (weight == FontWeight::Bold && resolvedFontName == fontName)
+        ? std::max(0.35f, fontSize * 0.018f)
+        : 0.0f;
 
     auto appendGlyph = [&](float x, float y, float w, float h, const GlyphInfo& g) {
         float xp = x * dpiScale_;
@@ -3201,49 +3209,7 @@ void Renderer::endFrame() {
 //  Font Loading
 // ============================================================
 
-#include "font_atlas.h"
-
-static bool loadBakedFontAtlas(FontData& font, RenderBackendType backend) {
-    font.fontSize = font_size;
-    font.atlasWidth = font_atlas_width;
-    font.atlasHeight = font_atlas_height;
-    font.ascent = font_ascent;
-    font.descent = font_descent;
-    font.lineGap = font_lineGap;
-    font.sourceData.clear();
-
-    for (int i = 0; i < 1024; ++i) {
-        font.glyphs[i].x0 = font_glyphs[i].x0;
-        font.glyphs[i].y0 = font_glyphs[i].y0;
-        font.glyphs[i].x1 = font_glyphs[i].x1;
-        font.glyphs[i].y1 = font_glyphs[i].y1;
-        font.glyphs[i].xoff = font_glyphs[i].xoff;
-        font.glyphs[i].yoff = font_glyphs[i].yoff;
-        font.glyphs[i].xadvance = font_glyphs[i].xadvance;
-        font.glyphs[i].width = font_glyphs[i].width;
-        font.glyphs[i].height = font_glyphs[i].height;
-    }
-
-    if (backend == RenderBackendType::Vulkan) {
-        font.atlasPixels.assign(font_atlas_pixels, font_atlas_pixels + sizeof(font_atlas_pixels));
-        font.textureId = 0;
-    } else {
-        glGenTextures(1, &font.textureId);
-        glBindTexture(GL_TEXTURE_2D, font.textureId);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.atlasWidth, font.atlasHeight,
-                     0, GL_RED, GL_UNSIGNED_BYTE, font_atlas_pixels);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    }
-
-    font.loaded = true;
-    return true;
-}
-
-bool Renderer::loadFont(const std::string& path, float size, const std::string& name) {
+static bool readFontFile(const std::string& path, std::vector<unsigned char>& data) {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file.is_open()) return false;
 
@@ -3251,8 +3217,81 @@ bool Renderer::loadFont(const std::string& path, float size, const std::string& 
     if (fileSize <= 0) return false;
 
     file.seekg(0, std::ios::beg);
-    std::vector<unsigned char> data((size_t)fileSize);
-    if (!file.read(reinterpret_cast<char*>(data.data()), fileSize)) return false;
+    data.resize((size_t)fileSize);
+    return file.read(reinterpret_cast<char*>(data.data()), fileSize).good();
+}
+
+static std::vector<std::string> defaultFontPaths() {
+    std::vector<std::string> paths = {
+        "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/SFPro.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    };
+
+#ifdef _WIN32
+    if (const char* windir = std::getenv("WINDIR")) {
+        std::string fontDir = std::string(windir) + "/Fonts/";
+        paths.insert(paths.begin(), {
+            fontDir + "segoeui.ttf",
+            fontDir + "arial.ttf",
+        });
+    }
+#endif
+
+    return paths;
+}
+
+static std::vector<std::string> defaultBoldFontPaths() {
+    std::vector<std::string> paths = {
+        "C:/Windows/Fonts/seguisb.ttf",
+        "C:/Windows/Fonts/segoeuib.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+        "/System/Library/Fonts/SFNS.ttf",
+        "/System/Library/Fonts/SFPro.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    };
+
+#ifdef _WIN32
+    if (const char* windir = std::getenv("WINDIR")) {
+        std::string fontDir = std::string(windir) + "/Fonts/";
+        paths.insert(paths.begin(), {
+            fontDir + "seguisb.ttf",
+            fontDir + "segoeuib.ttf",
+            fontDir + "arialbd.ttf",
+        });
+    }
+#endif
+
+    return paths;
+}
+
+bool Renderer::loadDefaultFont(float size, const std::string& name) {
+    for (const auto& path : defaultFontPaths()) {
+        if (loadFont(path, size, name)) {
+            if (name == "default") {
+                for (const auto& boldPath : defaultBoldFontPaths()) {
+                    if (loadFont(boldPath, size, name + "-bold")) {
+                        break;
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Renderer::loadFont(const std::string& path, float size, const std::string& name) {
+    std::vector<unsigned char> data;
+    if (!readFontFile(path, data)) return false;
 
     return loadFontFromMemory(data.data(), (int)data.size(), size, name);
 }
@@ -3264,8 +3303,8 @@ bool Renderer::loadFontFromMemory(const unsigned char* data, int dataSize, float
         if (!buildFontAtlas(font, data, dataSize, size)) {
             return false;
         }
-    } else if (!loadBakedFontAtlas(font, activeBackend_)) {
-        return false;
+    } else {
+        return loadDefaultFont(size, name);
     }
 
     fonts_[name] = std::move(font);
@@ -3275,31 +3314,74 @@ bool Renderer::loadFontFromMemory(const unsigned char* data, int dataSize, float
     return true;
 }
 
+void Renderer::warmFontCache(const std::vector<float>& sizes, const std::string& name) {
+    std::string resolvedNames[] = {
+        name,
+        resolveFontName(name, FontWeight::Bold)
+    };
+
+    for (float size : sizes) {
+        if (size <= 0.0f) continue;
+
+        for (int i = 0; i < 2; ++i) {
+            const std::string& resolvedName = resolvedNames[i];
+            if (resolvedName.empty()) continue;
+            if (i == 1 && resolvedName == resolvedNames[0]) continue;
+
+            FontData* font = getFontForSize(resolvedName, size);
+            if (!font || !font->loaded) continue;
+
+#if FLUXUI_HAS_VULKAN_SDK
+            if (activeBackend_ == RenderBackendType::Vulkan && vulkan_) {
+                int snappedSize = std::max(8, (int)std::round(font->fontSize));
+                std::string textureKey = resolvedName + "@" + std::to_string(snappedSize);
+                auto baseFontIt = fonts_.find(resolvedName);
+                if (baseFontIt != fonts_.end() && font == &baseFontIt->second) {
+                    textureKey = resolvedName;
+                }
+                ensureVulkanFontTexture(*vulkan_, textureKey, *font);
+            }
+#endif
+        }
+    }
+}
+
+void Renderer::releaseFontSources() {
+    for (auto& entry : fonts_) {
+        auto& font = entry.second;
+        if (!font.sourceData.empty()) {
+            font.sourceData.clear();
+            font.sourceData.shrink_to_fit();
+        }
+    }
+}
+
 bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dataSize, float size) {
     if (!data || dataSize <= 0) return false;
 
     stbtt_fontinfo info;
-    if (!stbtt_InitFont(&info, data, stbtt_GetFontOffsetForIndex(data, 0))) {
+    int fontOffset = stbtt_GetFontOffsetForIndex(data, 0);
+    if (fontOffset < 0 || !stbtt_InitFont(&info, data, fontOffset)) {
         return false;
     }
 
     float bakedSize = std::max(8.0f, size);
-    float pixelSize = bakedSize * std::max(1.0f, dpiScale_);
-    int atlasSize = pixelSize > 48.0f ? 2048 : (pixelSize > 24.0f ? 1024 : 512);
+    float dpiScale = std::max(1.0f, dpiScale_);
+    float pixelSize = (float)std::max(8, (int)std::round(bakedSize * dpiScale));
+    int oversample = pixelSize <= 20.0f ? 3 : (pixelSize <= 40.0f ? 2 : 1);
+    int atlasSize = pixelSize > 48.0f ? 2048 : (pixelSize > 20.0f ? 1024 : 512);
     std::vector<unsigned char> atlas((size_t)atlasSize * (size_t)atlasSize, 0);
-    std::vector<stbtt_packedchar> packed(1024);
+    constexpr int maxGlyphs = 1024;
     constexpr int firstGlyph = 32;
-#if FLUXUI_LOW_MEMORY
-    constexpr int glyphLimit = 256;
-#else
-    constexpr int glyphLimit = 1024;
-#endif
+    const int glyphLimit = std::clamp(FLUXUI_FONT_GLYPH_LIMIT,
+                                      firstGlyph + 1,
+                                      maxGlyphs);
+    std::vector<stbtt_packedchar> packed((size_t)glyphLimit);
 
     stbtt_pack_context pc;
     if (!stbtt_PackBegin(&pc, atlas.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
         return false;
     }
-    int oversample = pixelSize <= 20.0f ? 2 : 1;
     stbtt_PackSetOversampling(&pc, oversample, oversample);
     bool packedOk = stbtt_PackFontRange(&pc, data, 0, pixelSize, firstGlyph,
                                         glyphLimit - firstGlyph,
@@ -3320,6 +3402,13 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
     }
     if (!packedOk) return false;
 
+    for (unsigned char& alpha : atlas) {
+        float a = alpha / 255.0f;
+        a = std::pow(std::clamp(a, 0.0f, 1.0f), 0.80f);
+        a = std::clamp((a - 0.006f) * 1.16f, 0.0f, 1.0f);
+        alpha = (unsigned char)std::round(a * 255.0f);
+    }
+
     int ascent = 0;
     int descent = 0;
     int lineGap = 0;
@@ -3333,26 +3422,26 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
     font.descent = descent * scale;
     font.lineGap = lineGap * scale;
 
-    for (int i = 0; i < 1024; ++i) {
+    for (int i = 0; i < maxGlyphs; ++i) {
         font.glyphs[i] = {};
     }
 
     for (int i = firstGlyph; i < glyphLimit; ++i) {
+        stbtt_aligned_quad q;
+        float x = 0.0f;
+        float y = 0.0f;
+        stbtt_GetPackedQuad(packed.data(), atlasSize, atlasSize, i, &x, &y, &q, 0);
+
         const auto& ch = packed[i];
-        font.glyphs[i].x0 = ch.x0 / (float)atlasSize;
-        font.glyphs[i].y0 = ch.y0 / (float)atlasSize;
-        font.glyphs[i].x1 = ch.x1 / (float)atlasSize;
-        font.glyphs[i].y1 = ch.y1 / (float)atlasSize;
-        font.glyphs[i].xoff = ch.xoff;
-        font.glyphs[i].yoff = ch.yoff;
+        font.glyphs[i].x0 = q.s0;
+        font.glyphs[i].y0 = q.t0;
+        font.glyphs[i].x1 = q.s1;
+        font.glyphs[i].y1 = q.t1;
+        font.glyphs[i].xoff = q.x0;
+        font.glyphs[i].yoff = q.y0;
         font.glyphs[i].xadvance = ch.xadvance;
-        
-        // Fix: width and height should be logical size, not atlas pixel size.
-        // stbtt_packedchar coordinates (x0, y0, x1, y1) are in atlas pixels.
-        // When oversampling is used, these are multiplied by the oversample factor.
-        // We need to divide by the oversample factor to get the logical size in points/pixels.
-        font.glyphs[i].width = (float)(ch.x1 - ch.x0) / (float)oversample;
-        font.glyphs[i].height = (float)(ch.y1 - ch.y0) / (float)oversample;
+        font.glyphs[i].width = q.x1 - q.x0;
+        font.glyphs[i].height = q.y1 - q.y0;
     }
 
     if (activeBackend_ == RenderBackendType::Vulkan) {
@@ -3382,11 +3471,6 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
 
     int snappedSize = std::max(8, (int)std::round(fontSize * std::max(1.0f, dpiScale_)));
     int baseSize = std::max(8, (int)std::round(baseIt->second.fontSize));
-#if FLUXUI_LOW_MEMORY
-    if (snappedSize <= baseSize) {
-        return &baseIt->second;
-    }
-#endif
     if (snappedSize == baseSize || baseIt->second.sourceData.empty()) {
         return &baseIt->second;
     }
@@ -3411,15 +3495,22 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
     return &it->second;
 }
 
+std::string Renderer::resolveFontName(const std::string& fontName, FontWeight weight) const {
+    if (weight != FontWeight::Bold) {
+        return fontName;
+    }
+
+    std::string boldName = fontName + "-bold";
+    auto boldIt = fonts_.find(boldName);
+    if (boldIt != fonts_.end() && boldIt->second.loaded) {
+        return boldName;
+    }
+    return fontName;
+}
+
 const FontData* Renderer::findFontForMeasure(const std::string& fontName, float fontSize) const {
     int snappedSize = std::max(8, (int)std::round(fontSize * std::max(1.0f, dpiScale_)));
     auto baseIt = fonts_.find(fontName);
-    if (baseIt != fonts_.end() && baseIt->second.loaded) {
-#if FLUXUI_LOW_MEMORY
-        int baseSize = std::max(8, (int)std::round(baseIt->second.fontSize));
-        if (snappedSize <= baseSize) return &baseIt->second;
-#endif
-    }
     std::string sizedName = fontName + "@" + std::to_string(snappedSize);
     auto sizedIt = fonts_.find(sizedName);
     if (sizedIt != fonts_.end() && sizedIt->second.loaded) return &sizedIt->second;
@@ -3643,7 +3734,8 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
         return;
     }
 
-    FontData* fontPtr = getFontForSize(fontName, fontSize);
+    std::string resolvedFontName = resolveFontName(fontName, weight);
+    FontData* fontPtr = getFontForSize(resolvedFontName, fontSize);
     if (!fontPtr || !fontPtr->loaded) return;
     auto& font = *fontPtr;
 
@@ -3664,7 +3756,9 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
 
     float cursorX = snap(pos.x + translation_.x);
     float baselineY = snap(pos.y + font.ascent * scale + translation_.y);
-    float boldOffset = (weight == FontWeight::Bold) ? std::max(0.35f, fontSize * 0.018f) : 0.0f;
+    float boldOffset = (weight == FontWeight::Bold && resolvedFontName == fontName)
+        ? std::max(0.35f, fontSize * 0.018f)
+        : 0.0f;
 
     // Simple UTF-8 decoder
     auto getNextCodepoint = [](const std::string& s, size_t& i) -> uint32_t {
@@ -3744,16 +3838,20 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
 void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const Color& color,
                                float fontSize, TextAlign align, FontWeight weight,
                                const std::string& fontName) {
-    Vec2 textSize = measureText(text, fontSize, fontName);
+    std::string resolvedFontName = resolveFontName(fontName, weight);
+    FontData* fontForRect = getFontForSize(resolvedFontName, fontSize);
 
     float x = rect.x;
-    if (align == TextAlign::Center) x = rect.x + (rect.w - textSize.x) / 2;
-    else if (align == TextAlign::Right) x = rect.x + rect.w - textSize.x;
+    if (align != TextAlign::Left) {
+        Vec2 textSize = measureText(text, fontSize, resolvedFontName);
+        if (align == TextAlign::Center) x = rect.x + (rect.w - textSize.x) / 2;
+        else if (align == TextAlign::Right) x = rect.x + rect.w - textSize.x;
+    }
 
     // Vertically center: position so that the text midpoint aligns with rect midpoint
     // textSize.y is the fontSize; the actual visual height is ascent+|descent|
     float textH = fontSize; // fallback
-    const FontData* font = findFontForMeasure(fontName, fontSize);
+    const FontData* font = fontForRect ? fontForRect : findFontForMeasure(resolvedFontName, fontSize);
     if (font && font->loaded) {
         float scale = fontSize / font->fontSize;
         float asc = font->ascent * scale;

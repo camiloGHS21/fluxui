@@ -273,6 +273,12 @@ struct Style {
     TextAlign textAlign = TextAlign::Left;
     float lineHeight = 1.4f;
     std::string fontFamily;
+    bool hasColor = false;
+    bool hasFontSize = false;
+    bool hasFontWeight = false;
+    bool hasTextAlign = false;
+    bool hasLineHeight = false;
+    bool hasFontFamily = false;
 
     // Interaction
     CursorType cursor = CursorType::Default;

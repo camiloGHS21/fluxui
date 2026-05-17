@@ -126,7 +126,7 @@ static Button* addButton(Widget* parent,
                          const std::string& icon,
                          const std::string& classes,
                          std::function<void()> onClick = {}) {
-    auto* button = parent->add<Button>("", classes);
+    auto* button = parent->button("", classes, std::move(onClick));
     button->reserveChildren(icon.empty() ? 1 : 2);
     std::string toneClass;
     if (classes.find("btn-primary") != std::string::npos) {
@@ -135,42 +135,31 @@ static Button* addButton(Widget* parent,
         toneClass = " danger-control";
     }
     if (!icon.empty()) {
-        button->add<Icon>(icon, "btn-icon" + toneClass);
+        button->addIcon(icon, "btn-icon" + toneClass);
     }
-    button->add<Text>(label, "btn-label" + toneClass);
-    if (onClick) {
-        button->onClick = std::move(onClick);
-    }
+    button->text(label, "btn-label" + toneClass);
     return button;
 }
 
 static void addPill(Widget* parent, const std::string& text, const std::string& tone) {
-    auto* pill = parent->add<Panel>("pill pill-" + tone);
-    pill->reserveChildren(1);
-    pill->add<Text>(text, "pill-text");
+    parent->panel("pill pill-" + tone, 1)->text(text, "pill-text");
 }
 
 static ProgressBar* addProgress(Widget* parent,
                                 float value,
                                 const std::string& cls,
                                 const Color& color) {
-    auto* progress = parent->add<ProgressBar>();
-    progress->className = cls;
-    progress->progress = value;
-    progress->barColor = color;
-    return progress;
+    return parent->progress(value, cls, color);
 }
 
 static void addSectionHeader(Widget* parent,
                              const std::string& title,
                              const std::string& subtitle = "") {
-    auto* header = parent->add<Panel>("section-head");
-    header->reserveChildren(1);
-    auto* copy = header->add<Panel>("section-copy");
-    copy->reserveChildren(subtitle.empty() ? 1 : 2);
-    copy->add<Text>(title, "section-title");
+    auto* header = parent->panel("section-head", 1);
+    auto* copy = header->panel("section-copy", subtitle.empty() ? 1 : 2);
+    copy->h2(title, "section-title");
     if (!subtitle.empty()) {
-        copy->add<Text>(subtitle, "section-subtitle");
+        copy->p(subtitle, "section-subtitle");
     }
 }
 
@@ -179,12 +168,10 @@ static void addMetricStrip(Widget* parent,
                            const std::string& value,
                            const std::string& tone,
                            float progress) {
-    auto* row = parent->add<Panel>("metric-strip");
-    row->reserveChildren(2);
-    auto* copy = row->add<Panel>("metric-copy");
-    copy->reserveChildren(2);
-    copy->add<Text>(label, "metric-label");
-    copy->add<Text>(value, "metric-value");
+    auto* row = parent->panel("metric-strip", 2);
+    auto* copy = row->panel("metric-copy", 2);
+    copy->text(label, "metric-label");
+    copy->text(value, "metric-value");
     addProgress(row, progress, "progress-line", toneColor(tone));
 }
 
@@ -193,13 +180,10 @@ static void addActivityRow(Widget* parent,
                            const std::string& text,
                            const std::string& meta,
                            const std::string& severity) {
-    auto* row = parent->add<Panel>("activity-row");
-    row->reserveChildren(3);
-    auto* iconPanel = row->add<Panel>("activity-icon alert-" + severity);
-    iconPanel->reserveChildren(1);
-    iconPanel->add<Icon>(icon, "activity-mark mark-" + severity);
-    row->add<Text>(text, "activity-text");
-    row->add<Text>(meta, "activity-time");
+    auto* row = parent->panel("activity-row", 3);
+    row->panel("activity-icon alert-" + severity, 1)->addIcon(icon, "activity-mark mark-" + severity);
+    row->text(text, "activity-text");
+    row->text(meta, "activity-time");
 }
 
 static void addToggleRow(Widget* parent,
@@ -207,15 +191,13 @@ static void addToggleRow(Widget* parent,
                          const std::string& description,
                          bool& value,
                          bool affectsPosture = false) {
-    auto* row = parent->add<Panel>("toggle-row");
-    row->reserveChildren(2);
-    auto* copy = row->add<Panel>("toggle-copy");
-    copy->reserveChildren(2);
-    copy->add<Text>(title, "toggle-title");
-    copy->add<Text>(description, "toggle-desc");
+    auto* row = parent->panel("toggle-row", 2);
+    auto* copy = row->panel("toggle-copy", 2);
+    copy->text(title, "toggle-title");
+    copy->text(description, "toggle-desc");
 
-    auto* toggle = row->add<Button>("", value ? "toggle toggle-on" : "toggle toggle-off");
-    toggle->add<Panel>("toggle-knob");
+    auto* toggle = row->button("", value ? "toggle toggle-on" : "toggle toggle-off");
+    toggle->panel("toggle-knob");
     toggle->onClick = [&value, toggle, affectsPosture]() {
         value = !value;
         // In-place update — no full rebuild needed
@@ -231,18 +213,15 @@ static void addRuleRow(Widget* parent,
                        const std::string& detail,
                        const std::string& scope,
                        const std::string& hits) {
-    auto* row = parent->add<Panel>("rule-row");
-    row->reserveChildren(3);
-    auto* left = row->add<Panel>("rule-main");
-    left->reserveChildren(2);
-    left->add<Text>(name, "rule-name");
-    left->add<Text>(detail, "rule-detail");
-    auto* meta = row->add<Panel>("rule-meta");
-    meta->reserveChildren(2);
+    auto* row = parent->panel("rule-row", 3);
+    auto* left = row->panel("rule-main", 2);
+    left->text(name, "rule-name");
+    left->text(detail, "rule-detail");
+    auto* meta = row->panel("rule-meta", 2);
     addPill(meta, scope, "info");
     addPill(meta, hits, "warning");
-    auto* toggle = row->add<Button>("", ruleEnabled[index] ? "toggle toggle-on" : "toggle toggle-off");
-    toggle->add<Panel>("toggle-knob");
+    auto* toggle = row->button("", ruleEnabled[index] ? "toggle toggle-on" : "toggle toggle-off");
+    toggle->panel("toggle-knob");
     toggle->onClick = [index, toggle]() {
         ruleEnabled[index] = !ruleEnabled[index];
         // In-place update — no full rebuild
@@ -257,12 +236,11 @@ static void addTableRow(Widget* parent,
                         const std::string& c2,
                         const std::string& c3,
                         const std::string& c4) {
-    auto* row = parent->add<Panel>(cls);
-    row->reserveChildren(4);
-    row->add<Text>(c1, "table-cell table-main");
-    row->add<Text>(c2, "table-cell");
-    row->add<Text>(c3, "table-cell");
-    row->add<Text>(c4, "table-cell table-right");
+    auto* row = parent->panel(cls, 4);
+    row->text(c1, "table-cell table-main");
+    row->text(c2, "table-cell");
+    row->text(c3, "table-cell");
+    row->text(c4, "table-cell table-right");
 }
 
 // ============================================================
@@ -273,60 +251,53 @@ static void buildTopBar(Widget* content,
                         const std::string& title,
                         const std::string& subtitle,
                         bool showSearch = true) {
-    auto* topBar = content->add<Panel>("top-bar");
+    auto* topBar = content->panel("top-bar");
 
-    auto* titleGroup = topBar->add<Panel>("title-group");
-    titleGroup->add<Text>(title, "page-title");
-    titleGroup->add<Text>(subtitle, "page-subtitle");
+    auto* titleGroup = topBar->panel("title-group");
+    titleGroup->h1(title, "page-title");
+    titleGroup->p(subtitle, "page-subtitle");
 
-    auto* tools = topBar->add<Panel>("top-tools");
+    auto* tools = topBar->panel("top-tools");
     if (showSearch) {
-        tools->add<TextInput>("Search incidents, hosts, policies...", "search-box");
+        tools->input("Search incidents, hosts, policies...", "search-box");
     }
     addButton(tools, "Export", "download", "btn btn-secondary btn-compact",
               []() { std::cout << "[DataLeak Guard] Export queued" << std::endl; });
 }
 
 static void buildStatusBar(Widget* content) {
-    auto* status = content->add<Panel>("status-bar");
-    auto* live = status->add<Panel>("status-cluster");
-    live->add<Panel>("status-dot");
-    live->add<Text>("Live prevention enabled", "status-text");
-    status->add<Text>("12,847 files monitored", "status-text");
-    status->add<Text>("47 blocks today", "status-text");
-    status->add<Text>("Last sync: 38 sec ago", "status-text status-right");
+    auto* status = content->panel("status-bar");
+    auto* live = status->panel("status-cluster");
+    live->panel("status-dot");
+    live->span("Live prevention enabled", "status-text");
+    status->span("12,847 files monitored", "status-text");
+    status->span("47 blocks today", "status-text");
+    status->span("Last sync: 38 sec ago", "status-text status-right");
 }
 
 static void buildSidebar(Widget* root, Application& app) {
-    auto* sidebar = root->add<Panel>("sidebar");
-    shell.sidebar = static_cast<Panel*>(sidebar);
-    sidebar->reserveChildren(3);
+    auto* sidebar = root->panel("sidebar", 3);
+    shell.sidebar = sidebar;
 
-    auto* header = sidebar->add<Panel>("sidebar-header");
-    header->reserveChildren(1);
-    auto* logoRow = header->add<Panel>("logo-row");
-    logoRow->reserveChildren(2);
-    auto* logoMark = logoRow->add<Panel>("logo-mark");
-    logoMark->reserveChildren(1);
-    logoMark->add<Icon>("shield", "logo-icon");
-    auto* logoCopy = logoRow->add<Panel>("logo-copy");
-    logoCopy->reserveChildren(2);
-    logoCopy->add<Text>("DataLeak Guard", "sidebar-logo");
-    logoCopy->add<Text>("Enterprise DLP Console", "sidebar-subtitle");
+    auto* header = sidebar->panel("sidebar-header", 1);
+    auto* logoRow = header->panel("logo-row", 2);
+    logoRow->panel("logo-mark", 1)->addIcon("shield", "logo-icon");
+    auto* logoCopy = logoRow->panel("logo-copy", 2);
+    logoCopy->text("DataLeak Guard", "sidebar-logo");
+    logoCopy->text("Enterprise DLP Console", "sidebar-subtitle");
 
-    auto* nav = sidebar->add<Panel>("nav-section");
-    nav->reserveChildren(7);
-    nav->add<Text>("WORKSPACE", "nav-label");
+    auto* nav = sidebar->panel("nav-section", 7);
+    nav->text("WORKSPACE", "nav-label");
 
     const std::string activeRoute = app.currentRoute();
     for (int i = 0; i < 6; i++) {
         std::string cls = "nav-item";
         bool active = activeRoute == navRoutes[i];
         if (active) cls += " active";
-        auto* item = nav->add<Button>("", cls);
+        auto* item = nav->button("", cls);
         item->reserveChildren(2);
-        auto* icon = item->add<Icon>(navIcons[i], active ? "nav-icon active-icon" : "nav-icon");
-        auto* text = item->add<Text>(navItems[i], active ? "nav-text active-text" : "nav-text");
+        auto* icon = item->addIcon(navIcons[i], active ? "nav-icon active-icon" : "nav-icon");
+        auto* text = item->text(navItems[i], active ? "nav-text active-text" : "nav-text");
         std::string route = navRoutes[i];
         item->onClick = [&app, route]() {
             app.navigate(route);
@@ -337,16 +308,44 @@ static void buildSidebar(Widget* root, Application& app) {
         shell.navTexts[i] = text;
     }
 
-    auto* posture = sidebar->add<Panel>("posture-card");
-    posture->reserveChildren(4);
-    posture->add<Text>("POSTURE", "nav-label");
-    auto* postureTitle = posture->add<Text>(blockMode ? "Containment active" : "Monitor only", "posture-title");
+    auto* posture = sidebar->panel("posture-card", 4);
+    posture->text("POSTURE", "nav-label");
+    auto* postureTitle = posture->text(blockMode ? "Containment active" : "Monitor only", "posture-title");
     shell.postureTitle = postureTitle;
-    posture->add<Text>("4 high-risk events require review", "posture-copy");
-    auto* posturePills = posture->add<Panel>("posture-pills");
-    posturePills->reserveChildren(2);
+    posture->text("4 high-risk events require review", "posture-copy");
+    auto* posturePills = posture->panel("posture-pills", 2);
     addPill(posturePills, "DLP", "ok");
     addPill(posturePills, "SIEM", "info");
+}
+
+static void buildRetainedShell(Application& app) {
+    auto* root = app.root();
+    if (!root) return;
+
+    root->clearChildren();
+    root->reserveChildren(2);
+
+    buildSidebar(root, app);
+
+    shell.contentArea = root->panel("content", 3);
+    app.renderRoute(shell.contentArea);
+    buildStatusBar(shell.contentArea);
+
+    shell.initialized = true;
+    uiDirty = false;
+}
+
+static void rebuildActiveRoute(Application& app) {
+    if (!shell.contentArea) return;
+
+    shell.clearPageRefs();
+    shell.updateNavHighlights(app.currentRoute());
+    shell.contentArea->clearChildren();
+    shell.contentArea->reserveChildren(3);
+    app.renderRoute(shell.contentArea);
+    buildStatusBar(shell.contentArea);
+
+    uiDirty = false;
 }
 
 // ============================================================
@@ -517,12 +516,11 @@ static void buildAlerts(Widget* content) {
     };
 
     for (auto& rowData : rows) {
-        auto* row = queue->add<Panel>("incident-row");
-        auto* iconPanel = row->add<Panel>("activity-icon alert-danger");
-        iconPanel->add<Icon>(rowData[0], "activity-mark mark-danger");
-        auto* copy = row->add<Panel>("incident-copy");
-        copy->add<Text>(rowData[1], "incident-title");
-        copy->add<Text>(std::string(rowData[2]) + " - " + rowData[4] + " ago", "incident-meta");
+        auto* row = queue->panel("incident-row");
+        row->panel("activity-icon alert-danger", 1)->addIcon(rowData[0], "activity-mark mark-danger");
+        auto* copy = row->panel("incident-copy");
+        copy->text(rowData[1], "incident-title");
+        copy->text(std::string(rowData[2]) + " - " + rowData[4] + " ago", "incident-meta");
         addPill(row, rowData[3], std::string(rowData[3]) == "Critical" ? "danger" : "warning");
         addButton(row, "Triage", "forward", "btn btn-secondary btn-small",
                   []() { std::cout << "[DataLeak Guard] Alert opened" << std::endl; });
@@ -756,30 +754,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    bool fontLoaded = false;
-    constexpr float baseFontAtlasSize = 32.0f;
-    const char* fontPaths[] = {
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-        "/System/Library/Fonts/SFPro.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        nullptr
-    };
-    for (int i = 0; fontPaths[i]; i++) {
-        if (app.renderer().loadFont(fontPaths[i], baseFontAtlasSize)) {
-            fontLoaded = true;
-            std::cout << "Loaded font: " << fontPaths[i] << std::endl;
-            break;
-        }
-    }
-    if (!fontLoaded && app.renderer().loadFontFromMemory(nullptr, 0, baseFontAtlasSize, "default")) {
-        fontLoaded = true;
-        std::cout << "Using optimized pre-baked font atlas" << std::endl;
-    }
-    if (!fontLoaded) {
+    constexpr float baseFontAtlasSize = 13.0f;
+    if (app.renderer().loadDefaultFont(baseFontAtlasSize)) {
+        app.renderer().warmFontCache(std::vector<float>{
+            11.0f, 12.0f, 13.0f, 14.0f, 16.0f, 20.0f, 28.0f, 29.0f, 32.0f
+        });
+        app.renderer().releaseFontSources();
+        std::cout << "Loaded default UI font" << std::endl;
+    } else {
         std::cerr << "Warning: No font loaded, text will not render" << std::endl;
     }
 
@@ -800,6 +782,7 @@ int main(int argc, char** argv) {
         addSectionHeader(card, "Route missing", "Register the page before navigating to it.");
     });
     app.navigate("/dashboard");
+    buildRetainedShell(app);
 
     app.on(UIEventType::RouteChanged, [](UIEvent& event) {
         std::cout << "[DataLeak Guard] Route: "
@@ -836,32 +819,9 @@ int main(int argc, char** argv) {
 
         // ── Build shell once, then only rebuild on route change ──
         if (!shell.initialized) {
-            // First frame: build entire shell
-            auto* root = app.root();
-            root->clearChildren();
-            root->reserveChildren(2);
-
-            buildSidebar(root, app);
-
-            shell.contentArea = root->add<Panel>("content");
-            shell.contentArea->reserveChildren(3);
-            app.renderRoute(shell.contentArea);
-            buildStatusBar(shell.contentArea);
-
-            shell.initialized = true;
-            uiDirty = false;
+            buildRetainedShell(app);
         } else if (app.routeDirty()) {
-            // Route change: update nav highlights + rebuild content only
-            shell.clearPageRefs();
-            shell.updateNavHighlights(app.currentRoute());
-
-            // Only clear and rebuild the content area — sidebar is retained
-            shell.contentArea->clearChildren();
-            shell.contentArea->reserveChildren(3);
-            app.renderRoute(shell.contentArea);
-            buildStatusBar(shell.contentArea);
-
-            uiDirty = false;
+            rebuildActiveRoute(app);
         }
 
         if (frameLimit > 0 && ++renderedFrames >= frameLimit) {

@@ -247,15 +247,4 @@ target_include_directories(DataLeakGuard PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 
-# ============================================================
-#  Tools
-# ============================================================
-add_executable(font_baker
-    tools/font_baker.cpp
-)
-target_include_directories(font_baker PRIVATE vendor/stb)
-if(MSVC)
-    target_compile_definitions(font_baker PRIVATE _CRT_SECURE_NO_WARNINGS)
-endif()
-
 

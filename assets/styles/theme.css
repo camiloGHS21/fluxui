@@ -1,24 +1,24 @@
 /* FluxUI Theme - DataLeak Guard */
 
 :root {
-    --app-bg-top: #0b0f19;
-    --app-bg-bottom: #040508;
-    --sidebar-bg: rgba(9, 12, 18, 0.92);
-    --surface: rgba(20, 25, 35, 0.66);
-    --surface-raised: rgba(28, 34, 48, 0.78);
-    --surface-hover: rgba(40, 48, 64, 0.84);
-    --stroke: rgba(255, 255, 255, 0.115);
-    --stroke-strong: rgba(255, 255, 255, 0.24);
+    --app-bg-top: #090d15;
+    --app-bg-bottom: #030407;
+    --sidebar-bg: rgba(8, 11, 17, 0.97);
+    --surface: rgba(19, 24, 34, 0.86);
+    --surface-raised: rgba(29, 36, 50, 0.92);
+    --surface-hover: rgba(43, 52, 68, 0.94);
+    --stroke: rgba(255, 255, 255, 0.19);
+    --stroke-strong: rgba(255, 255, 255, 0.36);
     --text: #ffffff;
-    --text-muted: rgba(255, 255, 255, 0.78);
-    --text-faint: rgba(255, 255, 255, 0.54);
+    --text-muted: rgba(255, 255, 255, 0.90);
+    --text-faint: rgba(255, 255, 255, 0.72);
     --accent: #00FFA8;
     --accent-strong: #00D68F;
     --focus-ring: #8ab4f8;
     --danger: #FF3B53;
     --warning: #FFB340;
     --info: #4DA1FF;
-    --shadow-soft: rgba(0, 0, 0, 0.32);
+    --shadow-soft: rgba(0, 0, 0, 0.18);
 }
 
 .root {
@@ -74,7 +74,7 @@ input:focus {
     padding: 26px 0 20px 0;
     display: flex;
     flex-direction: column;
-    box-shadow: 8px 0 18px rgba(0, 0, 0, 0.26);
+    box-shadow: 5px 0 12px rgba(0, 0, 0, 0.20);
 }
 
 .sidebar-header {
@@ -134,7 +134,7 @@ input:focus {
 }
 
 .nav-label {
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
     color: var(--text-faint);
     padding: 12px 12px 8px 12px;
@@ -182,7 +182,7 @@ input:focus {
     color: #B3FFEF;
     font-weight: 700;
     border: 1px solid rgba(0, 255, 168, 0.48);
-    box-shadow: 0 8px 18px rgba(0, 255, 168, 0.10);
+    box-shadow: 0 4px 10px rgba(0, 255, 168, 0.10);
 }
 
 .active-icon,
@@ -282,7 +282,7 @@ input:focus {
     padding: 0 18px 0 18px;
     font-size: 14px;
     line-height: 1.2;
-    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.14);
 }
 
 .main-scroll {
@@ -323,8 +323,8 @@ input:focus {
 
 .status-text {
     width: 170px;
-    height: 14px;
-    font-size: 11px;
+    height: 15px;
+    font-size: 12px;
     line-height: 1.2;
     color: var(--text-faint);
 }
@@ -340,7 +340,7 @@ input:focus {
 .scanner-cockpit,
 .builder-panel {
     min-height: 172px;
-    background: linear-gradient(135deg, rgba(25, 32, 45, 0.65), rgba(12, 16, 24, 0.75));
+    background: linear-gradient(135deg, rgba(25, 32, 45, 0.82), rgba(12, 16, 24, 0.90));
     border: 1px solid var(--stroke);
     border-radius: 8px;
     padding: 24px;
@@ -348,7 +348,7 @@ input:focus {
     flex-direction: row;
     align-items: center;
     gap: 24px;
-    box-shadow: 0 10px 22px var(--shadow-soft);
+    box-shadow: 0 5px 12px var(--shadow-soft);
 }
 
 .hero-copy,
@@ -372,7 +372,7 @@ input:focus {
     height: 38px;
     font-size: 14px;
     line-height: 1.35;
-    color: rgba(237, 243, 248, 0.72);
+    color: rgba(237, 243, 248, 0.84);
 }
 
 .hero-pills {
@@ -398,7 +398,7 @@ input:focus {
     display: flex;
     flex-direction: column;
     gap: 14px;
-    box-shadow: 0 9px 20px var(--shadow-soft);
+    box-shadow: 0 4px 10px var(--shadow-soft);
 }
 
 .panel-card:hover {
@@ -472,7 +472,7 @@ input:focus {
 
 .pill-text {
     height: 15px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
     font-weight: 700;
     text-align: center;
@@ -526,7 +526,7 @@ input:focus {
 .btn-icon {
     width: 17px;
     height: 17px;
-    color: rgba(237, 243, 248, 0.78);
+    color: rgba(237, 243, 248, 0.88);
 }
 
 .btn-label {
@@ -535,13 +535,13 @@ input:focus {
     line-height: 1.2;
     font-weight: 700;
     text-align: center;
-    color: rgba(237, 243, 248, 0.78);
+    color: rgba(237, 243, 248, 0.88);
 }
 
 .btn-primary {
     background-color: var(--accent);
     color: #04100d;
-    box-shadow: 0 8px 18px rgba(0, 255, 168, 0.16);
+    box-shadow: 0 4px 10px rgba(0, 255, 168, 0.14);
 }
 
 .btn-primary:hover {
@@ -610,7 +610,7 @@ input:focus {
     border-radius: 8px;
     padding: 22px;
     transition: background-color 160ms ease, transform 160ms ease, border-color 160ms ease;
-    box-shadow: 0 9px 20px var(--shadow-soft);
+    box-shadow: 0 4px 10px var(--shadow-soft);
 }
 
 .stat-card:hover {
@@ -655,7 +655,7 @@ input:focus {
     height: 18px;
     font-size: 13px;
     line-height: 1.25;
-    color: rgba(237, 243, 248, 0.74);
+    color: rgba(237, 243, 248, 0.86);
     font-weight: 600;
 }
 
@@ -672,14 +672,14 @@ input:focus {
     width: 100%;
     height: 7px;
     border-radius: 4px;
-    background-color: rgba(237, 243, 248, 0.08);
+    background-color: rgba(237, 243, 248, 0.12);
 }
 
 .progress-large {
     width: 100%;
     height: 11px;
     border-radius: 6px;
-    background-color: rgba(237, 243, 248, 0.08);
+    background-color: rgba(237, 243, 248, 0.12);
 }
 
 .progress-caption {
@@ -700,7 +700,7 @@ input:focus {
     border-radius: 8px;
     border: 1px solid var(--stroke);
     padding: 6px;
-    box-shadow: 0 9px 20px var(--shadow-soft);
+    box-shadow: 0 4px 10px var(--shadow-soft);
 }
 
 .activity-row {
@@ -754,13 +754,13 @@ input:focus {
     height: 20px;
     font-size: 14px;
     line-height: 1.35;
-    color: rgba(237, 243, 248, 0.86);
+    color: rgba(237, 243, 248, 0.92);
 }
 
 .activity-time {
     width: 94px;
     height: 16px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.2;
     color: var(--text-faint);
     text-align: right;
@@ -812,12 +812,12 @@ input:focus {
     font-size: 13px;
     line-height: 1.25;
     font-weight: 700;
-    color: rgba(237, 243, 248, 0.9);
+    color: rgba(237, 243, 248, 0.94);
 }
 
 .incident-meta {
     height: 16px;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.25;
     color: var(--text-faint);
 }
@@ -863,13 +863,13 @@ input:focus {
     height: 17px;
     font-size: 13px;
     line-height: 1.25;
-    color: rgba(237, 243, 248, 0.9);
+    color: rgba(237, 243, 248, 0.94);
     font-weight: 700;
 }
 
 .toggle-desc {
-    height: 32px;
-    font-size: 11px;
+    height: 34px;
+    font-size: 12px;
     line-height: 1.35;
     color: var(--text-faint);
 }
@@ -939,13 +939,13 @@ input:focus {
     height: 18px;
     font-size: 13px;
     line-height: 1.25;
-    color: rgba(237, 243, 248, 0.92);
+    color: rgba(237, 243, 248, 0.95);
     font-weight: 700;
 }
 
 .rule-detail {
-    height: 32px;
-    font-size: 11px;
+    height: 34px;
+    font-size: 12px;
     line-height: 1.35;
     color: var(--text-faint);
 }
@@ -968,7 +968,7 @@ input:focus {
     border: 1px solid var(--stroke);
     border-radius: 8px;
     padding: 6px;
-    box-shadow: 0 9px 20px var(--shadow-soft);
+    box-shadow: 0 4px 10px var(--shadow-soft);
 }
 
 .table-row {
@@ -995,13 +995,13 @@ input:focus {
     height: 18px;
     font-size: 12px;
     line-height: 1.25;
-    color: rgba(237, 243, 248, 0.72);
+    color: rgba(237, 243, 248, 0.84);
     font-weight: 600;
 }
 
 .table-main {
     flex-grow: 1;
-    color: rgba(237, 243, 248, 0.9);
+    color: rgba(237, 243, 248, 0.94);
     font-weight: 700;
 }
 

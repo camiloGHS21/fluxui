@@ -35,6 +35,51 @@ std::vector<std::string> StyleSheet::splitTopLevel(const std::string& value, cha
     return parts;
 }
 
+std::vector<std::string> StyleSheet::splitDeclarations(const std::string& body) {
+    std::vector<std::string> declarations;
+    std::string current;
+    int depth = 0;
+    char quote = 0;
+    bool escaped = false;
+
+    for (char c : body) {
+        if (quote != 0) {
+            current += c;
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == quote) {
+                quote = 0;
+            }
+            continue;
+        }
+
+        if (c == '"' || c == '\'') {
+            quote = c;
+            current += c;
+            continue;
+        }
+        if (c == '(' || c == '[' || c == '{') {
+            depth++;
+        } else if ((c == ')' || c == ']' || c == '}') && depth > 0) {
+            depth--;
+        }
+
+        if (c == ';' && depth == 0) {
+            std::string item = trim(current);
+            if (!item.empty()) declarations.push_back(item);
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+
+    std::string item = trim(current);
+    if (!item.empty()) declarations.push_back(item);
+    return declarations;
+}
+
 static bool hasClassName(const std::string& className, const std::string& wanted) {
     std::istringstream classes(className);
     std::string cls;
@@ -62,6 +107,102 @@ static std::string functionInner(const std::string& value) {
     auto end = value.rfind(')');
     if (start == std::string::npos || end == std::string::npos || end <= start) return "";
     return value.substr(start + 1, end - start - 1);
+}
+
+static bool matchCompoundSelector(const std::string& compound,
+                                  const std::string& className,
+                                  const std::string& id,
+                                  const std::string& type) {
+    std::string s = trimLocal(compound);
+    if (s.empty() || s == "*") return s == "*";
+    if (s.find_first_of("[]+~") != std::string::npos) return false;
+
+    std::string requiredType;
+    std::string requiredId;
+    std::vector<std::string> requiredClasses;
+
+    size_t i = 0;
+    while (i < s.size()) {
+        if (s[i] == '.') {
+            size_t start = ++i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
+            requiredClasses.push_back(s.substr(start, i - start));
+        } else if (s[i] == '#') {
+            size_t start = ++i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
+            requiredId = s.substr(start, i - start);
+        } else {
+            size_t start = i;
+            while (i < s.size() && s[i] != '.' && s[i] != '#') i++;
+            requiredType = lowerAscii(trimLocal(s.substr(start, i - start)));
+        }
+    }
+
+    if (!requiredType.empty() && requiredType != lowerAscii(type)) return false;
+    if (!requiredId.empty() && requiredId != id) return false;
+    for (const auto& cls : requiredClasses) {
+        if (cls.empty() || !hasClassName(className, cls)) return false;
+    }
+    return !requiredType.empty() || !requiredId.empty() || !requiredClasses.empty() || s == "*";
+}
+
+static void splitSelectorChain(const std::string& selector,
+                               std::vector<std::string>& parts,
+                               std::vector<char>& combinators) {
+    std::string current;
+    int depth = 0;
+    char quote = 0;
+    bool escaped = false;
+    char pendingCombinator = 0;
+
+    auto pushCurrent = [&]() {
+        std::string part = trimLocal(current);
+        if (part.empty()) return;
+        if (!parts.empty()) {
+            combinators.push_back(pendingCombinator == '>' ? '>' : ' ');
+        }
+        parts.push_back(part);
+        current.clear();
+        pendingCombinator = 0;
+    };
+
+    for (size_t i = 0; i < selector.size(); ++i) {
+        char c = selector[i];
+        if (quote != 0) {
+            current += c;
+            if (escaped) escaped = false;
+            else if (c == '\\') escaped = true;
+            else if (c == quote) quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            current += c;
+            continue;
+        }
+        if (c == '(' || c == '[') {
+            depth++;
+            current += c;
+            continue;
+        }
+        if ((c == ')' || c == ']') && depth > 0) {
+            depth--;
+            current += c;
+            continue;
+        }
+        if (depth == 0 && c == '>') {
+            pushCurrent();
+            pendingCombinator = '>';
+            continue;
+        }
+        if (depth == 0 && std::isspace((unsigned char)c)) {
+            pushCurrent();
+            if (pendingCombinator == 0) pendingCombinator = ' ';
+            continue;
+        }
+        current += c;
+    }
+    pushCurrent();
 }
 
 static std::vector<std::string> splitColorTokens(const std::string& inner) {
@@ -141,14 +282,23 @@ static float parseHslPercent(const std::string& token) {
 
 std::string StyleSheet::cacheKey(const std::string& className,
                                  const std::string& id,
-                                 const std::string& type) {
+                                 const std::string& type,
+                                 const std::vector<CSSSelectorNode>& ancestors) {
     std::string key;
-    key.reserve(className.size() + id.size() + type.size() + 2);
+    key.reserve(className.size() + id.size() + type.size() + ancestors.size() * 12 + 3);
     key += className;
     key.push_back('\x1f');
     key += id;
     key.push_back('\x1f');
     key += type;
+    for (const auto& ancestor : ancestors) {
+        key.push_back('\x1e');
+        key += ancestor.className;
+        key.push_back('\x1f');
+        key += ancestor.id;
+        key.push_back('\x1f');
+        key += ancestor.type;
+    }
     return key;
 }
 
@@ -157,50 +307,166 @@ bool StyleSheet::selectorMatches(const std::string& selector,
                                  const std::string& id,
                                  const std::string& type,
                                  std::string* pseudo) {
+    static const std::vector<CSSSelectorNode> noAncestors;
+    return selectorMatches(selector, className, id, type, noAncestors, pseudo);
+}
+
+bool StyleSheet::selectorMatches(const std::string& selector,
+                                 const std::string& className,
+                                 const std::string& id,
+                                 const std::string& type,
+                                 const std::vector<CSSSelectorNode>& ancestors,
+                                 std::string* pseudo) {
     std::string s = trim(selector);
     if (pseudo) *pseudo = "";
     if (s.empty()) return false;
 
-    auto unsupported = s.find_first_of(" >+~[");
-    if (unsupported != std::string::npos) return false;
-
     auto colon = s.find(':');
     if (colon != std::string::npos) {
-        if (pseudo) *pseudo = trim(s.substr(colon + 1));
+        if (pseudo) *pseudo = lowerAscii(trim(s.substr(colon + 1)));
         s = trim(s.substr(0, colon));
     }
 
-    if (s == "*") return true;
+    std::vector<std::string> parts;
+    std::vector<char> combinators;
+    splitSelectorChain(s, parts, combinators);
+    if (parts.empty()) return false;
 
-    std::string requiredType;
-    std::string requiredId;
-    std::vector<std::string> requiredClasses;
+    int last = (int)parts.size() - 1;
+    if (!matchCompoundSelector(parts[(size_t)last], className, id, type)) return false;
 
-    size_t i = 0;
-    while (i < s.size()) {
-        if (s[i] == '.') {
-            size_t start = ++i;
-            while (i < s.size() && s[i] != '.' && s[i] != '#') i++;
-            requiredClasses.push_back(s.substr(start, i - start));
-        } else if (s[i] == '#') {
-            size_t start = ++i;
-            while (i < s.size() && s[i] != '.' && s[i] != '#') i++;
-            requiredId = s.substr(start, i - start);
-        } else {
-            size_t start = i;
-            while (i < s.size() && s[i] != '.' && s[i] != '#') i++;
-            requiredType = trim(s.substr(start, i - start));
+    size_t ancestorCursor = 0;
+    for (int i = last - 1; i >= 0; --i) {
+        char combinator = combinators[(size_t)i];
+        if (combinator == '>') {
+            if (ancestorCursor >= ancestors.size()) return false;
+            const auto& ancestor = ancestors[ancestorCursor];
+            if (!matchCompoundSelector(parts[(size_t)i],
+                                       ancestor.className,
+                                       ancestor.id,
+                                       ancestor.type)) {
+                return false;
+            }
+            ancestorCursor++;
+            continue;
         }
+
+        bool found = false;
+        while (ancestorCursor < ancestors.size()) {
+            const auto& ancestor = ancestors[ancestorCursor];
+            ancestorCursor++;
+            if (matchCompoundSelector(parts[(size_t)i],
+                                      ancestor.className,
+                                      ancestor.id,
+                                      ancestor.type)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) return false;
     }
 
-    if (!requiredType.empty() && requiredType != type) return false;
-    if (!requiredId.empty() && requiredId != id) return false;
+    return true;
+}
 
-    for (const auto& cls : requiredClasses) {
-        if (cls.empty() || !hasClassName(className, cls)) return false;
+int StyleSheet::selectorSpecificity(const std::string& selector) {
+    std::string s = trim(selector);
+    if (s.empty() || s == "*") return 0;
+
+    int ids = 0;
+    int classes = 0;
+    int types = 0;
+    bool atTokenStart = true;
+
+    for (size_t i = 0; i < s.size();) {
+        char c = s[i];
+        if (std::isspace((unsigned char)c) || c == '>' || c == '+' || c == '~' || c == ',') {
+            atTokenStart = true;
+            ++i;
+            continue;
+        }
+
+        if (c == '#') {
+            ids++;
+            ++i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
+            atTokenStart = false;
+            continue;
+        }
+
+        if (c == '.') {
+            classes++;
+            ++i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
+            atTokenStart = false;
+            continue;
+        }
+
+        if (c == '[') {
+            classes++;
+            int depth = 1;
+            ++i;
+            while (i < s.size() && depth > 0) {
+                if (s[i] == '[') depth++;
+                else if (s[i] == ']') depth--;
+                ++i;
+            }
+            atTokenStart = false;
+            continue;
+        }
+
+        if (c == ':') {
+            bool pseudoElement = i + 1 < s.size() && s[i + 1] == ':';
+            i += pseudoElement ? 2 : 1;
+            size_t nameStart = i;
+            while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
+            std::string name = lowerAscii(s.substr(nameStart, i - nameStart));
+
+            if (pseudoElement) {
+                types++;
+            } else if (name != "where") {
+                classes++;
+            }
+
+            if (i < s.size() && s[i] == '(') {
+                int depth = 1;
+                ++i;
+                while (i < s.size() && depth > 0) {
+                    if (s[i] == '(') depth++;
+                    else if (s[i] == ')') depth--;
+                    ++i;
+                }
+            }
+            atTokenStart = false;
+            continue;
+        }
+
+        if (c == '*') {
+            ++i;
+            atTokenStart = false;
+            continue;
+        }
+
+        if (atTokenStart && (std::isalpha((unsigned char)c) || c == '_')) {
+            types++;
+        }
+        while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
+        atTokenStart = false;
     }
 
-    return !requiredType.empty() || !requiredId.empty() || !requiredClasses.empty();
+    return ids * 10000 + classes * 100 + types;
+}
+
+bool StyleSheet::stripImportant(std::string& value) {
+    std::string trimmed = trim(value);
+    std::string lower = lowerAscii(trimmed);
+    size_t bang = lower.rfind('!');
+    if (bang != std::string::npos && trim(lower.substr(bang + 1)) == "important") {
+        value = trim(trimmed.substr(0, bang));
+        return true;
+    }
+    value = trimmed;
+    return false;
 }
 
 bool StyleSheet::loadFile(const std::string& path) {
@@ -265,9 +531,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body)
     std::vector<CSSProperty> properties;
 
     // Parse properties
-    std::istringstream stream(body);
-    std::string line;
-    while (std::getline(stream, line, ';')) {
+    for (std::string line : splitDeclarations(body)) {
         line = trim(line);
         if (line.empty()) continue;
 
@@ -275,8 +539,9 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body)
         if (colon == std::string::npos) continue;
 
         CSSProperty prop;
-        prop.name = trim(line.substr(0, colon));
+        prop.name = lowerAscii(trim(line.substr(0, colon)));
         prop.value = trim(line.substr(colon + 1));
+        prop.sourceOrder = nextPropertyOrder_++;
         properties.push_back(prop);
     }
 
@@ -292,6 +557,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body)
 
         CSSRule rule;
         rule.selector = cleanSelector;
+        rule.specificity = selectorSpecificity(cleanSelector);
         for (const auto& prop : properties) {
             if (prop.name.rfind("--", 0) != 0) {
                 rule.properties.push_back(prop);
@@ -346,43 +612,133 @@ std::string StyleSheet::resolveValue(const std::string& value) const {
 Style StyleSheet::resolve(const std::string& className,
                           const std::string& id,
                           const std::string& type) const {
-    std::string key = cacheKey(className, id, type);
+    static const std::vector<CSSSelectorNode> noAncestors;
+    return resolve(className, id, type, noAncestors);
+}
+
+Style StyleSheet::resolve(const std::string& className,
+                          const std::string& id,
+                          const std::string& type,
+                          const std::vector<CSSSelectorNode>& ancestors) const {
+    std::string key = cacheKey(className, id, type, ancestors);
     auto cached = resolvedCache_.find(key);
     if (cached != resolvedCache_.end()) {
         return cached->second;
     }
 
     Style style;
+    applyUserAgentDefaults(style, type);
+
+    struct CascadedProperty {
+        const CSSProperty* property = nullptr;
+        int specificity = 0;
+        bool important = false;
+    };
+
+    auto lessCascadePriority = [](const CascadedProperty& a, const CascadedProperty& b) {
+        if (a.important != b.important) return !a.important && b.important;
+        if (a.specificity != b.specificity) return a.specificity < b.specificity;
+        return a.property->sourceOrder < b.property->sourceOrder;
+    };
+
+    std::vector<CascadedProperty> baseProperties;
+    std::vector<CascadedProperty> hoverProperties;
+    std::vector<CascadedProperty> focusProperties;
+    std::vector<CascadedProperty> activeProperties;
 
     for (auto& rule : rules) {
         std::string pseudo;
-        if (selectorMatches(rule.selector, className, id, type, &pseudo)) {
+        if (selectorMatches(rule.selector, className, id, type, ancestors, &pseudo)) {
             if (!pseudo.empty() && pseudo != "hover" &&
                 pseudo != "focus" && pseudo != "focus-visible" &&
                 pseudo != "active") continue;
 
-            for (auto& prop : rule.properties) {
+            for (const auto& prop : rule.properties) {
                 std::string value = resolveValue(prop.value);
+                CascadedProperty cascaded{&prop, rule.specificity, stripImportant(value)};
                 if (pseudo == "hover") {
-                    mergeHoverProperty(style, prop.name, value);
+                    hoverProperties.push_back(cascaded);
                 } else if (pseudo == "focus" || pseudo == "focus-visible") {
-                    mergeFocusProperty(style, prop.name, value);
+                    focusProperties.push_back(cascaded);
                 } else if (pseudo == "active") {
-                    mergeActiveProperty(style, prop.name, value);
+                    activeProperties.push_back(cascaded);
                 } else {
-                    mergeProperty(style, prop.name, value);
+                    baseProperties.push_back(cascaded);
                 }
             }
         }
     }
 
+    auto applyProperties = [&](std::vector<CascadedProperty>& properties, auto mergeFn) {
+        std::sort(properties.begin(), properties.end(), lessCascadePriority);
+        for (const auto& item : properties) {
+            std::string value = resolveValue(item.property->value);
+            stripImportant(value);
+            mergeFn(style, item.property->name, value);
+        }
+    };
+
+    applyProperties(baseProperties, [](Style& target, const std::string& name, const std::string& value) {
+        StyleSheet::mergeProperty(target, name, value);
+    });
+    applyProperties(hoverProperties, [](Style& target, const std::string& name, const std::string& value) {
+        StyleSheet::mergeHoverProperty(target, name, value);
+    });
+    applyProperties(focusProperties, [](Style& target, const std::string& name, const std::string& value) {
+        StyleSheet::mergeFocusProperty(target, name, value);
+    });
+    applyProperties(activeProperties, [](Style& target, const std::string& name, const std::string& value) {
+        StyleSheet::mergeActiveProperty(target, name, value);
+    });
+
     resolvedCache_[std::move(key)] = style;
     return style;
+}
+
+void StyleSheet::applyUserAgentDefaults(Style& style, const std::string& type) {
+    std::string t = lowerAscii(type);
+    if (t == "h1") {
+        style.display = Display::Block;
+        style.fontSize = 32.0f;
+        style.fontWeight = FontWeight::Bold;
+        style.lineHeight = 1.16f;
+        style.hasFontSize = true;
+        style.hasFontWeight = true;
+        style.hasLineHeight = true;
+    } else if (t == "h2") {
+        style.display = Display::Block;
+        style.fontSize = 24.0f;
+        style.fontWeight = FontWeight::Bold;
+        style.lineHeight = 1.20f;
+        style.hasFontSize = true;
+        style.hasFontWeight = true;
+        style.hasLineHeight = true;
+    } else if (t == "h3") {
+        style.display = Display::Block;
+        style.fontSize = 18.0f;
+        style.fontWeight = FontWeight::Bold;
+        style.lineHeight = 1.24f;
+        style.hasFontSize = true;
+        style.hasFontWeight = true;
+        style.hasLineHeight = true;
+    } else if (t == "p") {
+        style.display = Display::Block;
+        style.lineHeight = 1.45f;
+        style.hasLineHeight = true;
+    } else if (t == "span") {
+        style.display = Display::InlineBlock;
+    } else if (t == "button") {
+        style.cursor = CursorType::Pointer;
+        style.display = Display::Flex;
+    } else if (t == "input") {
+        style.cursor = CursorType::Text;
+    }
 }
 
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "color") {
         style.color = parseColor(value);
+        style.hasColor = true;
     } else if (name == "background-color" || name == "background") {
         if (value.find("linear-gradient") != std::string::npos) {
             style.backgroundGradient = parseGradient(value);
@@ -451,15 +807,19 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.maxHeight = parseCSSValue(value);
     } else if (name == "font-size") {
         style.fontSize = parseFloat(value);
+        style.hasFontSize = true;
     } else if (name == "font-weight") {
         style.fontWeight = (value == "bold" || parseFloat(value) >= 600.0f) ?
             FontWeight::Bold : FontWeight::Normal;
+        style.hasFontWeight = true;
     } else if (name == "text-align") {
         if (value == "center") style.textAlign = TextAlign::Center;
         else if (value == "right") style.textAlign = TextAlign::Right;
         else style.textAlign = TextAlign::Left;
+        style.hasTextAlign = true;
     } else if (name == "line-height") {
         style.lineHeight = parseFloat(value);
+        style.hasLineHeight = true;
     } else if (name == "opacity") {
         style.opacity = parseFloat(value);
     } else if (name == "display") {
@@ -555,6 +915,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.left = parseCSSValue(value);
     } else if (name == "font-family") {
         style.fontFamily = value;
+        style.hasFontFamily = true;
     } else if (name == "scale") {
         style.scale = parseFloat(value);
     } else if (name == "transform") {

@@ -12,6 +12,8 @@
 #include <cstddef>
 #include <utility>
 #include <unordered_map>
+#include <sstream>
+#include <cctype>
 
 // Forward declarations (handles moved to core.h)
 
@@ -65,6 +67,13 @@ inline bool operator!=(const WidgetArenaAllocator<T>& a, const WidgetArenaAlloca
 
 } // namespace detail
 
+class Panel;
+class Text;
+class Button;
+class TextInput;
+class Icon;
+class ProgressBar;
+
 // ============================================================
 //  Widget Base Class
 // ============================================================
@@ -77,6 +86,7 @@ public:
 
     Style style;
     Style computedStyle;  // after CSS resolution
+    std::vector<CSSProperty> inlineProperties; // parsed style="" declarations
     Rect bounds;          // computed layout bounds
 
     bool visible = true;
@@ -141,6 +151,32 @@ public:
         return static_cast<T*>(children.back().get());
     }
 
+    Panel* panel(const std::string& cls = "", size_t reserve = 0);
+    Text* text(const std::string& content, const std::string& cls = "");
+    Button* button(const std::string& label = "",
+                   const std::string& cls = "",
+                   std::function<void()> onClick = {});
+    TextInput* textInput(const std::string& placeholder = "",
+                         const std::string& cls = "");
+    Icon* addIcon(const std::string& glyph, const std::string& cls = "");
+    Icon* icon(const std::string& glyph, const std::string& cls = "");
+    ProgressBar* progress(float value,
+                          const std::string& cls = "",
+                          const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f));
+    Panel* div(const std::string& cls = "", size_t reserve = 0);
+    Text* span(const std::string& content, const std::string& cls = "");
+    Text* p(const std::string& content, const std::string& cls = "");
+    Text* h1(const std::string& content, const std::string& cls = "");
+    Text* h2(const std::string& content, const std::string& cls = "");
+    Text* h3(const std::string& content, const std::string& cls = "");
+    TextInput* input(const std::string& placeholder = "", const std::string& cls = "");
+    Widget* setId(const std::string& value);
+    Widget* classes(const std::string& value);
+    Widget* addClass(const std::string& value);
+    Widget* removeClass(const std::string& value);
+    Widget* toggleClass(const std::string& value, bool enabled);
+    Widget* css(const std::string& declarations);
+
     // Resolve styles from stylesheet
     void resolveStyles(const StyleSheet& sheet);
     void markLayoutDirty();
@@ -153,6 +189,7 @@ public:
 
     // Returns true if any spring animation (hover, scroll) is still settling
     bool hasActiveAnimations() const;
+    void resetTransientMotion();
     virtual void update(const InputState& input);
 
     // Hit-tested cursor for native pointer feedback
@@ -279,6 +316,190 @@ public:
 
     void render(Renderer& renderer) override;
 };
+
+inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
+    auto* widget = add<Panel>(cls);
+    if (reserve > 0) {
+        widget->reserveChildren(reserve);
+    }
+    return widget;
+}
+
+inline Text* Widget::text(const std::string& content, const std::string& cls) {
+    return add<Text>(content, cls);
+}
+
+inline Button* Widget::button(const std::string& label,
+                              const std::string& cls,
+                              std::function<void()> onClick) {
+    auto* widget = add<Button>(label, cls);
+    if (onClick) {
+        widget->onClick = std::move(onClick);
+    }
+    return widget;
+}
+
+inline TextInput* Widget::textInput(const std::string& placeholder, const std::string& cls) {
+    return add<TextInput>(placeholder, cls);
+}
+
+inline Icon* Widget::addIcon(const std::string& glyph, const std::string& cls) {
+    return add<Icon>(glyph, cls);
+}
+
+inline Icon* Widget::icon(const std::string& glyph, const std::string& cls) {
+    return addIcon(glyph, cls);
+}
+
+inline ProgressBar* Widget::progress(float value,
+                                     const std::string& cls,
+                                     const Color& color) {
+    auto* widget = add<ProgressBar>();
+    widget->className = cls;
+    widget->progress = value;
+    widget->barColor = color;
+    return widget;
+}
+
+inline Panel* Widget::div(const std::string& cls, size_t reserve) {
+    return panel(cls, reserve);
+}
+
+inline Text* Widget::span(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "span";
+    return widget;
+}
+
+inline Text* Widget::p(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "p";
+    return widget;
+}
+
+inline Text* Widget::h1(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h1";
+    return widget;
+}
+
+inline Text* Widget::h2(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h2";
+    return widget;
+}
+
+inline Text* Widget::h3(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h3";
+    return widget;
+}
+
+inline TextInput* Widget::input(const std::string& placeholder, const std::string& cls) {
+    return textInput(placeholder, cls);
+}
+
+inline Widget* Widget::setId(const std::string& value) {
+    id = value;
+    markStyleDirtyRecursive();
+    return this;
+}
+
+inline Widget* Widget::classes(const std::string& value) {
+    className = value;
+    markStyleDirtyRecursive();
+    return this;
+}
+
+inline Widget* Widget::addClass(const std::string& value) {
+    if (value.empty()) return this;
+    std::istringstream stream(className);
+    std::string cls;
+    while (stream >> cls) {
+        if (cls == value) return this;
+    }
+    if (!className.empty()) className += ' ';
+    className += value;
+    markStyleDirtyRecursive();
+    return this;
+}
+
+inline Widget* Widget::removeClass(const std::string& value) {
+    if (value.empty() || className.empty()) return this;
+    std::istringstream stream(className);
+    std::string next;
+    std::string updated;
+    while (stream >> next) {
+        if (next == value) continue;
+        if (!updated.empty()) updated += ' ';
+        updated += next;
+    }
+    if (updated != className) {
+        className = std::move(updated);
+        markStyleDirtyRecursive();
+    }
+    return this;
+}
+
+inline Widget* Widget::toggleClass(const std::string& value, bool enabled) {
+    return enabled ? addClass(value) : removeClass(value);
+}
+
+inline Widget* Widget::css(const std::string& declarations) {
+    inlineProperties.clear();
+
+    auto trimLocal = [](const std::string& s) {
+        size_t start = s.find_first_not_of(" \t\n\r");
+        size_t end = s.find_last_not_of(" \t\n\r");
+        return (start == std::string::npos) ? std::string() : s.substr(start, end - start + 1);
+    };
+
+    size_t start = 0;
+    int depth = 0;
+    char quote = 0;
+    bool escaped = false;
+    for (size_t i = 0; i <= declarations.size(); ++i) {
+        char c = (i < declarations.size()) ? declarations[i] : ';';
+        if (quote != 0) {
+            if (escaped) escaped = false;
+            else if (c == '\\') escaped = true;
+            else if (c == quote) quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+            continue;
+        }
+        if (c == '(' || c == '[' || c == '{') depth++;
+        else if ((c == ')' || c == ']' || c == '}') && depth > 0) depth--;
+        if ((c == ';' && depth == 0) || i == declarations.size()) {
+            std::string decl = trimLocal(declarations.substr(start, i - start));
+            start = i + 1;
+            if (decl.empty()) continue;
+            auto colon = decl.find(':');
+            if (colon == std::string::npos) continue;
+            std::string name = trimLocal(decl.substr(0, colon));
+            std::string value = trimLocal(decl.substr(colon + 1));
+            for (char& ch : name) {
+                ch = (char)std::tolower((unsigned char)ch);
+            }
+            std::string loweredValue = value;
+            for (char& ch : loweredValue) {
+                ch = (char)std::tolower((unsigned char)ch);
+            }
+            size_t bang = loweredValue.rfind('!');
+            if (bang != std::string::npos) {
+                std::string tail = trimLocal(loweredValue.substr(bang + 1));
+                if (tail == "important") {
+                    value = trimLocal(value.substr(0, bang));
+                }
+            }
+            inlineProperties.push_back({name, value, 0});
+        }
+    }
+    markStyleDirty();
+    return this;
+}
 
 // ============================================================
 //  StatCard - Dashboard stat card (custom widget)

@@ -17,11 +17,19 @@ namespace FluxUI {
 struct CSSProperty {
     std::string name;
     std::string value;
+    uint32_t sourceOrder = 0;
 };
 
 struct CSSRule {
     std::string selector; // e.g. ".sidebar", "#dashboard", "button"
     std::vector<CSSProperty> properties;
+    int specificity = 0;
+};
+
+struct CSSSelectorNode {
+    std::string className;
+    std::string id;
+    std::string type;
 };
 
 // ============================================================
@@ -42,6 +50,10 @@ public:
     Style resolve(const std::string& className,
                   const std::string& id = "",
                   const std::string& type = "") const;
+    Style resolve(const std::string& className,
+                  const std::string& id,
+                  const std::string& type,
+                  const std::vector<CSSSelectorNode>& ancestors) const;
 
     // Merge a resolved style onto a base style
     static void mergeProperty(Style& style, const std::string& name, const std::string& value);
@@ -49,12 +61,14 @@ public:
 private:
     std::unordered_map<std::string, std::string> variables_;
     mutable std::unordered_map<std::string, Style> resolvedCache_;
+    uint32_t nextPropertyOrder_ = 0;
 
     void parseRule(const std::string& selector, const std::string& body);
     std::string resolveValue(const std::string& value) const;
     static std::string cacheKey(const std::string& className,
                                 const std::string& id,
-                                const std::string& type);
+                                const std::string& type,
+                                const std::vector<CSSSelectorNode>& ancestors = {});
     static std::string trim(const std::string& s);
     static std::vector<std::string> splitTopLevel(const std::string& value, char delimiter);
     static bool selectorMatches(const std::string& selector,
@@ -62,6 +76,16 @@ private:
                                 const std::string& id,
                                 const std::string& type,
                                 std::string* pseudo = nullptr);
+    static bool selectorMatches(const std::string& selector,
+                                const std::string& className,
+                                const std::string& id,
+                                const std::string& type,
+                                const std::vector<CSSSelectorNode>& ancestors,
+                                std::string* pseudo = nullptr);
+    static int selectorSpecificity(const std::string& selector);
+    static std::vector<std::string> splitDeclarations(const std::string& body);
+    static bool stripImportant(std::string& value);
+    static void applyUserAgentDefaults(Style& style, const std::string& type);
     static void mergeHoverProperty(Style& style, const std::string& name, const std::string& value);
     static void mergeFocusProperty(Style& style, const std::string& name, const std::string& value);
     static void mergeActiveProperty(Style& style, const std::string& name, const std::string& value);

@@ -272,7 +272,23 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     }
 
     if (styleDirty) {
-        computedStyle = sheet.resolve(className, id, type);
+        std::vector<CSSSelectorNode> ancestors;
+        ancestors.reserve(8);
+        for (Widget* node = parent; node; node = node->parent) {
+            ancestors.push_back({node->className, node->id, node->type});
+        }
+
+        computedStyle = sheet.resolve(className, id, type, ancestors);
+
+        if (parent) {
+            const Style& inherited = parent->computedStyle;
+            if (!computedStyle.hasColor) computedStyle.color = inherited.color;
+            if (!computedStyle.hasFontSize) computedStyle.fontSize = inherited.fontSize;
+            if (!computedStyle.hasFontWeight) computedStyle.fontWeight = inherited.fontWeight;
+            if (!computedStyle.hasTextAlign) computedStyle.textAlign = inherited.textAlign;
+            if (!computedStyle.hasLineHeight) computedStyle.lineHeight = inherited.lineHeight;
+            if (!computedStyle.hasFontFamily) computedStyle.fontFamily = inherited.fontFamily;
+        }
 
         // Merge inline styles on top of resolved.
         if (style.width.isSet()) computedStyle.width = style.width;
@@ -314,6 +330,9 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.hoverScale >= 0) computedStyle.hoverScale = style.hoverScale;
         if (style.hoverOpacity >= 0) computedStyle.hoverOpacity = style.hoverOpacity;
         if (style.scale != 1.0f) computedStyle.scale = style.scale;
+        for (const auto& prop : inlineProperties) {
+            StyleSheet::mergeProperty(computedStyle, prop.name, prop.value);
+        }
 
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);
         if (nextLayoutSignature != layoutSignature) {
@@ -706,8 +725,13 @@ bool Widget::getScrollBarRects(Rect& track, Rect& thumb) const {
 
 void Widget::clampScroll() {
     float maxScroll = maxScrollY();
-    targetScrollY = std::clamp(targetScrollY, 0.0f, maxScroll);
-    scrollY = std::clamp(scrollY, 0.0f, maxScroll);
+    float clampedTarget = std::clamp(targetScrollY, 0.0f, maxScroll);
+    float clampedScroll = std::clamp(scrollY, 0.0f, maxScroll);
+    if (clampedTarget != targetScrollY || clampedScroll != scrollY) {
+        scrollVelocity = 0.0f;
+    }
+    targetScrollY = clampedTarget;
+    scrollY = clampedScroll;
 }
 
 // ============================================================
@@ -729,6 +753,20 @@ bool Widget::hasActiveAnimations() const {
         if (child && child->hasActiveAnimations()) return true;
     }
     return false;
+}
+
+void Widget::resetTransientMotion() {
+    hoverVelocity = 0.0f;
+    scrollVelocity = 0.0f;
+    targetScrollY = scrollY;
+    clampScroll();
+    scrollbarDragging = false;
+    scrollbarHovered = false;
+    pressed = false;
+
+    for (auto& child : children) {
+        if (child) child->resetTransientMotion();
+    }
 }
 
 void Widget::update(const InputState& input) {
@@ -794,12 +832,14 @@ void Widget::update(const InputState& input) {
             if (thumb.contains(input.mousePos)) {
                 scrollbarDragging = true;
                 scrollbarDragOffset = input.mousePos.y - thumb.y;
+                scrollVelocity = 0.0f;
             } else if (track.contains(input.mousePos)) {
                 float maxScroll = maxScrollY();
                 float travel = std::max(1.0f, track.h - thumb.h);
                 float requestedY = input.mousePos.y - track.y - thumb.h * 0.5f;
                 targetScrollY = std::clamp((requestedY / travel) * maxScroll, 0.0f, maxScroll);
                 scrollY = targetScrollY;
+                scrollVelocity = 0.0f;
                 scrollbarDragging = true;
                 scrollbarDragOffset = thumb.h * 0.5f;
             }
@@ -812,6 +852,7 @@ void Widget::update(const InputState& input) {
                 float requestedY = input.mousePos.y - track.y - scrollbarDragOffset;
                 targetScrollY = std::clamp((requestedY / travel) * maxScroll, 0.0f, maxScroll);
                 scrollY = targetScrollY;
+                scrollVelocity = 0.0f;
             } else {
                 scrollbarDragging = false;
             }
@@ -849,14 +890,12 @@ void Widget::update(const InputState& input) {
             clampScroll();
         }
 
-        // Physics-based smooth scroll (Spring)
-        float sk = 250.0f; // scroll stiffness
-        float sd = 30.0f;  // scroll damping
-        float sForce = -sk * (scrollY - targetScrollY) - sd * scrollVelocity;
-        scrollVelocity += sForce * dt;
-        scrollY += scrollVelocity * dt;
+        float previousScroll = scrollY;
+        float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
+        scrollY += (targetScrollY - scrollY) * scrollBlend;
+        scrollVelocity = (scrollY - previousScroll) / std::max(dt, 0.001f);
 
-        if (std::abs(scrollY - targetScrollY) < 0.05f && std::abs(scrollVelocity) < 0.05f) {
+        if (std::abs(scrollY - targetScrollY) < 0.08f || std::abs(scrollVelocity) < 0.02f) {
             scrollY = targetScrollY;
             scrollVelocity = 0.0f;
         }
@@ -1855,11 +1894,11 @@ void StatCard::render(Renderer& renderer) {
 
     // Title
     renderer.drawText(title, {bounds.x + px, bounds.y + py},
-                      Color(1, 1, 1, 0.66f), 13, FontWeight::Bold);
+                      Color(1, 1, 1, 0.78f), 13, FontWeight::Bold);
 
     // Value (large)
     renderer.drawText(value, {bounds.x + px, bounds.y + py + 22},
-                      Color(1, 1, 1, 0.96f), 32, FontWeight::Bold);
+                      Color(1, 1, 1, 1.0f), 32, FontWeight::Bold);
 
     // Subtitle
     renderer.drawText(subtitle, {bounds.x + px, bounds.y + bounds.h - 35},
@@ -1896,6 +1935,9 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         int w = LOWORD(lParam);
         int h = HIWORD(lParam);
         app->input().windowSize = {(float)w, (float)h};
+        if (app->root()) {
+            app->root()->resetTransientMotion();
+        }
         UIEvent event;
         event.type = UIEventType::WindowResized;
         event.position = app->input().windowSize;
@@ -2178,8 +2220,28 @@ void Application::run() {
 
         auto now = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> elapsed = now - lastTime;
-        input_.deltaTime = elapsed.count();
+        input_.deltaTime = std::clamp(elapsed.count(), 0.001f, 1.0f / 30.0f);
         lastTime = now;
+
+        RECT rect;
+#ifdef _WIN32
+        GetClientRect((HWND)window_, &rect);
+        int w = rect.right - rect.left;
+        int h = rect.bottom - rect.top;
+#else
+        int w = 800, h = 600; // Fallback
+#endif
+        if (w <= 0 || h <= 0) {
+            if (root_) root_->resetTransientMotion();
+            needsRedraw_ = false;
+#ifdef _WIN32
+            WaitMessage();
+#else
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+#endif
+            lastTime = std::chrono::high_resolution_clock::now();
+            continue;
+        }
 
         // Consume the redraw flag
         needsRedraw_ = false;
@@ -2189,14 +2251,6 @@ void Application::run() {
         root_->resolveStyles(stylesheet_);
 
         // Layout
-        RECT rect;
-#ifdef _WIN32
-        GetClientRect((HWND)window_, &rect);
-        int w = rect.right - rect.left;
-        int h = rect.bottom - rect.top;
-#else
-        int w = 800, h = 600; // Fallback
-#endif
         root_->layout({0, 0, (float)w, (float)h});
 
         // Update
