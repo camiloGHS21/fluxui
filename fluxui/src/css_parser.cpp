@@ -1832,8 +1832,19 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
             style.alignItems = AlignItems::Center;
             style.justifyContent = JustifyContent::Center;
         }
-    } else if (name == "gap" || name == "row-gap" || name == "column-gap") {
-        style.gap = parseFloat(value);
+    } else if (name == "gap") {
+        std::istringstream ss(value);
+        std::string first, second;
+        ss >> first >> second;
+        float row = parseLengthPixels(first);
+        float column = second.empty() ? row : parseLengthPixels(second);
+        style.gap = row;
+        style.rowGap = row;
+        style.columnGap = column;
+    } else if (name == "row-gap") {
+        style.rowGap = parseLengthPixels(value);
+    } else if (name == "column-gap") {
+        style.columnGap = parseLengthPixels(value);
     } else if (name == "flex") {
         std::string v = trim(value);
         if (v == "none") {
@@ -1865,20 +1876,26 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
             if (v == "hidden") return Overflow::Hidden;
             if (v == "scroll") return Overflow::Scroll;
             if (v == "auto") return Overflow::Auto;
+            if (v == "clip") return Overflow::Hidden;
             return Overflow::Visible;
         };
-        style.overflow = parseOvf(value);
-        style.overflowX = style.overflow;
-        style.overflowY = style.overflow;
+        std::istringstream ss(value);
+        std::string first, second;
+        ss >> first >> second;
+        style.overflowX = parseOvf(first);
+        style.overflowY = second.empty() ? style.overflowX : parseOvf(second);
+        style.overflow = style.overflowY;
     } else if (name == "overflow-x") {
         if (value == "hidden") style.overflowX = Overflow::Hidden;
         else if (value == "scroll") style.overflowX = Overflow::Scroll;
         else if (value == "auto") style.overflowX = Overflow::Auto;
+        else if (value == "clip") style.overflowX = Overflow::Hidden;
         else style.overflowX = Overflow::Visible;
     } else if (name == "overflow-y") {
         if (value == "hidden") style.overflowY = Overflow::Hidden;
         else if (value == "scroll") style.overflowY = Overflow::Scroll;
         else if (value == "auto") style.overflowY = Overflow::Auto;
+        else if (value == "clip") style.overflowY = Overflow::Hidden;
         else style.overflowY = Overflow::Visible;
         style.overflow = style.overflowY; // backward compat
     } else if (name == "box-shadow") {

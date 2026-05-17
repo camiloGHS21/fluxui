@@ -321,6 +321,9 @@ static size_t layoutStyleSignature(const Style& s) {
     hashFloat(seed, s.flexShrink);
     hashCSSValue(seed, s.flexBasis);
     hashFloat(seed, s.gap);
+    hashFloat(seed, s.rowGap);
+    hashFloat(seed, s.columnGap);
+    hashFloat(seed, s.aspectRatio);
     hashCSSValue(seed, s.width);
     hashCSSValue(seed, s.height);
     hashCSSValue(seed, s.minWidth);
@@ -424,6 +427,9 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             style.margin.bottom > 0 || style.margin.left > 0)
             computedStyle.margin = style.margin;
         if (style.gap > 0) computedStyle.gap = style.gap;
+        if (style.rowGap > 0) computedStyle.rowGap = style.rowGap;
+        if (style.columnGap > 0) computedStyle.columnGap = style.columnGap;
+        if (style.aspectRatio > 0) computedStyle.aspectRatio = style.aspectRatio;
         if (style.flexGrow > 0) computedStyle.flexGrow = style.flexGrow;
         if (style.flexBasis.isSet()) computedStyle.flexBasis = style.flexBasis;
         if (style.borderRadius.maxRadius() > 0) computedStyle.borderRadius = style.borderRadius;
@@ -541,11 +547,16 @@ void Widget::layout(const Rect& parentBounds) {
               (parentBounds.w < 9999 ? parentBounds.w - s.margin.horizontal() : 0);
     float h = s.height.isSet() ? s.height.resolve(parentBounds.h) : 
               (parentBounds.h < 9999 ? parentBounds.h - s.margin.vertical() : 0);
+    bool widthControlsRatio = s.aspectRatio > 0.0f && s.width.isSet() && !s.height.isSet();
+    bool heightControlsRatio = s.aspectRatio > 0.0f && s.height.isSet() && !s.width.isSet();
 
     // Min/max constraints
     if (s.minWidth.isSet()) w = std::max(w, s.minWidth.resolve(parentBounds.w));
     if (s.maxWidth.isSet()) w = std::min(w, s.maxWidth.resolve(parentBounds.w));
+    if (widthControlsRatio) h = w / s.aspectRatio;
     if (s.minHeight.isSet()) h = std::max(h, s.minHeight.resolve(parentBounds.h));
+    if (s.maxHeight.isSet()) h = std::min(h, s.maxHeight.resolve(parentBounds.h));
+    if (heightControlsRatio) w = h * s.aspectRatio;
 
     bounds = {x, y, w, h};
 
@@ -581,7 +592,6 @@ void Widget::layout(const Rect& parentBounds) {
         contentHeight = cy - bounds.y + s.padding.bottom;
     }
 
-    if (s.maxHeight.isSet()) bounds.h = std::min(bounds.h, s.maxHeight.resolve(parentBounds.h));
     layoutPositionedChildren();
     layoutDirty = false;
 }
@@ -595,6 +605,9 @@ void Widget::layoutFlexChildren() {
     float contentY = bounds.y + s.padding.top;
     float contentW = std::max(0.0f, bounds.w - s.padding.horizontal());
     float contentH = std::max(0.0f, bounds.h - s.padding.vertical());
+    float mainGap = isRow
+        ? (s.columnGap > 0.0f ? s.columnGap : s.gap)
+        : (s.rowGap > 0.0f ? s.rowGap : s.gap);
 
     int visibleCount = 0;
     float totalFlexGrow = 0;
@@ -649,7 +662,7 @@ void Widget::layoutFlexChildren() {
         }
     }
 
-    float totalGap = s.gap * std::max(0, visibleCount - 1);
+    float totalGap = mainGap * std::max(0, visibleCount - 1);
     float availableSpace = (isRow ? contentW : contentH) - fixedSize - totalGap;
     availableSpace = std::max(0.0f, availableSpace);
 
@@ -657,7 +670,7 @@ void Widget::layoutFlexChildren() {
     if (totalFlexGrow > 0) mainAxisAvailable = 0;
     
     float startOffset = 0;
-    float gapOffset = s.gap;
+    float gapOffset = mainGap;
 
     if (mainAxisAvailable > 0) {
         switch (s.justifyContent) {
