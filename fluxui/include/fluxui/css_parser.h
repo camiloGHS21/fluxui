@@ -120,7 +120,9 @@ private:
     static void appendClassTokens(const std::string& className, std::vector<std::string>& out);
     static std::vector<std::string> splitDeclarations(const std::string& body);
     static bool stripImportant(std::string& value);
-    static void applyUserAgentDefaults(Style& style, const std::string& type);
+    static void applyUserAgentDefaults(Style& style,
+                                       const std::string& type,
+                                       const std::vector<CSSSelectorNode>& ancestors);
     void collectCandidateRules(const std::string& className,
                                const std::string& id,
                                const std::string& type,
@@ -131,6 +133,7 @@ private:
     static void mergeActiveProperty(Style& style, const std::string& name, const std::string& value);
     static Color parseColor(const std::string& val);
     static CSSValue parseCSSValue(const std::string& val);
+    static float parseLengthPixels(const std::string& val, float emBase = 16.0f);
     static EdgeInsets parseEdgeInsets(const std::string& val);
     static BorderRadius parseBorderRadius(const std::string& val);
     static Border parseBorder(const std::string& val);

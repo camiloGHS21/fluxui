@@ -987,7 +987,7 @@ Style StyleSheet::resolve(const std::string& className,
     }
 
     Style style;
-    applyUserAgentDefaults(style, type);
+    applyUserAgentDefaults(style, type, ancestors);
     style.customProperties = variables_;
     if (inheritedCustomProperties) {
         for (const auto& entry : *inheritedCustomProperties) {
@@ -1425,36 +1425,55 @@ static bool applyCSSWideProperty(Style& target,
     return true;
 }
 
-void StyleSheet::applyUserAgentDefaults(Style& style, const std::string& type) {
+void StyleSheet::applyUserAgentDefaults(Style& style,
+                                        const std::string& type,
+                                        const std::vector<CSSSelectorNode>& ancestors) {
     std::string t = lowerAscii(type);
+    constexpr float medium = 16.0f;
+    auto isSectioning = [](const std::string& nodeType) {
+        std::string lower = lowerAscii(nodeType);
+        return lower == "article" || lower == "aside" ||
+               lower == "nav" || lower == "section";
+    };
+    auto block = [&]() {
+        style.display = Display::Block;
+    };
+    auto heading = [&](float size, float marginEm, bool setFontSize = true) {
+        block();
+        if (setFontSize) {
+            style.fontSize = size;
+            style.hasFontSize = true;
+        }
+        style.margin = EdgeInsets(marginEm * medium, 0.0f, marginEm * medium, 0.0f);
+        style.fontWeight = FontWeight::Bold;
+        style.hasFontWeight = true;
+    };
+
     if (t == "h1") {
-        style.display = Display::Block;
-        style.fontSize = 32.0f;
-        style.fontWeight = FontWeight::Bold;
-        style.lineHeight = 1.16f;
-        style.hasFontSize = true;
-        style.hasFontWeight = true;
-        style.hasLineHeight = true;
+        int sectionDepth = 0;
+        for (const auto& ancestor : ancestors) {
+            if (isSectioning(ancestor.type)) ++sectionDepth;
+        }
+        static constexpr float sizes[] = {2.0f, 1.5f, 1.17f, 1.0f, 0.83f, 0.67f};
+        static constexpr float margins[] = {0.67f, 0.83f, 1.0f, 1.33f, 1.67f, 2.33f};
+        size_t rank = static_cast<size_t>(std::min(sectionDepth, 5));
+        heading(sizes[rank] * medium, margins[rank]);
     } else if (t == "h2") {
-        style.display = Display::Block;
-        style.fontSize = 24.0f;
-        style.fontWeight = FontWeight::Bold;
-        style.lineHeight = 1.20f;
-        style.hasFontSize = true;
-        style.hasFontWeight = true;
-        style.hasLineHeight = true;
+        heading(1.5f * medium, 0.83f);
     } else if (t == "h3") {
-        style.display = Display::Block;
-        style.fontSize = 18.0f;
-        style.fontWeight = FontWeight::Bold;
-        style.lineHeight = 1.24f;
-        style.hasFontSize = true;
-        style.hasFontWeight = true;
-        style.hasLineHeight = true;
+        heading(1.17f * medium, 1.0f);
+    } else if (t == "h4") {
+        heading(medium, 1.33f, false);
+    } else if (t == "h5") {
+        heading(0.83f * medium, 1.67f);
+    } else if (t == "h6") {
+        heading(0.67f * medium, 2.33f);
     } else if (t == "p") {
-        style.display = Display::Block;
-        style.lineHeight = 1.45f;
-        style.hasLineHeight = true;
+        block();
+        style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
+    } else if (t == "div" || t == "article" || t == "aside" || t == "footer" ||
+               t == "header" || t == "main" || t == "nav" || t == "section") {
+        block();
     } else if (t == "span") {
         style.display = Display::InlineBlock;
     } else if (t == "button") {
@@ -1490,35 +1509,35 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "border-color") {
         style.border.color = parseColor(value);
     } else if (name == "border-width") {
-        style.border.width = parseFloat(value);
+        style.border.width = parseLengthPixels(value);
     } else if (name == "outline") {
         style.outline = parseBorder(value);
     } else if (name == "outline-color") {
         style.outline.color = parseColor(value);
     } else if (name == "outline-width") {
-        style.outline.width = parseFloat(value);
+        style.outline.width = parseLengthPixels(value);
     } else if (name == "outline-offset") {
-        style.outlineOffset = parseFloat(value);
+        style.outlineOffset = parseLengthPixels(value);
     } else if (name == "padding") {
         style.padding = parseEdgeInsets(value);
     } else if (name == "padding-top") {
-        style.padding.top = parseFloat(value);
+        style.padding.top = parseLengthPixels(value);
     } else if (name == "padding-right") {
-        style.padding.right = parseFloat(value);
+        style.padding.right = parseLengthPixels(value);
     } else if (name == "padding-bottom") {
-        style.padding.bottom = parseFloat(value);
+        style.padding.bottom = parseLengthPixels(value);
     } else if (name == "padding-left") {
-        style.padding.left = parseFloat(value);
+        style.padding.left = parseLengthPixels(value);
     } else if (name == "margin") {
         style.margin = parseEdgeInsets(value);
     } else if (name == "margin-top") {
-        style.margin.top = parseFloat(value);
+        style.margin.top = parseLengthPixels(value);
     } else if (name == "margin-right") {
-        style.margin.right = parseFloat(value);
+        style.margin.right = parseLengthPixels(value);
     } else if (name == "margin-bottom") {
-        style.margin.bottom = parseFloat(value);
+        style.margin.bottom = parseLengthPixels(value);
     } else if (name == "margin-left") {
-        style.margin.left = parseFloat(value);
+        style.margin.left = parseLengthPixels(value);
     } else if (name == "inset") {
         EdgeInsets inset = parseEdgeInsets(value);
         style.top = CSSValue::px(inset.top);
@@ -1538,7 +1557,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "max-height") {
         style.maxHeight = parseCSSValue(value);
     } else if (name == "font-size") {
-        style.fontSize = parseFloat(value);
+        style.fontSize = parseLengthPixels(value);
         style.hasFontSize = true;
     } else if (name == "font-weight") {
         style.fontWeight = (value == "bold" || parseFloat(value) >= 600.0f) ?
@@ -1884,12 +1903,29 @@ CSSValue StyleSheet::parseCSSValue(const std::string& val) {
     }
 }
 
+float StyleSheet::parseLengthPixels(const std::string& val, float emBase) {
+    std::string v = trim(val);
+    std::string lower = lowerAscii(v);
+    if (lower.empty() || lower == "auto") return 0.0f;
+
+    if (lower.size() > 3 && lower.substr(lower.size() - 3) == "rem") {
+        return parseFloat(lower) * 16.0f;
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "em") {
+        return parseFloat(lower) * emBase;
+    }
+    if (lower.back() == '%') {
+        return parseFloat(lower) * emBase / 100.0f;
+    }
+    return parseFloat(lower);
+}
+
 EdgeInsets StyleSheet::parseEdgeInsets(const std::string& val) {
     std::istringstream ss(val);
     std::vector<float> values;
     std::string token;
     while (ss >> token) {
-        values.push_back(parseFloat(token));
+        values.push_back(parseLengthPixels(token));
     }
 
     if (values.size() == 1) return EdgeInsets(values[0]);

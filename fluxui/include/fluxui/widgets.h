@@ -164,11 +164,21 @@ public:
                           const std::string& cls = "",
                           const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f));
     Panel* div(const std::string& cls = "", size_t reserve = 0);
+    Panel* section(const std::string& cls = "", size_t reserve = 0);
+    Panel* article(const std::string& cls = "", size_t reserve = 0);
+    Panel* aside(const std::string& cls = "", size_t reserve = 0);
+    Panel* header(const std::string& cls = "", size_t reserve = 0);
+    Panel* footer(const std::string& cls = "", size_t reserve = 0);
+    Panel* main(const std::string& cls = "", size_t reserve = 0);
+    Panel* nav(const std::string& cls = "", size_t reserve = 0);
     Text* span(const std::string& content, const std::string& cls = "");
     Text* p(const std::string& content, const std::string& cls = "");
     Text* h1(const std::string& content, const std::string& cls = "");
     Text* h2(const std::string& content, const std::string& cls = "");
     Text* h3(const std::string& content, const std::string& cls = "");
+    Text* h4(const std::string& content, const std::string& cls = "");
+    Text* h5(const std::string& content, const std::string& cls = "");
+    Text* h6(const std::string& content, const std::string& cls = "");
     TextInput* input(const std::string& placeholder = "", const std::string& cls = "");
     Widget* setId(const std::string& value);
     Widget* classes(const std::string& value);
@@ -365,6 +375,48 @@ inline Panel* Widget::div(const std::string& cls, size_t reserve) {
     return panel(cls, reserve);
 }
 
+inline Panel* Widget::section(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "section";
+    return widget;
+}
+
+inline Panel* Widget::article(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "article";
+    return widget;
+}
+
+inline Panel* Widget::aside(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "aside";
+    return widget;
+}
+
+inline Panel* Widget::header(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "header";
+    return widget;
+}
+
+inline Panel* Widget::footer(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "footer";
+    return widget;
+}
+
+inline Panel* Widget::main(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "main";
+    return widget;
+}
+
+inline Panel* Widget::nav(const std::string& cls, size_t reserve) {
+    auto* widget = panel(cls, reserve);
+    widget->type = "nav";
+    return widget;
+}
+
 inline Text* Widget::span(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "span";
@@ -392,6 +444,24 @@ inline Text* Widget::h2(const std::string& content, const std::string& cls) {
 inline Text* Widget::h3(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h3";
+    return widget;
+}
+
+inline Text* Widget::h4(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h4";
+    return widget;
+}
+
+inline Text* Widget::h5(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h5";
+    return widget;
+}
+
+inline Text* Widget::h6(const std::string& content, const std::string& cls) {
+    auto* widget = text(content, cls);
+    widget->type = "h6";
     return widget;
 }
 

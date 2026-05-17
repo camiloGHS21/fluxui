@@ -252,6 +252,7 @@ input:focus {
 
 .page-title {
     height: 35px;
+    margin: 0;
     font-size: 29px;
     line-height: 1.15;
     font-weight: 700;
@@ -260,6 +261,7 @@ input:focus {
 
 .page-subtitle {
     height: 18px;
+    margin: 0;
     font-size: 13px;
     line-height: 1.25;
     color: var(--text-muted);
@@ -446,6 +448,7 @@ input:focus {
 
 .section-title {
     height: 20px;
+    margin: 0;
     font-size: 16px;
     line-height: 1.25;
     font-weight: 700;
@@ -454,6 +457,7 @@ input:focus {
 
 .section-subtitle {
     height: 17px;
+    margin: 0;
     font-size: 12px;
     line-height: 1.25;
     color: var(--text-faint);
