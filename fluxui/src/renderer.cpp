@@ -3119,6 +3119,10 @@ void Renderer::setupInstanceBuffer() {
 // Forward declaration needed by flushRectBatch
 static void setProjection(int projectionLocation, int w, int h, float scale, Vec2 pivot);
 
+void Renderer::flush() {
+    flushRectBatch();
+}
+
 void Renderer::flushRectBatch() {
     if (rectBatch_.empty()) return;
 

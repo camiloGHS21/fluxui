@@ -357,6 +357,49 @@ FluxUIWidget* fluxui_widget_add_stat_card(FluxUIWidget* parent,
         to_color(accent)));
 }
 
+FluxUIWidget* fluxui_widget_add_canvas(FluxUIWidget* parent, const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->add<Canvas>(safe_cstr(class_name)));
+}
+
+void fluxui_canvas_set_on_draw(FluxUIWidget* canvas, FluxUIDrawCallback callback, void* user_data) {
+    auto* c = as<Canvas>(canvas);
+    if (!c) return;
+    if (!callback) {
+        c->onDraw = nullptr;
+        return;
+    }
+    c->onDraw = [canvas, callback, user_data](Renderer& renderer, const Rect& bounds) {
+        FluxUIRect cBounds = { bounds.x, bounds.y, bounds.w, bounds.h };
+        callback(canvas, &renderer, cBounds, user_data);
+    };
+}
+
+void fluxui_draw_rect(void* renderer_ptr, FluxUIRect rect, FluxUIColor color) {
+    if (!renderer_ptr) return;
+    auto* r = reinterpret_cast<Renderer*>(renderer_ptr);
+    r->drawRoundedRect(Rect(rect.x, rect.y, rect.w, rect.h), to_color(color), BorderRadius(0.0f));
+}
+
+void fluxui_draw_text(void* renderer_ptr, const char* text, float x, float y, FluxUIColor color, float font_size) {
+    if (!renderer_ptr) return;
+    auto* r = reinterpret_cast<Renderer*>(renderer_ptr);
+    r->drawText(safe_cstr(text), Vec2(x, y), to_color(color), font_size);
+}
+
+void fluxui_draw_image(void* renderer_ptr, const char* name_or_path, FluxUIRect rect, float opacity) {
+    if (!renderer_ptr) return;
+    auto* r = reinterpret_cast<Renderer*>(renderer_ptr);
+    r->drawImage(safe_cstr(name_or_path), Rect(rect.x, rect.y, rect.w, rect.h), opacity);
+}
+
+void fluxui_renderer_flush(void* renderer_ptr) {
+    if (!renderer_ptr) return;
+    auto* r = reinterpret_cast<Renderer*>(renderer_ptr);
+    r->flush();
+}
+
 void fluxui_widget_set_id(FluxUIWidget* widget, const char* id) {
     Widget* w = as_widget(widget);
     if (!w) return;

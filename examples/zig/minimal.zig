@@ -1,4 +1,4 @@
-const fluxui = @import("fluxui");
+const fluxui = @import("fluxui.zig");
 
 pub fn main() !void {
     const app = try fluxui.App.create();

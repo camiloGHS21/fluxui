@@ -74,6 +74,7 @@ class TextInput;
 class Icon;
 class Image;
 class ProgressBar;
+class Canvas;
 
 // ============================================================
 //  Widget Base Class
@@ -166,6 +167,7 @@ public:
     ProgressBar* progress(float value,
                           const std::string& cls = "",
                           const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f));
+    Canvas* canvas(const std::string& cls = "");
     Panel* div(const std::string& cls = "", size_t reserve = 0);
     Panel* section(const std::string& cls = "", size_t reserve = 0);
     Panel* article(const std::string& cls = "", size_t reserve = 0);
@@ -409,6 +411,20 @@ public:
     void render(Renderer& renderer) override;
 };
 
+// ============================================================
+//  Canvas - Custom rendering context for 2D/3D games
+// ============================================================
+
+class Canvas : public Widget {
+public:
+    std::function<void(Renderer&, const Rect&)> onDraw;
+
+    Canvas() { type = "canvas"; }
+    Canvas(const std::string& cls) { type = "canvas"; className = cls; }
+
+    void render(Renderer& renderer) override;
+};
+
 inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     auto* widget = add<Panel>(cls);
     if (reserve > 0) {
@@ -459,6 +475,10 @@ inline ProgressBar* Widget::progress(float value,
     widget->progress = value;
     widget->barColor = color;
     return widget;
+}
+
+inline Canvas* Widget::canvas(const std::string& cls) {
+    return add<Canvas>(cls);
 }
 
 inline Panel* Widget::div(const std::string& cls, size_t reserve) {

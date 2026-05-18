@@ -2433,6 +2433,29 @@ void ProgressBar::render(Renderer& renderer) {
 }
 
 // ============================================================
+//  Canvas
+// ============================================================
+
+void Canvas::render(Renderer& renderer) {
+    if (!canPaintWidget(this)) return;
+
+    auto& s = computedStyle;
+    if (s.backgroundColor.a > 0) {
+        renderer.drawRoundedRect(bounds, s.backgroundColor, s.borderRadius);
+    }
+
+    if (onDraw) {
+        renderer.flush();
+        renderer.pushScissor(bounds);
+        onDraw(renderer, bounds);
+        renderer.flush();
+        renderer.popScissor();
+    }
+
+    renderChildren(renderer);
+}
+
+// ============================================================
 //  StatCard
 // ============================================================
 

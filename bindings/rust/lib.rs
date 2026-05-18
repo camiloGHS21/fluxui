@@ -45,6 +45,8 @@ pub mod sys {
         extern "C" fn(widget: *mut FluxUIWidget, user_data: *mut c_void);
     pub type FluxUIUpdateCallback =
         extern "C" fn(app: *mut FluxUIApp, delta_time: f32, user_data: *mut c_void);
+    pub type FluxUIDrawCallback =
+        extern "C" fn(widget: *mut FluxUIWidget, renderer_ptr: *mut c_void, bounds: FluxUIRect, user_data: *mut c_void);
     pub type FluxUIRenderBackend = i32;
 
     pub const FLUXUI_BACKEND_AUTO: FluxUIRenderBackend = 0;
@@ -130,6 +132,31 @@ pub mod sys {
             subtitle: *const c_char,
             accent: FluxUIColor,
         ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_canvas(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_canvas_set_on_draw(
+            canvas: *mut FluxUIWidget,
+            callback: Option<FluxUIDrawCallback>,
+            user_data: *mut c_void,
+        );
+        pub fn fluxui_draw_rect(renderer_ptr: *mut c_void, rect: FluxUIRect, color: FluxUIColor);
+        pub fn fluxui_draw_text(
+            renderer_ptr: *mut c_void,
+            text: *const c_char,
+            x: f32,
+            y: f32,
+            color: FluxUIColor,
+            font_size: f32,
+        );
+        pub fn fluxui_draw_image(
+            renderer_ptr: *mut c_void,
+            name_or_path: *const c_char,
+            rect: FluxUIRect,
+            opacity: f32,
+        );
+        pub fn fluxui_renderer_flush(renderer_ptr: *mut c_void);
 
         pub fn fluxui_widget_set_id(widget: *mut FluxUIWidget, id: *const c_char);
         pub fn fluxui_widget_set_class(widget: *mut FluxUIWidget, class_name: *const c_char);
@@ -370,6 +397,31 @@ impl Widget {
         }))
     }
 
+    pub fn add_canvas(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_canvas(
+                self.raw.as_ptr(),
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
+    pub fn set_on_draw<F>(self, callback: F)
+    where
+        F: Fn(Widget, &Renderer, Rect) + 'static,
+    {
+        let boxed = Box::new(callback);
+        let ptr = Box::into_raw(boxed);
+        unsafe {
+            sys::fluxui_canvas_set_on_draw(
+                self.raw.as_ptr(),
+                Some(rust_draw_callback::<F>),
+                ptr as *mut c_void,
+            );
+        }
+    }
+
     pub fn clear_children(self) {
         unsafe { sys::fluxui_widget_clear_children(self.raw.as_ptr()) }
     }
@@ -420,4 +472,44 @@ fn widget_from_ptr(raw: *mut sys::FluxUIWidget) -> Option<Widget> {
 
 pub unsafe fn input_value<'a>(widget: Widget) -> &'a CStr {
     CStr::from_ptr(sys::fluxui_text_input_get_value(widget.raw.as_ptr()))
+}
+
+pub struct Renderer {
+    raw: *mut std::ffi::c_void,
+}
+
+impl Renderer {
+    pub fn draw_rect(&self, rect: Rect, color: Color) {
+        unsafe { sys::fluxui_draw_rect(self.raw, rect, color) }
+    }
+
+    pub fn draw_text(&self, text: &str, x: f32, y: f32, color: Color, font_size: f32) -> Result<()> {
+        let text = cstring(text)?;
+        unsafe { sys::fluxui_draw_text(self.raw, text.as_ptr(), x, y, color, font_size) }
+        Ok(())
+    }
+
+    pub fn draw_image(&self, name_or_path: &str, rect: Rect, opacity: f32) -> Result<()> {
+        let name_or_path = cstring(name_or_path)?;
+        unsafe { sys::fluxui_draw_image(self.raw, name_or_path.as_ptr(), rect, opacity) }
+        Ok(())
+    }
+
+    pub fn flush(&self) {
+        unsafe { sys::fluxui_renderer_flush(self.raw) }
+    }
+}
+
+pub extern "C" fn rust_draw_callback<F>(
+    widget: *mut sys::FluxUIWidget,
+    renderer_ptr: *mut c_void,
+    bounds: sys::FluxUIRect,
+    user_data: *mut c_void,
+) where
+    F: Fn(Widget, &Renderer, Rect) + 'static,
+{
+    let closure = unsafe { &*(user_data as *const F) };
+    let w = Widget { raw: NonNull::new(widget).unwrap() };
+    let r = Renderer { raw: renderer_ptr };
+    closure(w, &r, bounds);
 }

@@ -228,7 +228,7 @@ endfunction()
 configure_fluxui_target(fluxui)
 target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC)
 
-option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" OFF)
+option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" ON)
 if(FLUXUI_BUILD_SHARED)
     add_library(fluxui_shared SHARED
         ${FLUXUI_SOURCES}
@@ -250,6 +250,36 @@ target_link_libraries(DataLeakGuard PRIVATE
 )
 
 target_include_directories(DataLeakGuard PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+
+# ============================================================
+#  2D Retro Game Example
+# ============================================================
+add_executable(game_2d
+    examples/game_2d/main.cpp
+)
+
+target_link_libraries(game_2d PRIVATE
+    fluxui
+)
+
+target_include_directories(game_2d PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+
+# ============================================================
+#  3D Game Example
+# ============================================================
+add_executable(game_3d
+    examples/game_3d/main.cpp
+)
+
+target_link_libraries(game_3d PRIVATE
+    fluxui
+)
+
+target_include_directories(game_3d PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 

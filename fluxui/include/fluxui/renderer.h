@@ -199,6 +199,7 @@ public:
     void popTranslation();
     void pushScale(float scale, const Vec2& pivot);
     void popScale();
+    void flush();
     Vec2 getTranslation() const { return translation_; }
 
     // Measurement

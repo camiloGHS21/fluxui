@@ -20,6 +20,20 @@ extern "C" {
 typedef struct FluxUIApp FluxUIApp;
 typedef struct FluxUIWidget FluxUIWidget;
 
+typedef struct FluxUIColor {
+    float r;
+    float g;
+    float b;
+    float a;
+} FluxUIColor;
+
+typedef struct FluxUIRect {
+    float x;
+    float y;
+    float w;
+    float h;
+} FluxUIRect;
+
 typedef enum FluxUIRenderBackend {
     FLUXUI_BACKEND_AUTO = 0,
     FLUXUI_BACKEND_VULKAN = 1,
@@ -36,6 +50,7 @@ typedef void (*FluxUIRouteCallback)(FluxUIApp* app,
                                     FluxUIWidget* container,
                                     const char* route,
                                     void* user_data);
+typedef void (*FluxUIDrawCallback)(FluxUIWidget* widget, void* renderer_ptr, FluxUIRect bounds, void* user_data);
 
 typedef enum FluxUIEventType {
     FLUXUI_EVENT_ANY = 0,
@@ -74,20 +89,6 @@ typedef struct FluxUIEvent {
 typedef void (*FluxUIEventCallback)(FluxUIApp* app,
                                     const FluxUIEvent* event,
                                     void* user_data);
-
-typedef struct FluxUIColor {
-    float r;
-    float g;
-    float b;
-    float a;
-} FluxUIColor;
-
-typedef struct FluxUIRect {
-    float x;
-    float y;
-    float w;
-    float h;
-} FluxUIRect;
 
 // Application lifecycle
 FLUXUI_API FluxUIApp* fluxui_app_create(void);
@@ -152,6 +153,14 @@ FLUXUI_API FluxUIWidget* fluxui_widget_add_stat_card(FluxUIWidget* parent,
                                                      const char* value,
                                                      const char* subtitle,
                                                      FluxUIColor accent);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_canvas(FluxUIWidget* parent, const char* class_name);
+FLUXUI_API void fluxui_canvas_set_on_draw(FluxUIWidget* canvas, FluxUIDrawCallback callback, void* user_data);
+
+// Canvas 2D Drawing Primitives (usable inside draw callback)
+FLUXUI_API void fluxui_draw_rect(void* renderer_ptr, FluxUIRect rect, FluxUIColor color);
+FLUXUI_API void fluxui_draw_text(void* renderer_ptr, const char* text, float x, float y, FluxUIColor color, float font_size);
+FLUXUI_API void fluxui_draw_image(void* renderer_ptr, const char* name_or_path, FluxUIRect rect, float opacity);
+FLUXUI_API void fluxui_renderer_flush(void* renderer_ptr);
 
 // Widget state
 FLUXUI_API void fluxui_widget_set_id(FluxUIWidget* widget, const char* id);
