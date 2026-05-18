@@ -99,11 +99,12 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     Window root = RootWindow(g_display, screen);
 
     XSetWindowAttributes attributes;
+    attributes.background_pixmap = None;
     attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | 
                             ButtonPressMask | ButtonReleaseMask | PointerMotionMask | 
                             StructureNotifyMask | FocusChangeMask;
 
-    unsigned long mask = CWEventMask;
+    unsigned long mask = CWEventMask | CWBackPixmap;
 
     Window window = XCreateWindow(g_display, root, 0, 0, 
                                   config.width, config.height, 0, 

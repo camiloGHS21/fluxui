@@ -86,6 +86,7 @@ static int cocoaKeyToVK(unsigned short keyCode) {
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)wantsUpdateLayer { return YES; }
 - (BOOL)isFlipped { return YES; } // Match top-left origin like Win32/X11
+- (BOOL)isOpaque { return YES; }  // Prevent background blend/flicker
 @end
 
 @interface FluxUIWindowDelegate : NSObject <NSWindowDelegate>
