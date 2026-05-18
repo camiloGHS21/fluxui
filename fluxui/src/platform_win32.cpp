@@ -42,6 +42,15 @@ static LRESULT CALLBACK FluxUI_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
         Internal_OnWindowEvent(app, msg, wParam, lParam);
     }
     
+    if (msg == WM_ERASEBKGND) {
+        return 1; // Prevent background clear flicker
+    }
+    if (msg == WM_PAINT) {
+        PAINTSTRUCT ps;
+        BeginPaint(hwnd, &ps);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
     if (msg == WM_DESTROY) {
         PostQuitMessage(0);
         return 0;
