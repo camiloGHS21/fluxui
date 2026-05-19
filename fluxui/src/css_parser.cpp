@@ -1486,6 +1486,9 @@ static bool applyCSSWideProperty(Style& target,
         target.hasObjectPosition = source.hasObjectPosition;
     } else if (name == "word-break") {
         target.wordBreak = source.wordBreak;
+    } else if (name == "vertical-align") {
+        target.verticalAlign = source.verticalAlign;
+        target.hasVerticalAlign = source.hasVerticalAlign;
     } else {
         return false;
     }
@@ -1608,11 +1611,27 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.backgroundColor = Color(1.0f, 1.0f, 0.0f, 1.0f);
         style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
         style.hasColor = true;
+    } else if (t == "big") {
+        inlineBox();
+        style.fontSize = 19.2f;
+        style.hasFontSize = true;
     } else if (t == "i" || t == "cite" || t == "em" ||
                t == "var" || t == "dfn") {
         inlineBox();
         style.fontStyle = FontStyle::Italic;
         style.hasFontStyle = true;
+    } else if (t == "sub") {
+        inlineBox();
+        style.verticalAlign = VerticalAlign::Sub;
+        style.hasVerticalAlign = true;
+        style.fontSize = 13.333f;
+        style.hasFontSize = true;
+    } else if (t == "sup") {
+        inlineBox();
+        style.verticalAlign = VerticalAlign::Super;
+        style.hasVerticalAlign = true;
+        style.fontSize = 13.333f;
+        style.hasFontSize = true;
     } else if (t == "small") {
         inlineBox();
         style.fontSize = 13.333f;
@@ -2306,6 +2325,17 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else if (value == "break-word") style.wordBreak = WordBreak::BreakWord;
         else style.wordBreak = WordBreak::Normal;
         style.hasWordBreak = true;
+    } else if (name == "vertical-align") {
+        std::string lower = lowerAscii(value);
+        if (lower == "sub") style.verticalAlign = VerticalAlign::Sub;
+        else if (lower == "super") style.verticalAlign = VerticalAlign::Super;
+        else if (lower == "middle") style.verticalAlign = VerticalAlign::Middle;
+        else if (lower == "top") style.verticalAlign = VerticalAlign::Top;
+        else if (lower == "bottom") style.verticalAlign = VerticalAlign::Bottom;
+        else if (lower == "text-top") style.verticalAlign = VerticalAlign::TextTop;
+        else if (lower == "text-bottom") style.verticalAlign = VerticalAlign::TextBottom;
+        else style.verticalAlign = VerticalAlign::Baseline;
+        style.hasVerticalAlign = true;
     }
     // Hover states (custom extension: hover-background-color, hover-color)
     else if (name == "hover-background-color" || name == "--hover-bg") {

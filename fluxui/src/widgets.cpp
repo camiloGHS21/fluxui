@@ -503,6 +503,7 @@ static size_t layoutStyleSignature(const Style& s) {
     hashCombine(seed, std::hash<int>{}((int)s.fontWeight));
     hashCombine(seed, std::hash<int>{}((int)s.fontStyle));
     hashCombine(seed, std::hash<int>{}((int)s.textAlign));
+    hashCombine(seed, std::hash<int>{}((int)s.verticalAlign));
     return seed;
 }
 
@@ -601,6 +602,10 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             computedStyle.objectPositionOffset = style.objectPositionOffset;
             computedStyle.hasObjectPosition = true;
         }
+        if (style.hasVerticalAlign) {
+            computedStyle.verticalAlign = style.verticalAlign;
+            computedStyle.hasVerticalAlign = true;
+        }
         if (style.hasBoxSizing || style.boxSizing != BoxSizing::ContentBox) {
             computedStyle.boxSizing = style.boxSizing;
             computedStyle.hasBoxSizing = true;
@@ -664,6 +669,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                 if (prop.name == "font-family") { computedStyle.fontFamily = source.fontFamily; computedStyle.hasFontFamily = true; continue; }
                 if (prop.name == "line-height") { computedStyle.lineHeight = source.lineHeight; computedStyle.hasLineHeight = true; continue; }
                 if (prop.name == "text-align") { computedStyle.textAlign = source.textAlign; computedStyle.hasTextAlign = true; continue; }
+                if (prop.name == "vertical-align") { computedStyle.verticalAlign = source.verticalAlign; computedStyle.hasVerticalAlign = source.hasVerticalAlign; continue; }
                 if (prop.name == "display") { computedStyle.display = source.display; continue; }
                 if (prop.name == "position") { computedStyle.position = source.position; continue; }
                 if (prop.name == "opacity") { computedStyle.opacity = source.opacity; continue; }
@@ -1656,6 +1662,11 @@ void Text::render(Renderer& renderer) {
         std::max(0.0f, bounds.w - computedStyle.padding.horizontal()),
         std::max(0.0f, bounds.h - computedStyle.padding.vertical())
     };
+    if (computedStyle.verticalAlign == VerticalAlign::Super) {
+        textRect.y -= computedStyle.fontSize * 0.32f;
+    } else if (computedStyle.verticalAlign == VerticalAlign::Sub) {
+        textRect.y += computedStyle.fontSize * 0.22f;
+    }
 
     std::string displayText = applyTextTransform(content, computedStyle.textTransform);
     std::string fontName = renderFontName(computedStyle);
