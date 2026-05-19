@@ -660,11 +660,54 @@ struct SvgCanvas {
     float viewY = 0.0f;
     float scaleX = 1.0f;
     float scaleY = 1.0f;
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
 };
 
 Vec2 svgMapPoint(const SvgCanvas& canvas, float x, float y) {
-    return {(x - canvas.viewX) * canvas.scaleX,
-            (y - canvas.viewY) * canvas.scaleY};
+    return {canvas.offsetX + (x - canvas.viewX) * canvas.scaleX,
+            canvas.offsetY + (y - canvas.viewY) * canvas.scaleY};
+}
+
+struct SvgAspectRatio {
+    bool none = false;
+    bool slice = false;
+    float alignX = 0.5f;
+    float alignY = 0.5f;
+};
+
+SvgAspectRatio parseSvgPreserveAspectRatio(const std::string& rawValue) {
+    SvgAspectRatio result;
+    std::string value = lowerSvgString(trimSvgString(rawValue));
+    if (value.empty()) return result;
+
+    std::istringstream stream(value);
+    std::string token;
+    while (stream >> token) {
+        if (token == "defer") continue;
+        if (token == "none") {
+            result.none = true;
+            result.alignX = 0.0f;
+            result.alignY = 0.0f;
+            continue;
+        }
+        if (token == "slice") {
+            result.slice = true;
+            continue;
+        }
+        if (token == "meet") {
+            result.slice = false;
+            continue;
+        }
+        if (token.find("xmin") != std::string::npos) result.alignX = 0.0f;
+        else if (token.find("xmax") != std::string::npos) result.alignX = 1.0f;
+        else if (token.find("xmid") != std::string::npos) result.alignX = 0.5f;
+
+        if (token.find("ymin") != std::string::npos) result.alignY = 0.0f;
+        else if (token.find("ymax") != std::string::npos) result.alignY = 1.0f;
+        else if (token.find("ymid") != std::string::npos) result.alignY = 0.5f;
+    }
+    return result;
 }
 
 void svgBlendPixel(SvgCanvas& canvas, int x, int y, Color color, float coverage = 1.0f) {
@@ -1016,8 +1059,21 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
     canvas.height = outH;
     canvas.viewX = viewX;
     canvas.viewY = viewY;
-    canvas.scaleX = outW / std::max(1.0f, viewW);
-    canvas.scaleY = outH / std::max(1.0f, viewH);
+    SvgAspectRatio aspect = parseSvgPreserveAspectRatio(
+        svgAttr(root, "preserveaspectratio", "xMidYMid meet"));
+    float rawScaleX = outW / std::max(1.0f, viewW);
+    float rawScaleY = outH / std::max(1.0f, viewH);
+    if (aspect.none) {
+        canvas.scaleX = rawScaleX;
+        canvas.scaleY = rawScaleY;
+    } else {
+        float uniformScale = aspect.slice ? std::max(rawScaleX, rawScaleY)
+                                          : std::min(rawScaleX, rawScaleY);
+        canvas.scaleX = uniformScale;
+        canvas.scaleY = uniformScale;
+        canvas.offsetX = (outW - viewW * uniformScale) * aspect.alignX;
+        canvas.offsetY = (outH - viewH * uniformScale) * aspect.alignY;
+    }
     std::string inheritedFill = svgAttr(root, "fill", "black");
     std::string inheritedStroke = svgAttr(root, "stroke", "none");
     std::string inheritedOpacity = svgAttr(root, "opacity", "1");

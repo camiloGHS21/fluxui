@@ -308,6 +308,7 @@ struct Style {
     ObjectFit objectFit = ObjectFit::Fill;
     bool hasObjectFit = false;
     Vec2 objectPosition = {0.5f, 0.5f};
+    Vec2 objectPositionOffset = {0.0f, 0.0f};
     bool hasObjectPosition = false;
 
     // Dimensions

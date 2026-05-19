@@ -463,6 +463,10 @@ static size_t layoutStyleSignature(const Style& s) {
     hashFloat(seed, s.columnGap);
     hashFloat(seed, s.aspectRatio);
     hashCombine(seed, std::hash<int>{}((int)s.objectFit));
+    hashFloat(seed, s.objectPosition.x);
+    hashFloat(seed, s.objectPosition.y);
+    hashFloat(seed, s.objectPositionOffset.x);
+    hashFloat(seed, s.objectPositionOffset.y);
     hashCSSValue(seed, s.width);
     hashCSSValue(seed, s.height);
     hashCSSValue(seed, s.minWidth);
@@ -573,6 +577,11 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             computedStyle.objectFit = style.objectFit;
             computedStyle.hasObjectFit = true;
         }
+        if (style.hasObjectPosition) {
+            computedStyle.objectPosition = style.objectPosition;
+            computedStyle.objectPositionOffset = style.objectPositionOffset;
+            computedStyle.hasObjectPosition = true;
+        }
         if (style.hasBoxSizing || style.boxSizing != BoxSizing::ContentBox) {
             computedStyle.boxSizing = style.boxSizing;
             computedStyle.hasBoxSizing = true;
@@ -645,6 +654,17 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                     continue;
                 }
                 if (prop.name == "border") { computedStyle.border = source.border; continue; }
+                if (prop.name == "object-fit") {
+                    computedStyle.objectFit = source.objectFit;
+                    computedStyle.hasObjectFit = source.hasObjectFit;
+                    continue;
+                }
+                if (prop.name == "object-position") {
+                    computedStyle.objectPosition = source.objectPosition;
+                    computedStyle.objectPositionOffset = source.objectPositionOffset;
+                    computedStyle.hasObjectPosition = source.hasObjectPosition;
+                    continue;
+                }
             }
             StyleSheet::mergeProperty(computedStyle,
                                       prop.name,
@@ -2370,20 +2390,26 @@ void Image::render(Renderer& renderer) {
         }
         draw.w = natural.x * scale;
         draw.h = natural.y * scale;
-        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x;
-        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y;
+        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x +
+                 computedStyle.objectPositionOffset.x;
+        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y +
+                 computedStyle.objectPositionOffset.y;
     } else if (computedStyle.objectFit == ObjectFit::Cover) {
         float scale = std::max(scaleX, scaleY);
         draw.w = natural.x * scale;
         draw.h = natural.y * scale;
-        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x;
-        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y;
+        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x +
+                 computedStyle.objectPositionOffset.x;
+        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y +
+                 computedStyle.objectPositionOffset.y;
         renderer.pushScissor(content);
     } else if (computedStyle.objectFit == ObjectFit::None) {
         draw.w = natural.x;
         draw.h = natural.y;
-        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x;
-        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y;
+        draw.x = content.x + (content.w - draw.w) * computedStyle.objectPosition.x +
+                 computedStyle.objectPositionOffset.x;
+        draw.y = content.y + (content.h - draw.h) * computedStyle.objectPosition.y +
+                 computedStyle.objectPositionOffset.y;
         renderer.pushScissor(content);
     }
 

@@ -1475,6 +1475,10 @@ static bool applyCSSWideProperty(Style& target,
     } else if (name == "object-fit") {
         target.objectFit = source.objectFit;
         target.hasObjectFit = source.hasObjectFit;
+    } else if (name == "object-position") {
+        target.objectPosition = source.objectPosition;
+        target.objectPositionOffset = source.objectPositionOffset;
+        target.hasObjectPosition = source.hasObjectPosition;
     } else if (name == "word-break") {
         target.wordBreak = source.wordBreak;
     } else {
@@ -1632,6 +1636,146 @@ static void normalizeOverflowAxes(Style& style) {
     style.overflowX = normalizeOverflowAxis(x, y);
     style.overflowY = normalizeOverflowAxis(y, x);
     style.overflow = style.overflowY;
+}
+
+struct ObjectPositionAxis {
+    float fraction = 0.5f;
+    float offset = 0.0f;
+    bool set = false;
+};
+
+static bool isObjectPositionLength(const std::string& token) {
+    if (token.empty()) return false;
+    char first = token[0];
+    return first == '-' || first == '+' || first == '.' ||
+           std::isdigit((unsigned char)first);
+}
+
+static bool setObjectPositionKeyword(const std::string& token,
+                                     ObjectPositionAxis& x,
+                                     ObjectPositionAxis& y) {
+    if (token == "left") {
+        x.fraction = 0.0f;
+        x.offset = 0.0f;
+        x.set = true;
+        return true;
+    }
+    if (token == "right") {
+        x.fraction = 1.0f;
+        x.offset = 0.0f;
+        x.set = true;
+        return true;
+    }
+    if (token == "top") {
+        y.fraction = 0.0f;
+        y.offset = 0.0f;
+        y.set = true;
+        return true;
+    }
+    if (token == "bottom") {
+        y.fraction = 1.0f;
+        y.offset = 0.0f;
+        y.set = true;
+        return true;
+    }
+    if (token == "center") {
+        if (!x.set) {
+            x.fraction = 0.5f;
+            x.offset = 0.0f;
+            x.set = true;
+        } else {
+            y.fraction = 0.5f;
+            y.offset = 0.0f;
+            y.set = true;
+        }
+        return true;
+    }
+    return false;
+}
+
+static float parseObjectPositionFloat(const std::string& token) {
+    char* end = nullptr;
+    float value = std::strtof(token.c_str(), &end);
+    return end == token.c_str() ? 0.0f : value;
+}
+
+static float parseObjectPositionLengthPixels(const std::string& token) {
+    if (token.size() > 3 && token.substr(token.size() - 3) == "rem") {
+        return parseObjectPositionFloat(token) * 16.0f;
+    }
+    if (token.size() > 2 && token.substr(token.size() - 2) == "em") {
+        return parseObjectPositionFloat(token) * 16.0f;
+    }
+    return parseObjectPositionFloat(token);
+}
+
+static void setObjectPositionLength(const std::string& token,
+                                    ObjectPositionAxis& axis,
+                                    bool fromEnd) {
+    if (!token.empty() && token.back() == '%') {
+        axis.fraction = std::clamp(parseObjectPositionFloat(token) / 100.0f, -1.0f, 2.0f);
+        axis.offset = 0.0f;
+    } else {
+        float px = parseObjectPositionLengthPixels(token);
+        axis.fraction = fromEnd ? 1.0f : 0.0f;
+        axis.offset = fromEnd ? -px : px;
+    }
+    axis.set = true;
+}
+
+static bool parseObjectPosition(const std::string& value,
+                                Vec2& position,
+                                Vec2& offset) {
+    std::istringstream ss(value);
+    std::vector<std::string> tokens;
+    std::string token;
+    while (ss >> token) tokens.push_back(lowerAscii(token));
+    if (tokens.empty() || tokens.size() > 4) return false;
+
+    ObjectPositionAxis x;
+    ObjectPositionAxis y;
+    bool sawValidToken = false;
+
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const std::string& current = tokens[i];
+        bool horizontalEnd = current == "right";
+        bool verticalEnd = current == "bottom";
+        bool isEdge = current == "left" || current == "right" ||
+                      current == "top" || current == "bottom";
+        if (isEdge) {
+            setObjectPositionKeyword(current, x, y);
+            sawValidToken = true;
+            if (i + 1 < tokens.size() && isObjectPositionLength(tokens[i + 1])) {
+                if (current == "left" || current == "right") {
+                    setObjectPositionLength(tokens[++i], x, horizontalEnd);
+                } else {
+                    setObjectPositionLength(tokens[++i], y, verticalEnd);
+                }
+                sawValidToken = true;
+            }
+            continue;
+        }
+        if (current == "center") {
+            setObjectPositionKeyword(current, x, y);
+            sawValidToken = true;
+            continue;
+        }
+        if (isObjectPositionLength(current)) {
+            if (!x.set) {
+                setObjectPositionLength(current, x, false);
+            } else {
+                setObjectPositionLength(current, y, false);
+            }
+            sawValidToken = true;
+            continue;
+        }
+        return false;
+    }
+
+    if (!sawValidToken) return false;
+    position = {x.set ? x.fraction : 0.5f, y.set ? y.fraction : 0.5f};
+    offset = {x.set ? x.offset : 0.0f, y.set ? y.offset : 0.0f};
+    return true;
 }
 
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value) {
@@ -2063,24 +2207,11 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else style.objectFit = ObjectFit::Fill;
         style.hasObjectFit = true;
     } else if (name == "object-position") {
-        std::istringstream ss(value);
-        std::string t;
-        std::vector<std::string> tokens;
-        while (ss >> t) tokens.push_back(t);
-        auto parsePos = [](const std::string& val) {
-            if (val == "left" || val == "top") return 0.0f;
-            if (val == "center") return 0.5f;
-            if (val == "right" || val == "bottom") return 1.0f;
-            if (val.back() == '%') return std::stof(val) / 100.0f;
-            return std::stof(val);
-        };
-        if (tokens.size() == 2) {
-            style.objectPosition.x = parsePos(tokens[0]);
-            style.objectPosition.y = parsePos(tokens[1]);
-            style.hasObjectPosition = true;
-        } else if (tokens.size() == 1) {
-            float p = parsePos(tokens[0]);
-            style.objectPosition = {p, p};
+        Vec2 position;
+        Vec2 offset;
+        if (parseObjectPosition(value, position, offset)) {
+            style.objectPosition = position;
+            style.objectPositionOffset = offset;
             style.hasObjectPosition = true;
         }
     } else if (name == "row-gap") {
