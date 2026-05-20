@@ -163,6 +163,7 @@ public:
     bool loadDefaultFont(float size, const std::string& name = "default");
     bool loadFont(const std::string& path, float size, const std::string& name = "default");
     bool loadFontFromMemory(const unsigned char* data, int dataSize, float size, const std::string& name = "default");
+    void warmFontCache(float size, const std::string& name = "default");
     void warmFontCache(const std::vector<float>& sizes, const std::string& name = "default");
     void releaseFontSources();
 

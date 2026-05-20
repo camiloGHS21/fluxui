@@ -3004,7 +3004,10 @@ void Application::run() {
             break;
         }
 
-        bool hasAnimations = root_ && root_->hasActiveAnimations();
+        bool hasAnimations = false;
+        if (!needsRedraw_ && !firstFrame && root_) {
+            hasAnimations = root_->hasActiveAnimations();
+        }
         
         // If nothing needs to be drawn and no animations are active, sleep until an event occurs
         if (!needsRedraw_ && !hasAnimations && !firstFrame) {

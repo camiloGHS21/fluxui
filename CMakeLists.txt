@@ -20,6 +20,23 @@ project(DataLeakGuard VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(CheckIPOSupported)
+
+option(DATALEAKGUARD_ENABLE_LTO "Enable release link-time optimization for faster startup/runtime" ON)
+if(DATALEAKGUARD_ENABLE_LTO)
+    check_ipo_supported(RESULT DATALEAKGUARD_IPO_SUPPORTED
+                        OUTPUT DATALEAKGUARD_IPO_ERROR)
+    if(NOT DATALEAKGUARD_IPO_SUPPORTED)
+        message(WARNING "IPO/LTO is not supported by this toolchain: ${DATALEAKGUARD_IPO_ERROR}")
+    endif()
+endif()
+
+function(enable_release_lto target_name)
+    if(DATALEAKGUARD_ENABLE_LTO AND DATALEAKGUARD_IPO_SUPPORTED)
+        set_property(TARGET ${target_name} PROPERTY
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endif()
+endfunction()
 
 set(DATALEAKGUARD_EMBEDDED_THEME_HEADER "${CMAKE_BINARY_DIR}/generated/embedded_theme.h")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -119,6 +136,7 @@ target_include_directories(glad PUBLIC vendor/glad/include)
 set_target_properties(glad PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+enable_release_lto(glad)
 
 # ============================================================
 #  FluxUI Framework Library
@@ -227,6 +245,7 @@ endfunction()
 
 configure_fluxui_target(fluxui)
 target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC)
+enable_release_lto(fluxui)
 
 option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" ON)
 if(FLUXUI_BUILD_SHARED)
@@ -235,6 +254,7 @@ if(FLUXUI_BUILD_SHARED)
     )
     configure_fluxui_target(fluxui_shared)
     target_compile_definitions(fluxui_shared PRIVATE FLUXUI_SHARED FLUXUI_BUILDING_DLL)
+    enable_release_lto(fluxui_shared)
 endif()
 
 # ============================================================
@@ -252,6 +272,7 @@ target_link_libraries(DataLeakGuard PRIVATE
 target_include_directories(DataLeakGuard PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
+enable_release_lto(DataLeakGuard)
 
 # ============================================================
 #  2D Retro Game Example
@@ -267,6 +288,7 @@ target_link_libraries(game_2d PRIVATE
 target_include_directories(game_2d PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
+enable_release_lto(game_2d)
 
 # ============================================================
 #  3D Game Example
@@ -282,5 +304,6 @@ target_link_libraries(game_3d PRIVATE
 target_include_directories(game_3d PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
+enable_release_lto(game_3d)
 
 

@@ -5298,35 +5298,39 @@ Vec2 Renderer::imageSize(const std::string& nameOrPath) {
     return {(float)it->second.width, (float)it->second.height};
 }
 
-void Renderer::warmFontCache(const std::vector<float>& sizes, const std::string& name) {
+void Renderer::warmFontCache(float size, const std::string& name) {
+    if (size <= 0.0f) return;
+
     std::string resolvedNames[] = {
         name,
         resolveFontName(name, FontWeight::Bold)
     };
 
-    for (float size : sizes) {
-        if (size <= 0.0f) continue;
+    for (int i = 0; i < 2; ++i) {
+        const std::string& resolvedName = resolvedNames[i];
+        if (resolvedName.empty()) continue;
+        if (i == 1 && resolvedName == resolvedNames[0]) continue;
 
-        for (int i = 0; i < 2; ++i) {
-            const std::string& resolvedName = resolvedNames[i];
-            if (resolvedName.empty()) continue;
-            if (i == 1 && resolvedName == resolvedNames[0]) continue;
-
-            FontData* font = getFontForSize(resolvedName, size);
-            if (!font || !font->loaded) continue;
+        FontData* font = getFontForSize(resolvedName, size);
+        if (!font || !font->loaded) continue;
 
 #if FLUXUI_HAS_VULKAN_SDK
-            if (activeBackend_ == RenderBackendType::Vulkan && vulkan_) {
-                int snappedSize = std::max(8, (int)std::round(font->fontSize));
-                std::string textureKey = resolvedName + "@" + std::to_string(snappedSize);
-                auto baseFontIt = fonts_.find(resolvedName);
-                if (baseFontIt != fonts_.end() && font == &baseFontIt->second) {
-                    textureKey = resolvedName;
-                }
-                ensureVulkanFontTexture(*vulkan_, textureKey, *font);
+        if (activeBackend_ == RenderBackendType::Vulkan && vulkan_) {
+            int snappedSize = std::max(8, (int)std::round(font->fontSize));
+            std::string textureKey = resolvedName + "@" + std::to_string(snappedSize);
+            auto baseFontIt = fonts_.find(resolvedName);
+            if (baseFontIt != fonts_.end() && font == &baseFontIt->second) {
+                textureKey = resolvedName;
             }
-#endif
+            ensureVulkanFontTexture(*vulkan_, textureKey, *font);
         }
+#endif
+    }
+}
+
+void Renderer::warmFontCache(const std::vector<float>& sizes, const std::string& name) {
+    for (float size : sizes) {
+        warmFontCache(size, name);
     }
 }
 
