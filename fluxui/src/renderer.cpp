@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <cctype>
+#include <unordered_map>
 
 #define STBI_NO_STDIO
 #define STB_IMAGE_IMPLEMENTATION
@@ -826,6 +827,37 @@ SvgPaintState mergeSvgPaintState(const SvgPaintState& parent, const SvgAttrs& at
     return state;
 }
 
+std::string svgTagName(const std::string& tag, size_t offset = 1) {
+    size_t i = offset;
+    while (i < tag.size() && (std::isspace((unsigned char)tag[i]) || tag[i] == '/')) ++i;
+    size_t start = i;
+    while (i < tag.size() && (std::isalnum((unsigned char)tag[i]) ||
+           tag[i] == '-' || tag[i] == '_' || tag[i] == ':')) ++i;
+    return lowerSvgString(tag.substr(start, i - start));
+}
+
+bool isSvgRenderableTag(const std::string& name) {
+    return name == "rect" || name == "circle" || name == "ellipse" ||
+           name == "line" || name == "polyline" || name == "polygon" ||
+           name == "path";
+}
+
+bool isSvgDefinitionContainer(const std::string& name) {
+    return name == "defs" || name == "symbol" || name == "clippath" ||
+           name == "mask" || name == "pattern" || name == "marker" ||
+           name == "lineargradient" || name == "radialgradient" ||
+           name == "filter";
+}
+
+bool svgTagIsSelfClosing(const std::string& tag) {
+    for (size_t i = tag.size(); i > 0; --i) {
+        char c = tag[i - 1];
+        if (std::isspace((unsigned char)c) || c == '>') continue;
+        return c == '/';
+    }
+    return false;
+}
+
 void svgBlendPixel(SvgCanvas& canvas, int x, int y, Color color, float coverage = 1.0f) {
     if (!canvas.pixels || x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
     float srcA = std::clamp(color.a * coverage, 0.0f, 1.0f);
@@ -1153,6 +1185,62 @@ void drawSvgPath(SvgCanvas& canvas, const std::string& d, Color fill, Color stro
     }
 }
 
+void paintSvgRenderableElement(SvgCanvas& canvas,
+                               const std::string& name,
+                               const SvgAttrs& attrs,
+                               const SvgPaintState& paint) {
+    float opacity = parseSvgFloat(paint.opacity, 1.0f);
+    bool noFill = false;
+    bool noStroke = false;
+    Color currentColor = parseSvgColor(paint.color, Color(0, 0, 0, 1));
+    Color fill = parseSvgColor(paint.fill, currentColor, &noFill);
+    Color stroke = parseSvgColor(paint.stroke, currentColor, &noStroke);
+    fill.a *= parseSvgFloat(paint.fillOpacity, 1.0f) * opacity;
+    stroke.a *= parseSvgFloat(paint.strokeOpacity, 1.0f) * opacity;
+    if (noFill) fill.a = 0.0f;
+    if (noStroke) stroke.a = 0.0f;
+    float strokeWidth = parseSvgFloat(paint.strokeWidth, 1.0f) *
+                        (std::abs(canvas.scaleX) + std::abs(canvas.scaleY)) * 0.5f;
+
+    if (name == "rect") {
+        drawSvgRect(canvas,
+                    parseSvgFloat(svgAttr(attrs, "x")),
+                    parseSvgFloat(svgAttr(attrs, "y")),
+                    parseSvgFloat(svgAttr(attrs, "width")),
+                    parseSvgFloat(svgAttr(attrs, "height")),
+                    parseSvgFloat(svgAttr(attrs, "rx")),
+                    parseSvgFloat(svgAttr(attrs, "ry")),
+                    fill,
+                    stroke,
+                    strokeWidth);
+    } else if (name == "circle") {
+        float r = parseSvgFloat(svgAttr(attrs, "r"));
+        drawSvgEllipse(canvas, parseSvgFloat(svgAttr(attrs, "cx")),
+                       parseSvgFloat(svgAttr(attrs, "cy")), r, r, fill, stroke, strokeWidth);
+    } else if (name == "ellipse") {
+        drawSvgEllipse(canvas, parseSvgFloat(svgAttr(attrs, "cx")),
+                       parseSvgFloat(svgAttr(attrs, "cy")),
+                       parseSvgFloat(svgAttr(attrs, "rx")),
+                       parseSvgFloat(svgAttr(attrs, "ry")),
+                       fill, stroke, strokeWidth);
+    } else if (name == "line") {
+        std::vector<Vec2> points = {
+            svgMapPoint(canvas, parseSvgFloat(svgAttr(attrs, "x1")), parseSvgFloat(svgAttr(attrs, "y1"))),
+            svgMapPoint(canvas, parseSvgFloat(svgAttr(attrs, "x2")), parseSvgFloat(svgAttr(attrs, "y2")))
+        };
+        strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
+    } else if (name == "polyline") {
+        auto points = parseSvgPoints(svgAttr(attrs, "points"), canvas);
+        strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
+    } else if (name == "polygon") {
+        auto points = parseSvgPoints(svgAttr(attrs, "points"), canvas);
+        fillPolygon(canvas, points, fill);
+        strokePolyline(canvas, points, stroke, strokeWidth, true);
+    } else if (name == "path") {
+        drawSvgPath(canvas, svgAttr(attrs, "d"), fill, stroke, std::max(1.0f, strokeWidth));
+    }
+}
+
 bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& image) {
     if (!hasSvgSignature(data, dataSize)) return false;
     std::string svg(reinterpret_cast<const char*>(data), reinterpret_cast<const char*>(data) + dataSize);
@@ -1217,18 +1305,41 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
     std::vector<SvgPaintState> paintStack;
     paintStack.push_back(rootPaint);
 
+    std::unordered_map<std::string, std::string> idTags;
+    size_t indexPos = 0;
+    while ((indexPos = svg.find('<', indexPos)) != std::string::npos) {
+        if (indexPos + 1 >= svg.size() || svg[indexPos + 1] == '/' ||
+            svg[indexPos + 1] == '!' || svg[indexPos + 1] == '?') {
+            ++indexPos;
+            continue;
+        }
+        size_t indexEnd = svg.find('>', indexPos);
+        if (indexEnd == std::string::npos) break;
+        std::string tag = svg.substr(indexPos, indexEnd - indexPos + 1);
+        std::string name = svgTagName(tag);
+        if (isSvgRenderableTag(name)) {
+            SvgAttrs attrs = parseSvgAttrs(tag);
+            std::string id = svgAttr(attrs, "id");
+            if (!id.empty() && idTags.find(id) == idTags.end()) {
+                idTags[id] = tag;
+            }
+        }
+        indexPos = indexEnd + 1;
+    }
+
+    int definitionDepth = 0;
     size_t pos = 0;
     while ((pos = svg.find('<', pos)) != std::string::npos) {
         if (pos + 1 >= svg.size()) break;
         if (svg[pos + 1] == '/') {
             size_t closeEnd = svg.find('>', pos);
             if (closeEnd == std::string::npos) break;
-            size_t nameStart = pos + 2;
-            while (nameStart < closeEnd && std::isspace((unsigned char)svg[nameStart])) ++nameStart;
-            size_t nameEnd = nameStart;
-            while (nameEnd < closeEnd && (std::isalnum((unsigned char)svg[nameEnd]) ||
-                   svg[nameEnd] == '-' || svg[nameEnd] == '_' || svg[nameEnd] == ':')) ++nameEnd;
-            std::string closeName = lowerSvgString(svg.substr(nameStart, nameEnd - nameStart));
+            std::string closeName = svgTagName(svg.substr(pos, closeEnd - pos + 1), 2);
+            if (isSvgDefinitionContainer(closeName)) {
+                definitionDepth = std::max(0, definitionDepth - 1);
+                pos = closeEnd + 1;
+                continue;
+            }
             if ((closeName == "g" || closeName == "svg") && transformStack.size() > 1) {
                 transformStack.pop_back();
                 paintStack.pop_back();
@@ -1243,19 +1354,22 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
         size_t end = svg.find('>', pos);
         if (end == std::string::npos) break;
         std::string tag = svg.substr(pos, end - pos + 1);
-        std::string lower = lowerSvgString(tag.substr(1, std::min<size_t>(tag.size(), 16)));
+        std::string name = svgTagName(tag);
         SvgAttrs attrs = parseSvgAttrs(tag);
-        bool selfClosing = false;
-        for (size_t i = tag.size(); i > 0; --i) {
-            char c = tag[i - 1];
-            if (std::isspace((unsigned char)c) || c == '>') continue;
-            selfClosing = c == '/';
-            break;
+        bool selfClosing = svgTagIsSelfClosing(tag);
+        if (isSvgDefinitionContainer(name)) {
+            if (!selfClosing) ++definitionDepth;
+            pos = end + 1;
+            continue;
+        }
+        if (definitionDepth > 0) {
+            pos = end + 1;
+            continue;
         }
         SvgAffine elementTransform = transformStack.back().multiply(
             parseSvgTransformList(svgAttr(attrs, "transform")));
         SvgPaintState elementPaint = mergeSvgPaintState(paintStack.back(), attrs);
-        if (lower.rfind("g", 0) == 0 || lower.rfind("svg", 0) == 0) {
+        if (name == "g" || name == "svg") {
             if (!selfClosing) {
                 transformStack.push_back(elementTransform);
                 paintStack.push_back(elementPaint);
@@ -1266,55 +1380,25 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
 
         SvgAffine previousTransform = canvas.transform;
         canvas.transform = elementTransform;
-        float opacity = parseSvgFloat(elementPaint.opacity, 1.0f);
-        bool noFill = false;
-        bool noStroke = false;
-        Color currentColor = parseSvgColor(elementPaint.color, Color(0, 0, 0, 1));
-        Color fill = parseSvgColor(elementPaint.fill, currentColor, &noFill);
-        Color stroke = parseSvgColor(elementPaint.stroke, currentColor, &noStroke);
-        fill.a *= parseSvgFloat(elementPaint.fillOpacity, 1.0f) * opacity;
-        stroke.a *= parseSvgFloat(elementPaint.strokeOpacity, 1.0f) * opacity;
-        if (noFill) fill.a = 0.0f;
-        if (noStroke) stroke.a = 0.0f;
-        float strokeWidth = parseSvgFloat(elementPaint.strokeWidth, 1.0f) *
-                            (std::abs(canvas.scaleX) + std::abs(canvas.scaleY)) * 0.5f;
-
-        if (lower.rfind("rect", 0) == 0) {
-            drawSvgRect(canvas,
-                        parseSvgFloat(svgAttr(attrs, "x")),
-                        parseSvgFloat(svgAttr(attrs, "y")),
-                        parseSvgFloat(svgAttr(attrs, "width")),
-                        parseSvgFloat(svgAttr(attrs, "height")),
-                        parseSvgFloat(svgAttr(attrs, "rx")),
-                        parseSvgFloat(svgAttr(attrs, "ry")),
-                        fill,
-                        stroke,
-                        strokeWidth);
-        } else if (lower.rfind("circle", 0) == 0) {
-            float r = parseSvgFloat(svgAttr(attrs, "r"));
-            drawSvgEllipse(canvas, parseSvgFloat(svgAttr(attrs, "cx")),
-                           parseSvgFloat(svgAttr(attrs, "cy")), r, r, fill, stroke, strokeWidth);
-        } else if (lower.rfind("ellipse", 0) == 0) {
-            drawSvgEllipse(canvas, parseSvgFloat(svgAttr(attrs, "cx")),
-                           parseSvgFloat(svgAttr(attrs, "cy")),
-                           parseSvgFloat(svgAttr(attrs, "rx")),
-                           parseSvgFloat(svgAttr(attrs, "ry")),
-                           fill, stroke, strokeWidth);
-        } else if (lower.rfind("line", 0) == 0) {
-            std::vector<Vec2> points = {
-                svgMapPoint(canvas, parseSvgFloat(svgAttr(attrs, "x1")), parseSvgFloat(svgAttr(attrs, "y1"))),
-                svgMapPoint(canvas, parseSvgFloat(svgAttr(attrs, "x2")), parseSvgFloat(svgAttr(attrs, "y2")))
-            };
-            strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
-        } else if (lower.rfind("polyline", 0) == 0) {
-            auto points = parseSvgPoints(svgAttr(attrs, "points"), canvas);
-            strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
-        } else if (lower.rfind("polygon", 0) == 0) {
-            auto points = parseSvgPoints(svgAttr(attrs, "points"), canvas);
-            fillPolygon(canvas, points, fill);
-            strokePolyline(canvas, points, stroke, strokeWidth, true);
-        } else if (lower.rfind("path", 0) == 0) {
-            drawSvgPath(canvas, svgAttr(attrs, "d"), fill, stroke, std::max(1.0f, strokeWidth));
+        if (name == "use") {
+            std::string href = svgAttr(attrs, "href");
+            if (href.empty()) href = svgAttr(attrs, "xlink:href");
+            if (!href.empty() && href[0] == '#') {
+                auto refIt = idTags.find(href.substr(1));
+                if (refIt != idTags.end()) {
+                    SvgAttrs refAttrs = parseSvgAttrs(refIt->second);
+                    std::string refName = svgTagName(refIt->second);
+                    SvgAffine useTransform = canvas.transform
+                        .multiply(SvgAffine::translate(parseSvgFloat(svgAttr(attrs, "x")),
+                                                       parseSvgFloat(svgAttr(attrs, "y"))))
+                        .multiply(parseSvgTransformList(svgAttr(refAttrs, "transform")));
+                    SvgPaintState refPaint = mergeSvgPaintState(elementPaint, refAttrs);
+                    canvas.transform = useTransform;
+                    paintSvgRenderableElement(canvas, refName, refAttrs, refPaint);
+                }
+            }
+        } else if (isSvgRenderableTag(name)) {
+            paintSvgRenderableElement(canvas, name, attrs, elementPaint);
         }
         canvas.transform = previousTransform;
         pos = end + 1;
