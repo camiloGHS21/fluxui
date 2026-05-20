@@ -719,6 +719,16 @@ struct SvgAspectRatio {
     float alignY = 0.5f;
 };
 
+struct SvgPaintState {
+    std::string fill = "black";
+    std::string stroke = "none";
+    std::string opacity = "1";
+    std::string fillOpacity = "1";
+    std::string strokeOpacity = "1";
+    std::string strokeWidth = "1";
+    std::string color = "black";
+};
+
 SvgAspectRatio parseSvgPreserveAspectRatio(const std::string& rawValue) {
     SvgAspectRatio result;
     std::string value = lowerSvgString(trimSvgString(rawValue));
@@ -798,6 +808,22 @@ SvgAffine parseSvgTransformList(const std::string& rawValue) {
         combined = combined.multiply(next);
     }
     return combined;
+}
+
+SvgPaintState mergeSvgPaintState(const SvgPaintState& parent, const SvgAttrs& attrs) {
+    SvgPaintState state = parent;
+    auto inheritAttr = [&](std::string& field, const char* name) {
+        auto it = attrs.find(name);
+        if (it != attrs.end()) field = it->second;
+    };
+    inheritAttr(state.fill, "fill");
+    inheritAttr(state.stroke, "stroke");
+    inheritAttr(state.opacity, "opacity");
+    inheritAttr(state.fillOpacity, "fill-opacity");
+    inheritAttr(state.strokeOpacity, "stroke-opacity");
+    inheritAttr(state.strokeWidth, "stroke-width");
+    inheritAttr(state.color, "color");
+    return state;
 }
 
 void svgBlendPixel(SvgCanvas& canvas, int x, int y, Color color, float coverage = 1.0f) {
@@ -1177,15 +1203,19 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
         canvas.offsetX = (outW - viewW * uniformScale) * aspect.alignX;
         canvas.offsetY = (outH - viewH * uniformScale) * aspect.alignY;
     }
-    std::string inheritedFill = svgAttr(root, "fill", "black");
-    std::string inheritedStroke = svgAttr(root, "stroke", "none");
-    std::string inheritedOpacity = svgAttr(root, "opacity", "1");
-    std::string inheritedFillOpacity = svgAttr(root, "fill-opacity", "1");
-    std::string inheritedStrokeOpacity = svgAttr(root, "stroke-opacity", "1");
-    std::string inheritedStrokeWidth = svgAttr(root, "stroke-width", "1");
+    SvgPaintState rootPaint;
+    rootPaint.fill = svgAttr(root, "fill", "black");
+    rootPaint.stroke = svgAttr(root, "stroke", "none");
+    rootPaint.opacity = svgAttr(root, "opacity", "1");
+    rootPaint.fillOpacity = svgAttr(root, "fill-opacity", "1");
+    rootPaint.strokeOpacity = svgAttr(root, "stroke-opacity", "1");
+    rootPaint.strokeWidth = svgAttr(root, "stroke-width", "1");
+    rootPaint.color = svgAttr(root, "color", "black");
 
     std::vector<SvgAffine> transformStack;
     transformStack.push_back(SvgAffine::identity());
+    std::vector<SvgPaintState> paintStack;
+    paintStack.push_back(rootPaint);
 
     size_t pos = 0;
     while ((pos = svg.find('<', pos)) != std::string::npos) {
@@ -1201,6 +1231,7 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
             std::string closeName = lowerSvgString(svg.substr(nameStart, nameEnd - nameStart));
             if ((closeName == "g" || closeName == "svg") && transformStack.size() > 1) {
                 transformStack.pop_back();
+                paintStack.pop_back();
             }
             pos = closeEnd + 1;
             continue;
@@ -1223,26 +1254,29 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
         }
         SvgAffine elementTransform = transformStack.back().multiply(
             parseSvgTransformList(svgAttr(attrs, "transform")));
+        SvgPaintState elementPaint = mergeSvgPaintState(paintStack.back(), attrs);
         if (lower.rfind("g", 0) == 0 || lower.rfind("svg", 0) == 0) {
-            if (!selfClosing) transformStack.push_back(elementTransform);
+            if (!selfClosing) {
+                transformStack.push_back(elementTransform);
+                paintStack.push_back(elementPaint);
+            }
             pos = end + 1;
             continue;
         }
 
         SvgAffine previousTransform = canvas.transform;
         canvas.transform = elementTransform;
-        float opacity = parseSvgFloat(svgAttr(attrs, "opacity", inheritedOpacity), 1.0f);
+        float opacity = parseSvgFloat(elementPaint.opacity, 1.0f);
         bool noFill = false;
         bool noStroke = false;
-        Color currentColor = parseSvgColor(svgAttr(attrs, "color", svgAttr(root, "color", "black")),
-                                           Color(0, 0, 0, 1));
-        Color fill = parseSvgColor(svgAttr(attrs, "fill", inheritedFill), currentColor, &noFill);
-        Color stroke = parseSvgColor(svgAttr(attrs, "stroke", inheritedStroke), currentColor, &noStroke);
-        fill.a *= parseSvgFloat(svgAttr(attrs, "fill-opacity", inheritedFillOpacity), 1.0f) * opacity;
-        stroke.a *= parseSvgFloat(svgAttr(attrs, "stroke-opacity", inheritedStrokeOpacity), 1.0f) * opacity;
+        Color currentColor = parseSvgColor(elementPaint.color, Color(0, 0, 0, 1));
+        Color fill = parseSvgColor(elementPaint.fill, currentColor, &noFill);
+        Color stroke = parseSvgColor(elementPaint.stroke, currentColor, &noStroke);
+        fill.a *= parseSvgFloat(elementPaint.fillOpacity, 1.0f) * opacity;
+        stroke.a *= parseSvgFloat(elementPaint.strokeOpacity, 1.0f) * opacity;
         if (noFill) fill.a = 0.0f;
         if (noStroke) stroke.a = 0.0f;
-        float strokeWidth = parseSvgFloat(svgAttr(attrs, "stroke-width", inheritedStrokeWidth), 1.0f) *
+        float strokeWidth = parseSvgFloat(elementPaint.strokeWidth, 1.0f) *
                             (std::abs(canvas.scaleX) + std::abs(canvas.scaleY)) * 0.5f;
 
         if (lower.rfind("rect", 0) == 0) {
