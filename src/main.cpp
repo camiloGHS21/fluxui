@@ -2,6 +2,7 @@
 // Built on FluxUI Framework
 
 #include "fluxui/FluxUI.h"
+#include "embedded_font_atlas.h"
 #include "embedded_theme.h"
 
 #include <algorithm>
@@ -756,9 +757,12 @@ int main(int argc, char** argv) {
     }
 
     constexpr float baseFontAtlasSize = 13.0f;
-    bool fontLoaded = false;
-    if (app.renderer().loadDefaultFont(baseFontAtlasSize)) {
-        fontLoaded = true;
+    if (DataLeakGuardEmbeddedFonts::loadEmbeddedUiFontAtlases(app.renderer())) {
+        std::cout << "Loaded precompiled UI font atlases" << std::endl;
+    } else if (app.renderer().loadDefaultFont(baseFontAtlasSize)) {
+        app.renderer().warmFontCache(std::vector<float>{
+            11.0f, 12.0f, 13.0f, 14.0f, 16.0f, 20.0f, 28.0f, 29.0f, 32.0f
+        });
         std::cout << "Loaded default UI font" << std::endl;
     } else {
         std::cerr << "Warning: No font loaded, text will not render" << std::endl;
@@ -790,11 +794,6 @@ int main(int argc, char** argv) {
     });
 
     int renderedFrames = 0;
-    int startupWarmDelayFrames = 2;
-    size_t startupWarmFontIndex = 0;
-    constexpr std::array<float, 8> startupWarmFontSizes = {
-        12.0f, 14.0f, 16.0f, 20.0f, 28.0f, 29.0f, 32.0f, 13.0f
-    };
 
     app.onUpdate = [&](float dt) {
         // ── Scan progress: update live references directly ──
@@ -826,19 +825,6 @@ int main(int argc, char** argv) {
             buildRetainedShell(app);
         } else if (app.routeDirty()) {
             rebuildActiveRoute(app);
-        }
-
-        if (fontLoaded && startupWarmFontIndex < startupWarmFontSizes.size()) {
-            if (startupWarmDelayFrames > 0) {
-                --startupWarmDelayFrames;
-                app.requestRedraw();
-            } else {
-                app.renderer().warmFontCache(startupWarmFontSizes[startupWarmFontIndex++]);
-                if (startupWarmFontIndex == startupWarmFontSizes.size()) {
-                    app.renderer().releaseFontSources();
-                }
-                app.requestRedraw();
-            }
         }
 
         if (frameLimit > 0 && ++renderedFrames >= frameLimit) {

@@ -1684,6 +1684,43 @@ void softwareBlendPixel(std::vector<uint32_t>& pixels,
           static_cast<uint32_t>(outB);
 }
 
+float softwareSampleFontAlpha(const FontData& font,
+                              int atlasX0,
+                              int atlasY0,
+                              int atlasW,
+                              int atlasH,
+                              float sourceX,
+                              float sourceY) {
+    if (font.atlasPixels.empty() || font.atlasWidth <= 0 || font.atlasHeight <= 0 ||
+        atlasW <= 0 || atlasH <= 0) {
+        return 0.0f;
+    }
+
+    sourceX = std::clamp(sourceX, 0.0f, static_cast<float>(atlasW - 1));
+    sourceY = std::clamp(sourceY, 0.0f, static_cast<float>(atlasH - 1));
+
+    int x0 = static_cast<int>(std::floor(sourceX));
+    int y0 = static_cast<int>(std::floor(sourceY));
+    int x1 = std::min(x0 + 1, atlasW - 1);
+    int y1 = std::min(y0 + 1, atlasH - 1);
+    float tx = sourceX - static_cast<float>(x0);
+    float ty = sourceY - static_cast<float>(y0);
+
+    auto sample = [&](int lx, int ly) -> float {
+        int ax = std::clamp(atlasX0 + lx, 0, font.atlasWidth - 1);
+        int ay = std::clamp(atlasY0 + ly, 0, font.atlasHeight - 1);
+        return font.atlasPixels[static_cast<size_t>(ay) * font.atlasWidth + ax] / 255.0f;
+    };
+
+    float a00 = sample(x0, y0);
+    float a10 = sample(x1, y0);
+    float a01 = sample(x0, y1);
+    float a11 = sample(x1, y1);
+    float ax0 = a00 + (a10 - a00) * tx;
+    float ax1 = a01 + (a11 - a01) * tx;
+    return ax0 + (ax1 - ax0) * ty;
+}
+
 } // namespace
 
 
@@ -4401,18 +4438,19 @@ void Renderer::drawSoftwareText(const std::string& text,
         int y1 = std::min(clip.y1, static_cast<int>(std::ceil(originY + drawH)));
         for (int y = y0; y < y1; ++y) {
             float localY = static_cast<float>(y) + 0.5f - originY;
-            int sy = atlasY0 + std::clamp(static_cast<int>(localY / glyphScale), 0, atlasH - 1);
-            sy = std::clamp(sy, 0, font.atlasHeight - 1);
             float rowSkew = italicSkew * (1.0f - localY / std::max(1.0f, static_cast<float>(drawH)));
             int x0 = std::max(clip.x0, static_cast<int>(std::floor(originX + rowSkew)));
             int x1 = std::min(clip.x1, static_cast<int>(std::ceil(originX + rowSkew + drawW)));
             for (int x = x0; x < x1; ++x) {
                 float localX = static_cast<float>(x) + 0.5f - originX - rowSkew;
-                int sx = atlasX0 + std::clamp(static_cast<int>(localX / glyphScale), 0, atlasW - 1);
-                sx = std::clamp(sx, 0, font.atlasWidth - 1);
-                unsigned char alpha = font.atlasPixels[static_cast<size_t>(sy) *
-                                                       font.atlasWidth + sx];
-                if (alpha == 0) {
+                float alpha = softwareSampleFontAlpha(font,
+                                                      atlasX0,
+                                                      atlasY0,
+                                                      atlasW,
+                                                      atlasH,
+                                                      localX / glyphScale - 0.5f,
+                                                      localY / glyphScale - 0.5f);
+                if (alpha <= 0.001f) {
                     continue;
                 }
                 softwareBlendPixel(softwarePixels_,
@@ -4421,7 +4459,7 @@ void Renderer::drawSoftwareText(const std::string& text,
                                    x,
                                    y,
                                    color,
-                                   static_cast<float>(alpha) / 255.0f);
+                                   alpha);
             }
         }
     };
@@ -5206,6 +5244,74 @@ bool Renderer::loadFontFromMemory(const unsigned char* data, int dataSize, float
     return true;
 }
 
+bool Renderer::loadPrebakedFontAtlas(const std::string& name, float pixelSize,
+                                     int atlasWidth, int atlasHeight,
+                                     float ascent, float descent, float lineGap,
+                                     const GlyphInfo* glyphs, size_t glyphCount,
+                                     const uint16_t* runLengths,
+                                     const unsigned char* runValues,
+                                     size_t runCount, size_t pixelCount) {
+    if (name.empty() || pixelSize <= 0.0f || atlasWidth <= 0 || atlasHeight <= 0 ||
+        !glyphs || glyphCount == 0 || !runLengths || !runValues || runCount == 0) {
+        return false;
+    }
+
+    const size_t expectedPixels = static_cast<size_t>(atlasWidth) *
+                                  static_cast<size_t>(atlasHeight);
+    if (pixelCount != expectedPixels) {
+        return false;
+    }
+
+    FontData font;
+    font.fontSize = pixelSize;
+    font.atlasWidth = atlasWidth;
+    font.atlasHeight = atlasHeight;
+    font.ascent = ascent;
+    font.descent = descent;
+    font.lineGap = lineGap;
+    font.loaded = true;
+
+    const size_t copyGlyphs = std::min<size_t>(glyphCount, 1024);
+    for (size_t i = 0; i < copyGlyphs; ++i) {
+        font.glyphs[i] = glyphs[i];
+    }
+
+    font.atlasPixels.resize(pixelCount);
+    size_t out = 0;
+    for (size_t i = 0; i < runCount; ++i) {
+        size_t count = runLengths[i];
+        if (count == 0 || out + count > pixelCount) {
+            return false;
+        }
+        std::fill(font.atlasPixels.begin() + static_cast<std::ptrdiff_t>(out),
+                  font.atlasPixels.begin() + static_cast<std::ptrdiff_t>(out + count),
+                  runValues[i]);
+        out += count;
+    }
+    if (out != pixelCount) {
+        return false;
+    }
+
+    if (activeBackend_ != RenderBackendType::Vulkan &&
+        activeBackend_ != RenderBackendType::Compatibility) {
+        glGenTextures(1, &font.textureId);
+        glBindTexture(GL_TEXTURE_2D, font.textureId);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, font.atlasWidth, font.atlasHeight,
+                     0, GL_RED, GL_UNSIGNED_BYTE, font.atlasPixels.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    }
+
+    fonts_[name] = std::move(font);
+    textMeasureCache_.clear();
+    if (!currentFont_) currentFont_ = &fonts_[name];
+
+    return true;
+}
+
 bool Renderer::decodeImageBytes(const unsigned char* data, int dataSize,
                                 ImageData& image, bool forceSvg) {
     if (!data || dataSize <= 0) return false;
@@ -5586,7 +5692,7 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
 
     int snappedSize = std::max(8, (int)std::round(fontSize * std::max(1.0f, dpiScale_)));
     int baseSize = std::max(8, (int)std::round(baseIt->second.fontSize));
-    if (snappedSize == baseSize || baseIt->second.sourceData.empty()) {
+    if (snappedSize == baseSize) {
         return &baseIt->second;
     }
 
@@ -5594,6 +5700,23 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
     auto sizedIt = fonts_.find(sizedName);
     if (sizedIt != fonts_.end() && sizedIt->second.loaded) {
         return &sizedIt->second;
+    }
+
+    if (baseIt->second.sourceData.empty()) {
+        FontData* closest = &baseIt->second;
+        float bestDiff = std::abs(static_cast<float>(baseSize - snappedSize));
+        std::string sizedPrefix = fontName + "@";
+        for (auto& entry : fonts_) {
+            if (!entry.second.loaded || entry.first.rfind(sizedPrefix, 0) != 0) {
+                continue;
+            }
+            float diff = std::abs(entry.second.fontSize - static_cast<float>(snappedSize));
+            if (diff < bestDiff) {
+                bestDiff = diff;
+                closest = &entry.second;
+            }
+        }
+        return closest;
     }
 
     FontData sizedFont;
@@ -5636,7 +5759,25 @@ const FontData* Renderer::findFontForMeasure(const std::string& fontName, float 
     auto sizedIt = fonts_.find(sizedName);
     if (sizedIt != fonts_.end() && sizedIt->second.loaded) return &sizedIt->second;
 
-    if (baseIt != fonts_.end() && baseIt->second.loaded) return &baseIt->second;
+    if (baseIt != fonts_.end() && baseIt->second.loaded) {
+        if (baseIt->second.sourceData.empty()) {
+            const FontData* closest = &baseIt->second;
+            float bestDiff = std::abs(baseIt->second.fontSize - static_cast<float>(snappedSize));
+            std::string sizedPrefix = fontName + "@";
+            for (const auto& entry : fonts_) {
+                if (!entry.second.loaded || entry.first.rfind(sizedPrefix, 0) != 0) {
+                    continue;
+                }
+                float diff = std::abs(entry.second.fontSize - static_cast<float>(snappedSize));
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    closest = &entry.second;
+                }
+            }
+            return closest;
+        }
+        return &baseIt->second;
+    }
     return nullptr;
 }
 

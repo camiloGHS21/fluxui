@@ -39,6 +39,7 @@ function(enable_release_lto target_name)
 endfunction()
 
 set(DATALEAKGUARD_EMBEDDED_THEME_HEADER "${CMAKE_BINARY_DIR}/generated/embedded_theme.h")
+set(DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER "${CMAKE_BINARY_DIR}/generated/embedded_font_atlas.h")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/assets/styles/theme.css"
 )
@@ -54,6 +55,15 @@ file(WRITE "${DATALEAKGUARD_EMBEDDED_THEME_HEADER}"
     "    return reinterpret_cast<const char*>(DATALEAKGUARD_EMBEDDED_THEME_CSS_BYTES);\n"
     "}\n"
 )
+if(NOT EXISTS "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}")
+    file(WRITE "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}"
+        "#pragma once\n\n"
+        "#include \"fluxui/renderer.h\"\n\n"
+        "namespace DataLeakGuardEmbeddedFonts {\n"
+        "inline bool loadEmbeddedUiFontAtlases(FluxUI::Renderer&) { return false; }\n"
+        "}\n"
+    )
+endif()
 
 if(DATALEAKGUARD_SINGLE_BINARY AND WIN32 AND
    DEFINED VCPKG_TARGET_TRIPLET AND NOT VCPKG_TARGET_TRIPLET MATCHES "static")
@@ -70,6 +80,24 @@ endif()
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
+
+option(DATALEAKGUARD_PREBAKE_UI_FONTS "Bake UI font atlases at build time for faster startup and stable text quality" ON)
+if(DATALEAKGUARD_PREBAKE_UI_FONTS)
+    add_executable(dataleakguard_font_atlas_generator
+        tools/font_atlas_generator.cpp
+    )
+    target_link_libraries(dataleakguard_font_atlas_generator PRIVATE Freetype::Freetype)
+    target_compile_features(dataleakguard_font_atlas_generator PRIVATE cxx_std_17)
+
+    add_custom_target(dataleakguard_prebaked_fonts
+        COMMAND "$<TARGET_FILE:dataleakguard_font_atlas_generator>"
+                "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}"
+        BYPRODUCTS "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}"
+        DEPENDS dataleakguard_font_atlas_generator
+        COMMENT "Prebaking DataLeakGuard UI font atlases"
+        VERBATIM
+    )
+endif()
 
 option(FLUXUI_ENABLE_MSAA "Enable 4x multisample antialiasing for smoother UI edges" ON)
 option(FLUXUI_ENABLE_VSYNC "Enable swap interval vsync by default" ON)
@@ -272,6 +300,9 @@ target_link_libraries(DataLeakGuard PRIVATE
 target_include_directories(DataLeakGuard PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
+if(DATALEAKGUARD_PREBAKE_UI_FONTS)
+    add_dependencies(DataLeakGuard dataleakguard_prebaked_fonts)
+endif()
 enable_release_lto(DataLeakGuard)
 
 # ============================================================

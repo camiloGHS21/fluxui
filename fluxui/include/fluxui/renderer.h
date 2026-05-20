@@ -6,6 +6,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cstdint>
+#include <cstddef>
 #include <memory>
 
 #ifndef FLUXUI_FONT_GLYPH_LIMIT
@@ -163,6 +164,13 @@ public:
     bool loadDefaultFont(float size, const std::string& name = "default");
     bool loadFont(const std::string& path, float size, const std::string& name = "default");
     bool loadFontFromMemory(const unsigned char* data, int dataSize, float size, const std::string& name = "default");
+    bool loadPrebakedFontAtlas(const std::string& name, float pixelSize,
+                               int atlasWidth, int atlasHeight,
+                               float ascent, float descent, float lineGap,
+                               const GlyphInfo* glyphs, size_t glyphCount,
+                               const uint16_t* runLengths,
+                               const unsigned char* runValues,
+                               size_t runCount, size_t pixelCount);
     void warmFontCache(float size, const std::string& name = "default");
     void warmFontCache(const std::vector<float>& sizes, const std::string& name = "default");
     void releaseFontSources();
