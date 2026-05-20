@@ -13,6 +13,13 @@ namespace FluxUI {
 static void* g_eventContext = nullptr;
 static PlatformEventCallback g_eventCallback = nullptr;
 
+static NSColor* initialBackgroundColor() {
+    return [NSColor colorWithCalibratedRed:15.0 / 255.0
+                                     green:15.0 / 255.0
+                                      blue:23.0 / 255.0
+                                     alpha:1.0];
+}
+
 void Platform::setEventCallback(void* context, PlatformEventCallback callback) {
     g_eventContext = context;
     g_eventCallback = callback;
@@ -87,6 +94,9 @@ static int cocoaKeyToVK(unsigned short keyCode) {
 - (BOOL)wantsUpdateLayer { return YES; }
 - (BOOL)isFlipped { return YES; } // Match top-left origin like Win32/X11
 - (BOOL)isOpaque { return YES; }  // Prevent background blend/flicker
+- (void)updateLayer {
+    self.layer.backgroundColor = [initialBackgroundColor() CGColor];
+}
 @end
 
 @interface FluxUIWindowDelegate : NSObject <NSWindowDelegate>
@@ -134,20 +144,27 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
                                                        defer:NO];
     [window setTitle:[NSString stringWithUTF8String:config.title.c_str()]];
     [window center];
+    [window setBackgroundColor:initialBackgroundColor()];
     [window setAcceptsMouseMovedEvents:YES]; // Enable mouse tracking
     
     FluxUIView* view = [[FluxUIView alloc] initWithFrame:rect];
     [view setWantsLayer:YES];
     view.layer = [CAMetalLayer layer];
+    view.layer.backgroundColor = [initialBackgroundColor() CGColor];
     [window setContentView:view];
     
     FluxUIWindowDelegate* delegate = [[FluxUIWindowDelegate alloc] init];
     objc_setAssociatedObject(window, "FluxUIDelegate", delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [window setDelegate:delegate];
-    
-    [window makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
+
     return (NativeWindowHandle)window;
+}
+
+void Platform::showWindow(NativeWindowHandle window) {
+    if (!window) return;
+    NSWindow* nsWindow = (NSWindow*)window;
+    [nsWindow makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
 }
 
 void Platform::destroyWindow(NativeWindowHandle window) {

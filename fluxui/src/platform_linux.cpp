@@ -24,6 +24,40 @@ static void* g_eventContext = nullptr;
 static PlatformEventCallback g_eventCallback = nullptr;
 static std::string g_clipboardText;
 
+static unsigned long initialBackgroundPixel() {
+    if (!g_display) return 0;
+    static bool cached = false;
+    static unsigned long pixel = 0;
+    if (cached) return pixel;
+
+    int screen = DefaultScreen(g_display);
+    XColor color = {};
+    color.red = 15 * 257;
+    color.green = 15 * 257;
+    color.blue = 23 * 257;
+    color.flags = DoRed | DoGreen | DoBlue;
+    if (XAllocColor(g_display, DefaultColormap(g_display, screen), &color)) {
+        pixel = color.pixel;
+    } else {
+        pixel = BlackPixel(g_display, screen);
+    }
+    cached = true;
+    return pixel;
+}
+
+static void paintInitialBackground(Window window) {
+    if (!g_display || !window) return;
+    XWindowAttributes attrs;
+    if (!XGetWindowAttributes(g_display, window, &attrs)) return;
+    GC gc = XCreateGC(g_display, window, 0, nullptr);
+    if (!gc) return;
+    XSetForeground(g_display, gc, initialBackgroundPixel());
+    XFillRectangle(g_display, window, gc, 0, 0,
+                   static_cast<unsigned int>(attrs.width),
+                   static_cast<unsigned int>(attrs.height));
+    XFreeGC(g_display, gc);
+}
+
 void Platform::setEventCallback(void* context, PlatformEventCallback callback) {
     g_eventContext = context;
     g_eventCallback = callback;
@@ -99,12 +133,12 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     Window root = RootWindow(g_display, screen);
 
     XSetWindowAttributes attributes;
-    attributes.background_pixmap = None;
+    attributes.background_pixel = initialBackgroundPixel();
     attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | 
                             ButtonPressMask | ButtonReleaseMask | PointerMotionMask | 
                             StructureNotifyMask | FocusChangeMask;
 
-    unsigned long mask = CWEventMask | CWBackPixmap;
+    unsigned long mask = CWEventMask | CWBackPixel;
 
     Window window = XCreateWindow(g_display, root, 0, 0, 
                                   config.width, config.height, 0, 
@@ -126,11 +160,17 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     }
 
     XSetWMProtocols(g_display, window, &g_wmDeleteMessage, 1);
-    XMapWindow(g_display, window);
-    XFlush(g_display);
 
     g_window = window;
     return (NativeWindowHandle)window;
+}
+
+void Platform::showWindow(NativeWindowHandle window) {
+    if (g_display && window) {
+        XMapRaised(g_display, (Window)window);
+        paintInitialBackground((Window)window);
+        XFlush(g_display);
+    }
 }
 
 void Platform::destroyWindow(NativeWindowHandle window) {
@@ -290,6 +330,7 @@ void Platform::processEvents(bool& running) {
         }
         case Expose: {
             if (xev.xexpose.count == 0) {
+                paintInitialBackground(xev.xexpose.window);
                 PlatformInputEvent e{};
                 e.type = PlatformInputEvent::Expose;
                 dispatchEvent(e);

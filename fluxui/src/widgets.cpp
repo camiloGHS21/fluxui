@@ -2994,12 +2994,9 @@ void Application::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
 
-#ifdef _WIN32
     if (window_) {
-        ShowWindow((HWND)window_, SW_SHOWMAXIMIZED);
-        UpdateWindow((HWND)window_);
+        Platform::showWindow(window_);
     }
-#endif
 
     while (running) {
         processEvents();

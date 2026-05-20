@@ -121,6 +121,13 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     return (NativeWindowHandle)hwnd;
 }
 
+void Platform::showWindow(NativeWindowHandle window) {
+    if (!window) return;
+    HWND hwnd = (HWND)window;
+    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    UpdateWindow(hwnd);
+}
+
 void Platform::destroyWindow(NativeWindowHandle window) {
     if (window) DestroyWindow((HWND)window);
 }

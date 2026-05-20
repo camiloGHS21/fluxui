@@ -58,6 +58,7 @@ public:
     static void shutdown();
 
     static NativeWindowHandle createWindow(const PlatformWindowConfig& config);
+    static void showWindow(NativeWindowHandle window);
     static void destroyWindow(NativeWindowHandle window);
     
     static void processEvents(bool& running);
