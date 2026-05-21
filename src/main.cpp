@@ -11,10 +11,19 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <thread>
+#include <atomic>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 using namespace FluxUI;
 static bool uiDirty = true;
 static bool scannerRunning = false;
 static float scanProgress = 0.67f;
+static std::string dbFilesMonitored = "12,847";
+static std::string dbThreatsBlocked = "47";
+static std::string dbUsbTransfers = "156";
+static std::string dbComplianceScore = "94%";
 static bool blockMode = true;
 static bool quarantineMode = true;
 static bool endpointIsolation = false;
@@ -308,11 +317,12 @@ static void buildDashboard(Application& app, Widget* content) {
         label->content = blockMode ? "Monitor Mode" : "Block Mode";
         shell.syncPosture();
     };
-    auto* statsRow = main->add<Panel>("stats-row");
-    statsRow->add<StatCard>("Files Monitored", "12,847", "+234 this week", Color::fromHex("#37C6A3"));
-    statsRow->add<StatCard>("Threats Blocked", "47", "3 critical today", Color::fromHex("#FF5D6C"));
-    statsRow->add<StatCard>("USB Transfers", "156", "12 flagged", Color::fromHex("#F3B64B"));
-    statsRow->add<StatCard>("Compliance Score", "94%", "Above target", Color::fromHex("#6AA9FF"));
+    auto* statsRow = main->panel("stats-row");
+    statsRow->add<StatCard>("Files Monitored", dbFilesMonitored, "+234 this week", Color::fromHex("#37C6A3"));
+    statsRow->add<StatCard>("Threats Blocked", dbThreatsBlocked, "3 critical today", Color::fromHex("#FF5D6C"));
+    statsRow->add<StatCard>("USB Transfers", dbUsbTransfers, "12 flagged", Color::fromHex("#F3B64B"));
+    statsRow->add<StatCard>("Compliance Score", dbComplianceScore, "Above target", Color::fromHex("#6AA9FF"));
+
     auto* dashboardGrid = main->add<Panel>("dashboard-grid");
     auto* riskPanel = dashboardGrid->add<Panel>("panel-card panel-wide");
     addSectionHeader(riskPanel, "Risk Flow", "Where sensitive data is moving right now");
@@ -325,8 +335,9 @@ static void buildDashboard(Application& app, Widget* content) {
     addToggleRow(responsePanel, "Block removable media", "Stop copy operations to untrusted USB devices.", blockMode, true);
     addToggleRow(responsePanel, "Auto quarantine", "Move high-confidence matches to isolated storage.", quarantineMode);
     addToggleRow(responsePanel, "Endpoint isolation", "Cut network access for repeat offenders.", endpointIsolation);
+
     addSectionHeader(main, "Recent Activity");
-    auto* activity = main->add<Panel>("activity-panel");
+    auto* activity = main->panel("activity-panel");
     addActivityRow(activity, "usb", "Sensitive contract archive blocked on USB-A72", "2 min ago", "danger");
     addActivityRow(activity, "card", "Credit card pattern detected in export.csv", "15 min ago", "danger");
     addActivityRow(activity, "id", "Employee IDs found in shared Sales folder", "1 hour ago", "warning");
@@ -543,6 +554,9 @@ static bool parseBackendArg(const std::string& value, RenderBackendType& backend
         backend = RenderBackendType::Direct3D12;
     } else if (normalized == "metal") {
         backend = RenderBackendType::Metal;
+    } else if (normalized == "skia") {
+        backend = RenderBackendType::Skia;
+
     } else if (normalized == "compatibility" || normalized == "software" ||
                normalized == "cpu") {
         backend = RenderBackendType::Compatibility;
@@ -571,6 +585,9 @@ static int runVulkanProbe() {
            result.surfaceCreated && result.physicalDeviceCount > 0 ? 0 : 1;
 }
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
+#endif
     auto t_start = std::chrono::high_resolution_clock::now();
     RenderBackendType requestedBackend = Renderer::defaultBackend();
     bool backendSpecified = false;

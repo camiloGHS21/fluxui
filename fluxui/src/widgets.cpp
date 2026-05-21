@@ -12,6 +12,10 @@
 #include <stb_image.h>
 #include "fluxui/platform.h"
 namespace FluxUI {
+static Application* g_activeApp = nullptr;
+Application* Application::instance() {
+    return g_activeApp;
+}
 static bool isUtf8Continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
@@ -2424,6 +2428,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
 }
 #endif
 bool Application::init(const std::string& title, int width, int height) {
+    g_activeApp = this;
     if (!Platform::init()) return false;
     PlatformWindowConfig config;
     config.title = title;
@@ -2649,6 +2654,38 @@ void Application::run() {
         std::this_thread::yield();
 #endif
     }
+}
+void Application::lazyLoad(std::function<void()> loader, std::function<void()> onComplete) {
+    static std::atomic<size_t> taskCounter{0};
+    std::thread([loader = std::move(loader), onComplete = std::move(onComplete), this]() mutable {
+        try {
+            loader();
+            if (onComplete) {
+                onComplete();
+            }
+        } catch (...) {}
+        requestRedraw();
+    }).detach();
+}
+void LazyPanel::update(const InputState& input) {
+    if (!initialized) {
+        initialized = true;
+        if (skeletonBuilder) {
+            clearChildren();
+            skeletonBuilder(this);
+        }
+    }
+    bool currentLoaded = loaded.load(std::memory_order_acquire);
+    if (currentLoaded && !lastLoadedState) {
+        lastLoadedState = true;
+        clearChildren();
+        if (contentBuilder) {
+            contentBuilder(this);
+        }
+        markLayoutDirty();
+        markStyleDirtyRecursive();
+    }
+    Widget::update(input);
 }
 void Application::shutdown() {
     renderer_.shutdown();

@@ -26,6 +26,7 @@ enum class RenderBackendType {
     Direct12 = Direct3D12,
     DirectX12 = Direct3D12,
     Metal,
+    Skia,
     Compatibility
 };
 

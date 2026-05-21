@@ -1,6 +1,4 @@
-// FluxUI Widget System - CSS-styled, GPU-rendered widgets
 #pragma once
-
 #include "core.h"
 #include "css_parser.h"
 #include "renderer.h"
@@ -11,62 +9,49 @@
 #include <functional>
 #include <cstddef>
 #include <utility>
+#include <future>
+#include <thread>
+#include <atomic>
 #include <unordered_map>
 #include <sstream>
 #include <cctype>
-
-// Forward declarations (handles moved to core.h)
-
 namespace FluxUI {
-
 namespace detail {
-
 inline std::shared_ptr<std::pmr::memory_resource> makeWidgetArena() {
     auto arena = std::make_shared<std::pmr::unsynchronized_pool_resource>();
     return std::static_pointer_cast<std::pmr::memory_resource>(arena);
 }
-
 template<typename T>
 class WidgetArenaAllocator {
 public:
     using value_type = T;
-
     std::shared_ptr<std::pmr::memory_resource> resource;
-
     WidgetArenaAllocator() = default;
     explicit WidgetArenaAllocator(std::shared_ptr<std::pmr::memory_resource> res)
         : resource(std::move(res)) {}
-
     template<typename U>
     WidgetArenaAllocator(const WidgetArenaAllocator<U>& other)
         : resource(other.resource) {}
-
     T* allocate(std::size_t count) {
         return static_cast<T*>(resource->allocate(count * sizeof(T), alignof(T)));
     }
-
     void deallocate(T* ptr, std::size_t count) noexcept {
         resource->deallocate(ptr, count * sizeof(T), alignof(T));
     }
-
     template<typename U>
     struct rebind {
         using other = WidgetArenaAllocator<U>;
     };
 };
-
 template<typename T, typename U>
 inline bool operator==(const WidgetArenaAllocator<T>& a, const WidgetArenaAllocator<U>& b) noexcept {
     return a.resource.get() == b.resource.get();
 }
-
 template<typename T, typename U>
 inline bool operator!=(const WidgetArenaAllocator<T>& a, const WidgetArenaAllocator<U>& b) noexcept {
     return !(a == b);
 }
-
-} // namespace detail
-
+}
 class Panel;
 class Text;
 class Button;
@@ -74,31 +59,24 @@ class TextInput;
 class Icon;
 class Image;
 class ProgressBar;
+class Placeholder;
 class Canvas;
-
-// ============================================================
-//  Widget Base Class
-// ============================================================
-
+class LazyPanel;
 class Widget {
 public:
     std::string id;
     std::string className;
     std::string type = "widget";
-
     Style style;
-    Style computedStyle;  // after CSS resolution
-    std::vector<CSSProperty> inlineProperties; // parsed style="" declarations
-    Rect bounds;          // computed layout bounds
-
+    Style computedStyle;
+    std::vector<CSSProperty> inlineProperties;
+    Rect bounds;
     bool visible = true;
     bool hovered = false;
     bool pressed = false;
     bool focused = false;
-
-    // Animation & Scroll state
-    float hoverAnim = 0;  // 0..1 for smooth transitions
-    float hoverVelocity = 0; // for spring physics
+    float hoverAnim = 0;
+    float hoverVelocity = 0;
     float renderScale = 1.0f;
     float scrollY = 0;
     float targetScrollY = 0;
@@ -112,20 +90,13 @@ public:
     bool scrollbarHovered = false;
     bool scrollbarDragging = false;
     float scrollbarDragOffset = 0;
-
-    // Parent/children
     Widget* parent = nullptr;
     std::shared_ptr<std::pmr::memory_resource> childArena;
     std::vector<std::shared_ptr<Widget>> children;
-
-    // Callbacks
     std::function<void()> onClick;
     std::function<void()> onHover;
-
     Widget() = default;
     virtual ~Widget() = default;
-
-    // Add child widget
     Widget* addChild(std::shared_ptr<Widget> child) {
         child->parent = this;
         children.push_back(child);
@@ -133,7 +104,6 @@ public:
         markSubtreeStyleDirty();
         return child.get();
     }
-
     void reserveChildren(size_t count) { children.reserve(count); }
     void clearChildren(bool releaseArena = false) {
         children.clear();
@@ -141,7 +111,6 @@ public:
         markLayoutDirty();
         markSubtreeStyleDirty();
     }
-
     template<typename T, typename... Args>
     T* add(Args&&... args) {
         if (!childArena) {
@@ -152,7 +121,6 @@ public:
         addChild(w);
         return static_cast<T*>(children.back().get());
     }
-
     Panel* panel(const std::string& cls = "", size_t reserve = 0);
     Text* text(const std::string& content, const std::string& cls = "");
     Button* button(const std::string& label = "",
@@ -167,7 +135,12 @@ public:
     ProgressBar* progress(float value,
                           const std::string& cls = "",
                           const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f));
+    Placeholder* placeholder(const std::string& text = "Loading...", const std::string& cls = "");
+    Placeholder* skeleton(const std::string& cls = "", size_t lines = 3);
     Canvas* canvas(const std::string& cls = "");
+    LazyPanel* lazyPanel(std::function<void()> worker,
+                         std::function<void(Widget*)> skeleton,
+                         std::function<void(Widget*)> content);
     Panel* div(const std::string& cls = "", size_t reserve = 0);
     Panel* section(const std::string& cls = "", size_t reserve = 0);
     Panel* article(const std::string& cls = "", size_t reserve = 0);
@@ -202,29 +175,18 @@ public:
     Widget* removeClass(const std::string& value);
     Widget* toggleClass(const std::string& value, bool enabled);
     Widget* css(const std::string& declarations);
-
-    // Resolve styles from stylesheet
     void resolveStyles(const StyleSheet& sheet);
     void markLayoutDirty();
     void markStyleDirty();
     void markStyleDirtyRecursive();
     void markSubtreeStyleDirty();
-
-    // Layout
     virtual void layout(const Rect& parentBounds);
-
-    // Returns true if any spring animation (hover, scroll) is still settling
     bool hasActiveAnimations() const;
     void resetTransientMotion();
     virtual void update(const InputState& input);
-
-    // Hit-tested cursor for native pointer feedback
     virtual CursorType cursorAt(Vec2 point) const;
     virtual Widget* hitTest(Vec2 point, bool interactiveOnly = false);
-
-    // Render
     virtual void render(Renderer& renderer);
-
 protected:
     void layoutFlexChildren();
     void layoutPositionedChildren();
@@ -234,68 +196,41 @@ protected:
     bool getScrollBarRects(Rect& track, Rect& thumb) const;
     void clampScroll();
 };
-
-// ============================================================
-//  Panel - Container widget with background
-// ============================================================
-
 class Panel : public Widget {
 public:
     Panel() { type = "panel"; }
     Panel(const std::string& cls) { type = "panel"; className = cls; }
 };
-
-// ============================================================
-//  Text - Text label
-// ============================================================
-
 class Text : public Widget {
 public:
     std::string content;
-
     Text() { type = "text"; }
     Text(const std::string& text, const std::string& cls = "")
         : content(text) { type = "text"; className = cls; }
-
     void layout(const Rect& parentBounds) override;
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  Button - Clickable button
-// ============================================================
-
 class Button : public Widget {
 public:
     std::string label;
-    std::string icon; // icon character (FontAwesome)
-
+    std::string icon;
     Button() { type = "button"; }
     Button(const std::string& lbl, const std::string& cls = "")
         : label(lbl) { type = "button"; className = cls; }
-
     void layout(const Rect& parentBounds) override;
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  TextInput - Text input field
-// ============================================================
-
 class TextInput : public Widget {
 public:
     std::string value;
     std::string placeholder;
-
     TextInput() { type = "input"; style.cursor = CursorType::Text; }
     TextInput(const std::string& ph, const std::string& cls = "")
         : placeholder(ph) { type = "input"; className = cls; style.cursor = CursorType::Text; }
-
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     CursorType cursorAt(Vec2 point) const override;
     void render(Renderer& renderer) override;
-
 private:
     size_t caretIndex_ = 0;
     size_t selectionAnchor_ = 0;
@@ -306,125 +241,92 @@ private:
     float scrollX_ = 0;
     float focusAnim_ = 0;
     float caretBlinkTime_ = 0;
-
     bool hasSelection() const;
     size_t selectionStart() const;
     size_t selectionEnd() const;
     Rect clearButtonRect() const;
 };
-
-// ============================================================
-//  Icon - Single icon character
-// ============================================================
-
 class Icon : public Widget {
 public:
     std::string glyph;
     std::string fontName = "icons";
-
     Icon() { type = "icon"; }
     Icon(const std::string& g, const std::string& cls = "")
         : glyph(g) { type = "icon"; className = cls; }
-
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  Image - PNG/JPG/GIF/BMP/HDR/SVG image widget
-//  Architecture mirrors: blink::LayoutImage + blink::HTMLImageElement
-// ============================================================
-
-// Loading states (mirrors blink::ResourceStatus)
 enum class ImageWidgetState {
-    Idle,       // No load started
-    Loading,    // Data being fetched/decoded
-    Complete,   // Decoded and ready to paint
-    Error       // Failed to load or decode
+    Idle,
+    Loading,
+    Complete,
+    Error
 };
-
 class Image : public Widget {
 public:
-    // --- Core properties (mirrors HTMLImageElement attributes) ---
-    std::string source;                     // src attribute
-    std::string srcset;                     // srcset attribute for responsive images
-    std::string sizes;                      // sizes attribute
-    std::string currentSrc;                 // actually resolved source URL
-    std::string alt;                        // alt text for accessibility
-    std::string crossOrigin;                // crossorigin attribute
-    Vec2 naturalSize = {0, 0};              // intrinsic dimensions
-
-    // --- Blink-aligned state ---
+    std::string source;
+    std::string srcset;
+    std::string sizes;
+    std::string currentSrc;
+    std::string alt;
+    std::string crossOrigin;
+    Vec2 naturalSize = {0, 0};
     ImageWidgetState loadState = ImageWidgetState::Idle;
-    float devicePixelRatio = 1.0f;          // mirrors LayoutImage::image_device_pixel_ratio_
-    float intrinsicDensity = 1.0f;          // Density determined by srcset (e.g. 2x = 2.0)
-    bool isGeneratedContent = false;        // mirrors LayoutImage::is_generated_content_
-    bool lazyLoad = false;                  // loading="lazy" support
-    bool decoding_async = false;            // decoding="async" attribute
-
-    // --- Callbacks (mirrors ImageLoader events) ---
-    std::function<void()> onLoad;           // Fired when image is fully decoded
-    std::function<void()> onError;          // Fired on load/decode failure
-
+    float devicePixelRatio = 1.0f;
+    float intrinsicDensity = 1.0f;
+    bool isGeneratedContent = false;
+    bool lazyLoad = false;
+    bool decoding_async = false;
+    std::function<void()> onLoad;
+    std::function<void()> onError;
     Image() { type = "img"; }
     Image(const std::string& src, const std::string& cls = "")
         : source(src), currentSrc(src) { type = "img"; className = cls; }
-
-    // Set source and trigger reload (mirrors HTMLImageElement::SetSrc)
     void setSrc(const std::string& newSource) {
         if (source != newSource) {
             source = newSource;
             updateCurrentSrc();
         }
     }
-
     void setSrcset(const std::string& newSrcset) {
         if (srcset != newSrcset) {
             srcset = newSrcset;
             updateCurrentSrc();
         }
     }
-
     void updateCurrentSrc();
-
-    // Query natural dimensions without full decode (scaled by density)
-    Vec2 getNaturalSize() const { 
-        return { naturalSize.x / intrinsicDensity, naturalSize.y / intrinsicDensity }; 
+    Vec2 getNaturalSize() const {
+        return { naturalSize.x / intrinsicDensity, naturalSize.y / intrinsicDensity };
     }
     bool isLoaded() const { return loadState == ImageWidgetState::Complete; }
     bool hasError() const { return loadState == ImageWidgetState::Error; }
-
     void layout(const Rect& parentBounds) override;
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  ProgressBar
-// ============================================================
-
 class ProgressBar : public Widget {
 public:
-    float progress = 0; // 0..1
+    float progress = 0;
     Color barColor = Color::fromHex("#6C5CE7");
-
     ProgressBar() { type = "progress"; }
-
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  Canvas - Custom rendering context for 2D/3D games
-// ============================================================
-
+class Placeholder : public Widget {
+public:
+    std::string text = "Loading...";
+    bool shimmer = false;
+    float shimmerProgress = 0;
+    Placeholder() { type = "placeholder"; }
+    Placeholder(const std::string& t, const std::string& cls = "")
+        : text(t) { type = "placeholder"; className = cls; }
+    void render(Renderer& renderer) override;
+    void update(const InputState& input) override;
+};
 class Canvas : public Widget {
 public:
     std::function<void(Renderer&, const Rect&)> onDraw;
-
     Canvas() { type = "canvas"; }
     Canvas(const std::string& cls) { type = "canvas"; className = cls; }
-
     void render(Renderer& renderer) override;
 };
-
 inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     auto* widget = add<Panel>(cls);
     if (reserve > 0) {
@@ -432,11 +334,9 @@ inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     }
     return widget;
 }
-
 inline Text* Widget::text(const std::string& content, const std::string& cls) {
     return add<Text>(content, cls);
 }
-
 inline Button* Widget::button(const std::string& label,
                               const std::string& cls,
                               std::function<void()> onClick) {
@@ -446,27 +346,21 @@ inline Button* Widget::button(const std::string& label,
     }
     return widget;
 }
-
 inline TextInput* Widget::textInput(const std::string& placeholder, const std::string& cls) {
     return add<TextInput>(placeholder, cls);
 }
-
 inline Icon* Widget::addIcon(const std::string& glyph, const std::string& cls) {
     return add<Icon>(glyph, cls);
 }
-
 inline Icon* Widget::icon(const std::string& glyph, const std::string& cls) {
     return addIcon(glyph, cls);
 }
-
 inline Image* Widget::image(const std::string& source, const std::string& cls) {
     return add<Image>(source, cls);
 }
-
 inline Image* Widget::img(const std::string& source, const std::string& cls) {
     return image(source, cls);
 }
-
 inline ProgressBar* Widget::progress(float value,
                                      const std::string& cls,
                                      const Color& color) {
@@ -476,187 +370,160 @@ inline ProgressBar* Widget::progress(float value,
     widget->barColor = color;
     return widget;
 }
-
 inline Canvas* Widget::canvas(const std::string& cls) {
     return add<Canvas>(cls);
 }
-
+inline LazyPanel* Widget::lazyPanel(std::function<void()> worker,
+                                    std::function<void(Widget*)> skeleton,
+                                    std::function<void(Widget*)> content) {
+    return add<LazyPanel>(std::move(worker), std::move(skeleton), std::move(content));
+}
 inline Panel* Widget::div(const std::string& cls, size_t reserve) {
     return panel(cls, reserve);
 }
-
 inline Panel* Widget::section(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "section";
     return widget;
 }
-
 inline Panel* Widget::article(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "article";
     return widget;
 }
-
 inline Panel* Widget::aside(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "aside";
     return widget;
 }
-
 inline Panel* Widget::header(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "header";
     return widget;
 }
-
 inline Panel* Widget::footer(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "footer";
     return widget;
 }
-
 inline Panel* Widget::main(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "main";
     return widget;
 }
-
 inline Panel* Widget::nav(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "nav";
     return widget;
 }
-
 inline Panel* Widget::body(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "body";
     return widget;
 }
-
 inline Panel* Widget::form(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "form";
     return widget;
 }
-
 inline Panel* Widget::blockquote(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "blockquote";
     return widget;
 }
-
 inline Panel* Widget::ul(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "ul";
     return widget;
 }
-
 inline Panel* Widget::ol(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "ol";
     return widget;
 }
-
 inline Panel* Widget::li(const std::string& cls, size_t reserve) {
     auto* widget = panel(cls, reserve);
     widget->type = "li";
     return widget;
 }
-
 inline Text* Widget::span(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "span";
     return widget;
 }
-
 inline Text* Widget::p(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "p";
     return widget;
 }
-
 inline Text* Widget::strong(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "strong";
     return widget;
 }
-
 inline Text* Widget::b(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "b";
     return widget;
 }
-
 inline Text* Widget::small(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "small";
     return widget;
 }
-
 inline Text* Widget::code(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "code";
     return widget;
 }
-
 inline Text* Widget::pre(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "pre";
     return widget;
 }
-
 inline Text* Widget::h1(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h1";
     return widget;
 }
-
 inline Text* Widget::h2(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h2";
     return widget;
 }
-
 inline Text* Widget::h3(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h3";
     return widget;
 }
-
 inline Text* Widget::h4(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h4";
     return widget;
 }
-
 inline Text* Widget::h5(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h5";
     return widget;
 }
-
 inline Text* Widget::h6(const std::string& content, const std::string& cls) {
     auto* widget = text(content, cls);
     widget->type = "h6";
     return widget;
 }
-
 inline TextInput* Widget::input(const std::string& placeholder, const std::string& cls) {
     return textInput(placeholder, cls);
 }
-
 inline Widget* Widget::setId(const std::string& value) {
     id = value;
     markStyleDirtyRecursive();
     return this;
 }
-
 inline Widget* Widget::classes(const std::string& value) {
     className = value;
     markStyleDirtyRecursive();
     return this;
 }
-
 inline Widget* Widget::addClass(const std::string& value) {
     if (value.empty()) return this;
     std::istringstream stream(className);
@@ -669,7 +536,6 @@ inline Widget* Widget::addClass(const std::string& value) {
     markStyleDirtyRecursive();
     return this;
 }
-
 inline Widget* Widget::removeClass(const std::string& value) {
     if (value.empty() || className.empty()) return this;
     std::istringstream stream(className);
@@ -686,20 +552,16 @@ inline Widget* Widget::removeClass(const std::string& value) {
     }
     return this;
 }
-
 inline Widget* Widget::toggleClass(const std::string& value, bool enabled) {
     return enabled ? addClass(value) : removeClass(value);
 }
-
 inline Widget* Widget::css(const std::string& declarations) {
     inlineProperties.clear();
-
     auto trimLocal = [](const std::string& s) {
         size_t start = s.find_first_not_of(" \t\n\r");
         size_t end = s.find_last_not_of(" \t\n\r");
         return (start == std::string::npos) ? std::string() : s.substr(start, end - start + 1);
     };
-
     size_t start = 0;
     int depth = 0;
     char quote = 0;
@@ -746,18 +608,12 @@ inline Widget* Widget::css(const std::string& declarations) {
     markStyleDirtyRecursive();
     return this;
 }
-
-// ============================================================
-//  StatCard - Dashboard stat card (custom widget)
-// ============================================================
-
 class StatCard : public Widget {
 public:
     std::string title;
     std::string value;
     std::string subtitle;
     Color accentColor = Color::fromHex("#6C5CE7");
-
     StatCard() { type = "stat-card"; }
     StatCard(const std::string& t, const std::string& v,
              const std::string& sub, Color accent)
@@ -765,14 +621,29 @@ public:
         type = "stat-card";
         className = "stat-card";
     }
-
     void render(Renderer& renderer) override;
 };
-
-// ============================================================
-//  Application
-// ============================================================
-
+class LazyPanel : public Widget {
+public:
+    std::function<void()> worker;
+    std::function<void(Widget*)> skeletonBuilder;
+    std::function<void(Widget*)> contentBuilder;
+    std::atomic<bool> loaded{false};
+    bool initialized = false;
+    bool lastLoadedState = false;
+    LazyPanel() { type = "lazy-panel"; }
+    LazyPanel(std::function<void()> workerFunc,
+              std::function<void(Widget*)> skeleton,
+              std::function<void(Widget*)> content)
+        : worker(std::move(workerFunc)), skeletonBuilder(std::move(skeleton)), contentBuilder(std::move(content)) {
+        type = "lazy-panel";
+        std::thread([this]() {
+            if (worker) worker();
+            loaded = true;
+        }).detach();
+    }
+    void update(const InputState& input) override;
+};
 enum class UIEventType {
     Any,
     Quit,
@@ -788,7 +659,6 @@ enum class UIEventType {
     RouteChanged,
     Custom
 };
-
 struct UIEvent {
     UIEventType type = UIEventType::Custom;
     Widget* target = nullptr;
@@ -804,56 +674,44 @@ struct UIEvent {
     int clickCount = 0;
     bool handled = false;
 };
-
 class Application {
 public:
     using EventCallback = std::function<void(UIEvent&)>;
     using RouteBuilder = std::function<void(Application&, Widget*)>;
-
+    static Application* instance();
     bool init(const std::string& title, int width, int height);
     bool init(const std::string& title, int width, int height, RenderBackendType backend);
     void run();
     void shutdown();
-
-    // Renderer backend. Call setBackend before init().
     void setBackend(RenderBackendType backend);
     RenderBackendType backendPreference() const { return backendPreference_; }
     RenderBackendType activeBackend() const { return renderer_.activeBackend(); }
     const char* activeBackendName() const { return renderer_.activeBackendName(); }
-
-    // CSS
     bool loadStylesheet(const std::string& path);
     void addStylesheet(const std::string& css);
-
-    // Root widget
     Widget* root() { return root_.get(); }
     Renderer& renderer() { return renderer_; }
     StyleSheet& stylesheet() { return stylesheet_; }
     InputState& input() { return input_; }
-
-    // Events
     size_t on(UIEventType type, EventCallback callback);
     void off(size_t listenerId);
     void emit(UIEvent event);
-
-    // Retained page router
     void addRoute(const std::string& path, RouteBuilder builder);
     void setNotFoundRoute(RouteBuilder builder);
     bool navigate(const std::string& path);
     bool renderRoute(Widget* container);
     const std::string& currentRoute() const { return currentRoute_; }
     bool routeDirty() const { return routeDirty_; }
-
-    // Set custom update/render callback
     std::function<void(float dt)> onUpdate;
     std::function<void()> onRender;
-
-    // Frame pacing: request a redraw when state changes
     void requestRedraw() { needsRedraw_ = true; }
     bool needsRedraw() const { return needsRedraw_; }
-
     bool running = true;
-
+    template<typename T>
+    std::future<T> async(std::function<T()> task) {
+        return std::async(std::launch::async, std::move(task));
+    }
+    void lazyLoad(std::function<void()> loader, std::function<void()> onComplete = nullptr);
 private:
     void* window_ = nullptr;
     void* defaultCursor_ = nullptr;
@@ -869,8 +727,7 @@ private:
     RouteBuilder notFoundRoute_;
     std::string currentRoute_;
     bool routeDirty_ = false;
-    bool needsRedraw_ = true;  // Start true for first frame
-
+    bool needsRedraw_ = true;
     struct EventListener {
         size_t id = 0;
         UIEventType type = UIEventType::Any;
@@ -878,9 +735,7 @@ private:
     };
     std::vector<EventListener> eventListeners_;
     size_t nextEventListenerId_ = 1;
-
     void processEvents();
     void updateCursor(CursorType cursor);
 };
-
-} // namespace FluxUI
+}

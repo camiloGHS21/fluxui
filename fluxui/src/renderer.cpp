@@ -71,6 +71,10 @@
 #define FLUXUI_HAS_D3D12 0
 #endif
 
+#ifndef FLUXUI_HAS_SKIA
+#define FLUXUI_HAS_SKIA 0
+#endif
+
 #ifndef FLUXUI_HAS_METAL
 #define FLUXUI_HAS_METAL 0
 #endif
@@ -399,6 +403,25 @@ public:
     }
 };
 
+class SkiaBackendInfo final : public IRenderBackend {
+public:
+    RenderBackendInfo info() const override {
+        return {
+            RenderBackendType::Skia,
+            "Skia",
+            FLUXUI_HAS_SKIA != 0,
+            false,
+            FLUXUI_HAS_SKIA != 0
+                ? "Skia backend target is compiled; draw implementation is staged"
+                : "Not compiled in this build"
+        };
+    }
+
+    uint32_t windowFlags() const override {
+        return 0;
+    }
+};
+
 class MetalBackendInfo final : public IRenderBackend {
 public:
     RenderBackendInfo info() const override {
@@ -433,6 +456,11 @@ const Direct3D12BackendInfo& direct3D12BackendInfo() {
     return backend;
 }
 
+const SkiaBackendInfo& skiaBackendInfo() {
+    static SkiaBackendInfo backend;
+    return backend;
+}
+
 const MetalBackendInfo& metalBackendInfo() {
     static MetalBackendInfo backend;
     return backend;
@@ -449,6 +477,7 @@ RenderBackendType chooseAutoBackend() {
         RenderBackendType::Metal,
 #endif
         RenderBackendType::Direct3D12,
+        RenderBackendType::Skia,
         RenderBackendType::Metal,
     };
 
@@ -1770,6 +1799,9 @@ uint32_t Renderer::windowFlags() const {
     if (activeBackend_ == RenderBackendType::Direct3D12) {
         return direct3D12BackendInfo().windowFlags();
     }
+    if (activeBackend_ == RenderBackendType::Skia) {
+        return skiaBackendInfo().windowFlags();
+    }
     if (activeBackend_ == RenderBackendType::Metal) {
         return metalBackendInfo().windowFlags();
     }
@@ -1782,6 +1814,9 @@ RenderBackendInfo Renderer::getBackendInfo(RenderBackendType backend) {
     }
     if (backend == RenderBackendType::Direct3D12) {
         return direct3D12BackendInfo().info();
+    }
+    if (backend == RenderBackendType::Skia) {
+        return skiaBackendInfo().info();
     }
     if (backend == RenderBackendType::Metal) {
         return metalBackendInfo().info();
@@ -1809,6 +1844,8 @@ RenderBackendType Renderer::defaultBackend() {
     return RenderBackendType::Direct3D12;
 #elif FLUXUI_DEFAULT_BACKEND == 3
     return RenderBackendType::Metal;
+#elif FLUXUI_DEFAULT_BACKEND == 4
+    return RenderBackendType::Skia;
 #else
     return RenderBackendType::Auto;
 #endif

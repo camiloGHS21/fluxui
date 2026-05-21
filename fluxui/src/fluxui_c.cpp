@@ -42,6 +42,8 @@ static RenderBackendType to_backend(FluxUIRenderBackend backend) {
         return RenderBackendType::Vulkan;
     case FLUXUI_BACKEND_DIRECT3D12:
         return RenderBackendType::Direct3D12;
+    case FLUXUI_BACKEND_SKIA:
+        return RenderBackendType::Skia;
     case FLUXUI_BACKEND_METAL:
         return RenderBackendType::Metal;
     case FLUXUI_BACKEND_COMPATIBILITY:
@@ -58,6 +60,8 @@ static FluxUIRenderBackend from_backend(RenderBackendType backend) {
         return FLUXUI_BACKEND_VULKAN;
     case RenderBackendType::Direct3D12:
         return FLUXUI_BACKEND_DIRECT3D12;
+    case RenderBackendType::Skia:
+        return FLUXUI_BACKEND_SKIA;
     case RenderBackendType::Metal:
         return FLUXUI_BACKEND_METAL;
     case RenderBackendType::Compatibility:
