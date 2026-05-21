@@ -21,7 +21,13 @@ final class Native {
     static native boolean appLoadDefaultFont(long app, float size);
     static native void appWarmFontCache(long app, float[] sizes, String name);
     static native void appReleaseFontSources(long app);
+    static native long appSetUpdateCallback(long app, UpdateCallback callback);
     static native long appRoot(long app);
+    static native long appAddRoute(long app, String path, RouteBuilder builder);
+    static native boolean appNavigate(long app, String path);
+    static native String appCurrentRoute(long app);
+    static native boolean appRouteDirty(long app);
+    static native boolean appRenderRoute(long app, long container);
 
     static native void widgetClearChildren(long widget);
     static native void widgetReserveChildren(long widget, int count);

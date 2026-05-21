@@ -63,8 +63,36 @@ public final class App implements AutoCloseable {
         return this;
     }
 
+    public App setUpdateCallback(UpdateCallback callback) {
+        long ref = Native.appSetUpdateCallback(handle(), callback);
+        retainCallback(ref);
+        return this;
+    }
+
     public Widget root() {
         return new Widget(this, Native.appRoot(handle()));
+    }
+
+    public App addRoute(String path, RouteBuilder builder) {
+        long ref = Native.appAddRoute(handle(), path, builder);
+        retainCallback(ref);
+        return this;
+    }
+
+    public boolean navigate(String path) {
+        return Native.appNavigate(handle(), path);
+    }
+
+    public String currentRoute() {
+        return Native.appCurrentRoute(handle());
+    }
+
+    public boolean routeDirty() {
+        return Native.appRouteDirty(handle());
+    }
+
+    public boolean renderRoute(Widget container) {
+        return Native.appRenderRoute(handle(), container.rawHandle());
     }
 
     public void run() {

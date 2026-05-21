@@ -125,8 +125,21 @@ try (App app = App.create()) {
     Widget root = app.root();
     root.addText("Hello from Java", "title");
     root.addButton("Close", "button").setOnClick(app::stop);
+    app.setUpdateCallback(deltaTime -> {
+        // update app state from the native run loop
+    });
     app.run();
 }
+```
+
+Routes are available from Java too:
+
+```java
+app.addRoute("/dashboard", (view, route) -> {
+    view.addText("Dashboard", "title");
+});
+app.navigate("/dashboard");
+app.renderRoute(app.root());
 ```
 
 Compile the Java classes and example:
@@ -135,6 +148,7 @@ Compile the Java classes and example:
 $sources = @(Get-ChildItem bindings\java\io\fluxui,examples\java -Filter *.java | ForEach-Object FullName)
 javac -d build\java\classes $sources
 java -cp build\java\classes Smoke build\Release
+java -cp build\java\classes AutoClose build\Release
 java -cp build\java\classes Minimal build\Release
 ```
 

@@ -87,6 +87,49 @@ void java_click_callback(FluxUIWidget*, void* user_data) {
     finish_callback(env, detach);
 }
 
+void java_update_callback(FluxUIApp*, float delta_time, void* user_data) {
+    jobject callback = reinterpret_cast<jobject>(user_data);
+    if (!callback) return;
+    bool detach = false;
+    JNIEnv* env = current_env(detach);
+    if (!env) return;
+
+    jclass cls = env->GetObjectClass(callback);
+    jmethodID update = cls ? env->GetMethodID(cls, "update", "(F)V") : nullptr;
+    if (update) {
+        env->CallVoidMethod(callback, update, static_cast<jfloat>(delta_time));
+    }
+    if (cls) env->DeleteLocalRef(cls);
+    finish_callback(env, detach);
+}
+
+void java_route_callback(FluxUIApp*, FluxUIWidget* container, const char* route, void* user_data) {
+    jobject builder = reinterpret_cast<jobject>(user_data);
+    if (!builder) return;
+    bool detach = false;
+    JNIEnv* env = current_env(detach);
+    if (!env) return;
+
+    jclass widgetClass = env->FindClass("io/fluxui/Widget");
+    jmethodID widgetCtor = widgetClass ? env->GetMethodID(widgetClass, "<init>", "(J)V") : nullptr;
+    jobject widget = widgetCtor ? env->NewObject(widgetClass, widgetCtor, as_jlong(container)) : nullptr;
+    jstring routeString = env->NewStringUTF(route ? route : "");
+
+    jclass builderClass = env->GetObjectClass(builder);
+    jmethodID build = builderClass
+        ? env->GetMethodID(builderClass, "build", "(Lio/fluxui/Widget;Ljava/lang/String;)V")
+        : nullptr;
+    if (build && widget && routeString) {
+        env->CallVoidMethod(builder, build, widget, routeString);
+    }
+
+    if (routeString) env->DeleteLocalRef(routeString);
+    if (widget) env->DeleteLocalRef(widget);
+    if (builderClass) env->DeleteLocalRef(builderClass);
+    if (widgetClass) env->DeleteLocalRef(widgetClass);
+    finish_callback(env, detach);
+}
+
 void java_virtual_list_item_callback(FluxUIWidget* item, uint32_t index, void* user_data) {
     jobject builder = reinterpret_cast<jobject>(user_data);
     if (!builder) return;
@@ -217,8 +260,69 @@ extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appReleaseFontSources(
     fluxui_app_release_font_sources(as_app(app));
 }
 
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_appSetUpdateCallback(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jobject callback) {
+    if (!callback) {
+        fluxui_app_set_update_callback(as_app(app), nullptr, nullptr);
+        return 0;
+    }
+    jobject callbackRef = env->NewGlobalRef(callback);
+    fluxui_app_set_update_callback(as_app(app), java_update_callback, callbackRef);
+    return as_jlong(callbackRef);
+}
+
 extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_appRoot(JNIEnv*, jclass, jlong app) {
     return as_jlong(fluxui_app_root(as_app(app)));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_appAddRoute(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring path,
+    jobject builder) {
+    UtfChars pathChars(env, path);
+    if (!builder) {
+        return 0;
+    }
+    jobject builderRef = env->NewGlobalRef(builder);
+    fluxui_app_add_route(as_app(app), pathChars.c_str(), java_route_callback, builderRef);
+    return as_jlong(builderRef);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appNavigate(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring path) {
+    UtfChars pathChars(env, path);
+    return fluxui_app_navigate(as_app(app), pathChars.c_str()) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_io_fluxui_Native_appCurrentRoute(
+    JNIEnv* env,
+    jclass,
+    jlong app) {
+    const char* route = fluxui_app_current_route(as_app(app));
+    return env->NewStringUTF(route ? route : "");
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appRouteDirty(
+    JNIEnv*,
+    jclass,
+    jlong app) {
+    return fluxui_app_route_dirty(as_app(app)) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appRenderRoute(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jlong container) {
+    return fluxui_app_render_route(as_app(app), as_widget(container)) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetClearChildren(
