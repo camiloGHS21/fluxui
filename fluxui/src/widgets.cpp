@@ -1,4 +1,3 @@
-// FluxUI Widget Implementation
 #include "fluxui/widgets.h"
 #include <iostream>
 #include <algorithm>
@@ -10,17 +9,12 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
-
 #include <stb_image.h>
-
 #include "fluxui/platform.h"
-
 namespace FluxUI {
-
 static bool isUtf8Continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
-
 static size_t clampToUtf8Boundary(const std::string& text, size_t index) {
     index = std::min(index, text.size());
     while (index > 0 && index < text.size() &&
@@ -29,7 +23,6 @@ static size_t clampToUtf8Boundary(const std::string& text, size_t index) {
     }
     return index;
 }
-
 static size_t previousCodepoint(const std::string& text, size_t index) {
     index = clampToUtf8Boundary(text, index);
     if (index == 0) return 0;
@@ -39,7 +32,6 @@ static size_t previousCodepoint(const std::string& text, size_t index) {
     }
     return index;
 }
-
 static size_t nextCodepoint(const std::string& text, size_t index) {
     index = clampToUtf8Boundary(text, index);
     if (index >= text.size()) return text.size();
@@ -49,19 +41,16 @@ static size_t nextCodepoint(const std::string& text, size_t index) {
     }
     return index;
 }
-
 static bool isAsciiWordChar(char c) {
     unsigned char uc = (unsigned char)c;
     return std::isalnum(uc) || c == '_';
 }
-
 static size_t previousWordBoundary(const std::string& text, size_t index) {
     index = clampToUtf8Boundary(text, index);
     while (index > 0 && std::isspace((unsigned char)text[previousCodepoint(text, index)])) {
         index = previousCodepoint(text, index);
     }
     if (index == 0) return 0;
-
     size_t current = previousCodepoint(text, index);
     bool word = isAsciiWordChar(text[current]);
     while (current > 0) {
@@ -71,11 +60,9 @@ static size_t previousWordBoundary(const std::string& text, size_t index) {
     }
     return current;
 }
-
 static size_t nextWordBoundary(const std::string& text, size_t index) {
     index = clampToUtf8Boundary(text, index);
     if (index >= text.size()) return text.size();
-
     bool word = isAsciiWordChar(text[index]);
     while (index < text.size() &&
            !std::isspace((unsigned char)text[index]) &&
@@ -87,19 +74,16 @@ static size_t nextWordBoundary(const std::string& text, size_t index) {
     }
     return index;
 }
-
 static void wordRangeAt(const std::string& text, size_t index, size_t& start, size_t& end) {
     index = clampToUtf8Boundary(text, index);
     if (text.empty()) {
         start = end = 0;
         return;
     }
-
     if (index >= text.size()) index = previousCodepoint(text, text.size());
     if (std::isspace((unsigned char)text[index]) && index > 0) {
         index = previousCodepoint(text, index);
     }
-
     bool word = index < text.size() && isAsciiWordChar(text[index]);
     start = index;
     while (start > 0) {
@@ -107,14 +91,12 @@ static void wordRangeAt(const std::string& text, size_t index, size_t& start, si
         if (std::isspace((unsigned char)text[prev]) || isAsciiWordChar(text[prev]) != word) break;
         start = prev;
     }
-
     end = index;
     while (end < text.size()) {
         if (std::isspace((unsigned char)text[end]) || isAsciiWordChar(text[end]) != word) break;
         end = nextCodepoint(text, end);
     }
 }
-
 static float approximateGlyphAdvance(unsigned char c, float fontSize) {
     if (c == ' ') return fontSize * 0.32f;
     if (c == 'i' || c == 'l' || c == 'I' || c == '.' || c == ',' || c == ':' ||
@@ -127,7 +109,6 @@ static float approximateGlyphAdvance(unsigned char c, float fontSize) {
     if (c >= 128) return fontSize * 0.72f;
     return fontSize * 0.55f;
 }
-
 static float approximateTextWidth(const std::string& text, float fontSize) {
     float width = 0.0f;
     for (size_t i = 0; i < text.size(); ) {
@@ -137,14 +118,12 @@ static float approximateTextWidth(const std::string& text, float fontSize) {
     }
     return width;
 }
-
 static std::string trimAsciiLocal(std::string value) {
     auto isWs = [](unsigned char c) { return std::isspace(c) != 0; };
     while (!value.empty() && isWs((unsigned char)value.front())) value.erase(value.begin());
     while (!value.empty() && isWs((unsigned char)value.back())) value.pop_back();
     return value;
 }
-
 static float parseSvgLengthLocal(const std::string& value, float fallback = 0.0f) {
     std::string s = trimAsciiLocal(value);
     if (s.empty()) return fallback;
@@ -153,7 +132,6 @@ static float parseSvgLengthLocal(const std::string& value, float fallback = 0.0f
     if (end == s.c_str()) return fallback;
     return number;
 }
-
 static std::string attrFromTagLocal(const std::string& tag, const std::string& name) {
     size_t pos = tag.find(name);
     while (pos != std::string::npos) {
@@ -179,7 +157,6 @@ static std::string attrFromTagLocal(const std::string& tag, const std::string& n
     while (end < tag.size() && !std::isspace((unsigned char)tag[end]) && tag[end] != '>') ++end;
     return tag.substr(start, end - start);
 }
-
 static Vec2 probeImageNaturalSize(const std::string& source) {
     if (source.empty()) return {0, 0};
     std::ifstream file(source, std::ios::binary | std::ios::ate);
@@ -189,7 +166,6 @@ static Vec2 probeImageNaturalSize(const std::string& source) {
     file.seekg(0, std::ios::beg);
     std::vector<unsigned char> bytes((size_t)fileSize);
     if (!file.read(reinterpret_cast<char*>(bytes.data()), fileSize).good()) return {0, 0};
-
     std::string head(reinterpret_cast<const char*>(bytes.data()),
                      std::min<size_t>(bytes.size(), 4096));
     size_t svgPos = head.find("<svg");
@@ -209,14 +185,12 @@ static Vec2 probeImageNaturalSize(const std::string& source) {
         if (width > 0.0f && height > 0.0f) return {width, height};
         return {300.0f, 150.0f};
     }
-
     int w = 0, h = 0, comp = 0;
     if (stbi_info_from_memory(bytes.data(), (int)bytes.size(), &w, &h, &comp) && w > 0 && h > 0) {
         return {(float)w, (float)h};
     }
     return {0, 0};
 }
-
 static bool parentUsesRowFlex(const Widget* widget) {
     if (!widget || !widget->parent) return false;
     const Style& parentStyle = widget->parent->computedStyle;
@@ -224,10 +198,8 @@ static bool parentUsesRowFlex(const Widget* widget) {
     return parentStyle.flexDirection == FlexDirection::Row ||
            parentStyle.flexDirection == FlexDirection::RowReverse;
 }
-
 static size_t approximateTextIndexAtX(const std::string& text, float x, float fontSize) {
     if (x <= 0 || text.empty()) return 0;
-
     float cursor = 0;
     for (size_t i = 0; i < text.size(); ) {
         size_t current = i;
@@ -241,53 +213,43 @@ static size_t approximateTextIndexAtX(const std::string& text, float x, float fo
     }
     return text.size();
 }
-
 static bool consumesParentMainAxisHeight(const Widget* widget, const Style& style) {
     if (!widget || !widget->parent || style.flexGrow <= 0.0f) return false;
     const Style& parentStyle = widget->parent->computedStyle;
     if (parentStyle.display != Display::Flex) return false;
-
     return parentStyle.flexDirection == FlexDirection::Column ||
            parentStyle.flexDirection == FlexDirection::ColumnReverse;
 }
-
 static bool isOutOfFlow(const Widget* widget) {
     if (!widget) return false;
     return widget->computedStyle.position == Position::Absolute ||
            widget->computedStyle.position == Position::Fixed;
 }
-
 static bool rectIntersects(const Rect& a, const Rect& b, float padding = 0.0f) {
     return a.x + a.w >= b.x - padding &&
            a.x <= b.x + b.w + padding &&
            a.y + a.h >= b.y - padding &&
            a.y <= b.y + b.h + padding;
 }
-
 static bool isDisplayNone(const Widget* widget) {
     return widget && widget->computedStyle.display == Display::None;
 }
-
 static bool canPaintWidget(const Widget* widget) {
     return widget && widget->visible &&
            widget->computedStyle.display != Display::None &&
            widget->computedStyle.visibility == Visibility::Visible;
 }
-
 static bool canHitTestWidget(const Widget* widget) {
     return canPaintWidget(widget) &&
            widget->computedStyle.pointerEvents != PointerEvents::None;
 }
-
 static bool clipsOverflow(Overflow overflow) {
     return overflow == Overflow::Hidden || overflow == Overflow::Scroll ||
            overflow == Overflow::Auto || overflow == Overflow::Clip;
 }
-
 static bool isOverflowVisibleOrClip(Overflow overflow) {
     return overflow == Overflow::Visible || overflow == Overflow::Clip;
 }
-
 static Overflow normalizedOverflowAxis(Overflow axis, Overflow otherAxis) {
     if (!isOverflowVisibleOrClip(otherAxis)) {
         if (axis == Overflow::Visible) return Overflow::Auto;
@@ -295,58 +257,45 @@ static Overflow normalizedOverflowAxis(Overflow axis, Overflow otherAxis) {
     }
     return axis;
 }
-
 static Overflow effectiveOverflowX(const Style& style) {
     return normalizedOverflowAxis(style.overflowX, style.overflowY);
 }
-
 static Overflow effectiveOverflowY(const Style& style) {
     return normalizedOverflowAxis(style.overflowY, style.overflowX);
 }
-
 static bool clipsOverflow(const Style& style) {
     return clipsOverflow(effectiveOverflowX(style)) ||
            clipsOverflow(effectiveOverflowY(style));
 }
-
 static bool scrollsOverflowY(const Style& style, float contentHeight, float boundsHeight) {
     Overflow overflow = effectiveOverflowY(style);
     if (overflow == Overflow::Scroll) return contentHeight > boundsHeight + 1.0f;
     if (overflow == Overflow::Auto) return contentHeight > boundsHeight + 1.0f;
     return false;
 }
-
 static float usedBorderTopWidth(const Style& style) {
     return style.hasBorderTop ? style.borderTop.width : style.border.width;
 }
-
 static float usedBorderRightWidth(const Style& style) {
     return style.hasBorderRight ? style.borderRight.width : style.border.width;
 }
-
 static float usedBorderBottomWidth(const Style& style) {
     return style.hasBorderBottom ? style.borderBottom.width : style.border.width;
 }
-
 static float usedBorderLeftWidth(const Style& style) {
     return style.hasBorderLeft ? style.borderLeft.width : style.border.width;
 }
-
 static float usedBorderHorizontal(const Style& style) {
     return usedBorderLeftWidth(style) + usedBorderRightWidth(style);
 }
-
 static float usedBorderVertical(const Style& style) {
     return usedBorderTopWidth(style) + usedBorderBottomWidth(style);
 }
-
 static std::string renderFontName(const Style& style) {
     return style.fontFamily.empty() ? "default" : style.fontFamily;
 }
-
 static std::string applyTextTransform(const std::string& text, TextTransform transform) {
     if (transform == TextTransform::None || text.empty()) return text;
-
     std::string out = text;
     if (transform == TextTransform::Uppercase) {
         for (char& c : out) c = (char)std::toupper((unsigned char)c);
@@ -368,14 +317,12 @@ static std::string applyTextTransform(const std::string& text, TextTransform tra
     }
     return out;
 }
-
 static void renderTextDecoration(Renderer& renderer,
                                  const std::string& text,
                                  const Rect& rect,
                                  const Color& textColor,
                                  const Style& style) {
     if (style.textDecoration == TextDecoration::None || text.empty()) return;
-
     std::string fontName = renderFontName(style);
     float textWidth = renderer.measureText(text, style.fontSize, fontName).x;
     float x = rect.x;
@@ -384,7 +331,6 @@ static void renderTextDecoration(Renderer& renderer,
     } else if (style.textAlign == TextAlign::Right) {
         x = rect.x + rect.w - textWidth;
     }
-
     Color lineColor = style.hasTextDecorationColor ? style.textDecorationColor : textColor;
     float thickness = std::max(1.0f, std::round(style.fontSize / 14.0f));
     float y = rect.y + rect.h * 0.5f;
@@ -396,7 +342,6 @@ static void renderTextDecoration(Renderer& renderer,
     renderer.drawRoundedRect({x, y, std::max(0.0f, textWidth), thickness},
                              lineColor, BorderRadius(thickness * 0.5f));
 }
-
 static std::string ellipsizeText(Renderer& renderer,
                                  const std::string& text,
                                  float maxWidth,
@@ -404,11 +349,9 @@ static std::string ellipsizeText(Renderer& renderer,
                                  const std::string& fontName) {
     if (text.empty() || maxWidth <= 0.0f) return "";
     if (renderer.measureText(text, fontSize, fontName).x <= maxWidth) return text;
-
     constexpr const char* ellipsis = "...";
     float ellipsisWidth = renderer.measureText(ellipsis, fontSize, fontName).x;
     if (ellipsisWidth >= maxWidth) return "";
-
     size_t lo = 0;
     size_t hi = text.size();
     size_t best = 0;
@@ -426,11 +369,9 @@ static std::string ellipsizeText(Renderer& renderer,
     }
     return text.substr(0, clampToUtf8Boundary(text, best)) + ellipsis;
 }
-
 static bool rectEqual(const Rect& a, const Rect& b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
-
 static bool intersectRects(const Rect& a, const Rect& b, Rect& out) {
     float x0 = std::max(a.x, b.x);
     float y0 = std::max(a.y, b.y);
@@ -443,20 +384,16 @@ static bool intersectRects(const Rect& a, const Rect& b, Rect& out) {
     out = {x0, y0, x1 - x0, y1 - y0};
     return true;
 }
-
 static void hashCombine(size_t& seed, size_t value) {
     seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
 }
-
 static void hashFloat(size_t& seed, float value) {
     hashCombine(seed, std::hash<int>{}((int)std::round(value * 1000.0f)));
 }
-
 static void hashCSSValue(size_t& seed, const CSSValue& value) {
     hashCombine(seed, std::hash<int>{}((int)value.unit));
     hashFloat(seed, value.value);
 }
-
 static size_t layoutStyleSignature(const Style& s) {
     size_t seed = 0;
     hashCombine(seed, std::hash<int>{}((int)s.display));
@@ -506,30 +443,22 @@ static size_t layoutStyleSignature(const Style& s) {
     hashCombine(seed, std::hash<int>{}((int)s.verticalAlign));
     return seed;
 }
-
-// ============================================================
-//  Widget - Style Resolution
-// ============================================================
-
 void Widget::markLayoutDirty() {
     if (layoutDirty) return;
     layoutDirty = true;
     if (parent) parent->markLayoutDirty();
 }
-
 void Widget::markSubtreeStyleDirty() {
     if (subtreeStyleDirty) return;
     subtreeStyleDirty = true;
     if (parent) parent->markSubtreeStyleDirty();
 }
-
 void Widget::markStyleDirty() {
     styleDirty = true;
     subtreeStyleDirty = true;
     markLayoutDirty();
     if (parent) parent->markSubtreeStyleDirty();
 }
-
 void Widget::markStyleDirtyRecursive() {
     styleDirty = true;
     subtreeStyleDirty = true;
@@ -539,22 +468,18 @@ void Widget::markStyleDirtyRecursive() {
     }
     if (parent) parent->markSubtreeStyleDirty();
 }
-
 void Widget::resolveStyles(const StyleSheet& sheet) {
     if (!subtreeStyleDirty) {
         return;
     }
-
     if (styleDirty) {
         std::vector<CSSSelectorNode> ancestors;
         ancestors.reserve(8);
         for (Widget* node = parent; node; node = node->parent) {
             ancestors.push_back({node->className, node->id, node->type});
         }
-
         const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
         computedStyle = sheet.resolve(className, id, type, ancestors, parentStyle);
-
         if (parent) {
             const Style& inherited = parent->computedStyle;
             if (!computedStyle.hasColor) computedStyle.color = inherited.color;
@@ -565,8 +490,6 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.hasLineHeight) computedStyle.lineHeight = inherited.lineHeight;
             if (!computedStyle.hasFontFamily) computedStyle.fontFamily = inherited.fontFamily;
         }
-
-        // Merge inline styles on top of resolved.
         if (style.width.isSet()) computedStyle.width = style.width;
         if (style.height.isSet()) computedStyle.height = style.height;
         if (style.minWidth.isSet()) computedStyle.minWidth = style.minWidth;
@@ -697,7 +620,6 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                                       prop.name,
                                       value);
         }
-
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);
         if (nextLayoutSignature != layoutSignature) {
             layoutSignature = nextLayoutSignature;
@@ -705,7 +627,6 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         }
         styleDirty = false;
     }
-
     for (auto& child : children) {
         if (child->subtreeStyleDirty) {
             child->resolveStyles(sheet);
@@ -713,17 +634,11 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     }
     subtreeStyleDirty = false;
 }
-
-// ============================================================
-//  Widget - Layout (Flexbox-lite)
-// ============================================================
-
 void Widget::layout(const Rect& parentBounds) {
     if (!layoutDirty && rectEqual(lastLayoutParentBounds, parentBounds)) {
         return;
     }
     lastLayoutParentBounds = parentBounds;
-
     auto& s = computedStyle;
     if (s.display == Display::None) {
         bounds = {parentBounds.x, parentBounds.y, 0.0f, 0.0f};
@@ -731,20 +646,15 @@ void Widget::layout(const Rect& parentBounds) {
         layoutDirty = false;
         return;
     }
-
     bool heightProvidedByParentFlex = consumesParentMainAxisHeight(this, s);
-
-    // Calculate own bounds
     float x = parentBounds.x + s.margin.left;
     float y = parentBounds.y + s.margin.top;
     float w = s.width.isSet() ? s.width.resolve(parentBounds.w) :
               (parentBounds.w < 9999 ? parentBounds.w - s.margin.horizontal() : 0);
-    float h = s.height.isSet() ? s.height.resolve(parentBounds.h) : 
+    float h = s.height.isSet() ? s.height.resolve(parentBounds.h) :
               (parentBounds.h < 9999 ? parentBounds.h - s.margin.vertical() : 0);
     bool widthControlsRatio = s.aspectRatio > 0.0f && s.width.isSet() && !s.height.isSet();
     bool heightControlsRatio = s.aspectRatio > 0.0f && s.height.isSet() && !s.width.isSet();
-
-    // Min/max constraints
     if (s.minWidth.isSet()) w = std::max(w, s.minWidth.resolve(parentBounds.w));
     if (s.maxWidth.isSet()) w = std::min(w, s.maxWidth.resolve(parentBounds.w));
     if (widthControlsRatio) h = w / s.aspectRatio;
@@ -755,13 +665,10 @@ void Widget::layout(const Rect& parentBounds) {
         if (s.width.isSet()) w += s.padding.horizontal() + usedBorderHorizontal(s);
         if (s.height.isSet()) h += s.padding.vertical() + usedBorderVertical(s);
     }
-
     bounds = {x, y, w, h};
-
     if (s.display == Display::Flex) {
         layoutFlexChildren();
     } else {
-        // Block layout: stack children vertically
         float cy = bounds.y + s.padding.top;
         for (auto& child : children) {
             if (!child->visible) continue;
@@ -777,7 +684,6 @@ void Widget::layout(const Rect& parentBounds) {
             child->layout(childArea);
             cy = child->bounds.y + child->bounds.h + child->computedStyle.margin.bottom;
         }
-        // Auto-height
         if (!s.height.isSet() && !heightProvidedByParentFlex && !children.empty()) {
             float maxY = bounds.y;
             for (auto& c : children) {
@@ -789,16 +695,13 @@ void Widget::layout(const Rect& parentBounds) {
         }
         contentHeight = cy - bounds.y + s.padding.bottom;
     }
-
     layoutPositionedChildren();
     layoutDirty = false;
 }
-
 void Widget::layoutFlexChildren() {
     auto& s = computedStyle;
     bool isRow = (s.flexDirection == FlexDirection::Row ||
                   s.flexDirection == FlexDirection::RowReverse);
-
     float contentX = bounds.x + s.padding.left;
     float contentY = bounds.y + s.padding.top;
     float contentW = std::max(0.0f, bounds.w - s.padding.horizontal());
@@ -806,23 +709,19 @@ void Widget::layoutFlexChildren() {
     float mainGap = isRow
         ? (s.columnGap > 0.0f ? s.columnGap : s.gap)
         : (s.rowGap > 0.0f ? s.rowGap : s.gap);
-
     int visibleCount = 0;
     float totalFlexGrow = 0;
     float fixedSize = 0;
     std::vector<float> measuredMain(children.size(), 0.0f);
-
     if (!isRow) {
         for (size_t i = 0; i < children.size(); i++) {
             auto& child = children[i];
             if (!child->visible) continue;
             if (isDisplayNone(child.get())) continue;
             if (isOutOfFlow(child.get())) continue;
-
             visibleCount++;
             auto& cs = child->computedStyle;
             totalFlexGrow += cs.flexGrow;
-
             float childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
             if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
                 measuredMain[i] = cs.flexBasis.resolve(contentH);
@@ -843,7 +742,6 @@ void Widget::layoutFlexChildren() {
             if (!child->visible) continue;
             if (isDisplayNone(child.get())) continue;
             if (isOutOfFlow(child.get())) continue;
-
             visibleCount++;
             auto& cs = child->computedStyle;
             totalFlexGrow += cs.flexGrow;
@@ -859,17 +757,13 @@ void Widget::layoutFlexChildren() {
             }
         }
     }
-
     float totalGap = mainGap * std::max(0, visibleCount - 1);
     float availableSpace = (isRow ? contentW : contentH) - fixedSize - totalGap;
     availableSpace = std::max(0.0f, availableSpace);
-
     float mainAxisAvailable = availableSpace;
     if (totalFlexGrow > 0) mainAxisAvailable = 0;
-    
     float startOffset = 0;
     float gapOffset = mainGap;
-
     if (mainAxisAvailable > 0) {
         switch (s.justifyContent) {
             case JustifyContent::FlexStart:
@@ -902,24 +796,19 @@ void Widget::layoutFlexChildren() {
                 break;
         }
     }
-
     float cursor = (isRow ? contentX : contentY) + startOffset;
     float maxCross = 0;
     float contentEnd = cursor;
     int laidOut = 0;
-
-    // Parallel layout for large number of children
     const bool parallelLayout = children.size() > 32;
     std::vector<std::future<void>> futures;
     if (parallelLayout) futures.reserve(children.size());
-
     struct ChildLayoutTask {
         Widget* widget;
         Rect area;
     };
     std::vector<ChildLayoutTask> tasks;
     if (parallelLayout) tasks.reserve(children.size());
-
     for (size_t i = 0; i < children.size(); i++) {
         auto& child = children[i];
         if (!child->visible) continue;
@@ -927,9 +816,7 @@ void Widget::layoutFlexChildren() {
         if (isOutOfFlow(child.get())) continue;
         auto& cs = child->computedStyle;
         float nextGap = (++laidOut < visibleCount) ? gapOffset : 0.0f;
-
         float childW, childH;
-
         if (isRow) {
             if (cs.flexGrow > 0 && totalFlexGrow > 0) {
                 childW = measuredMain[i] + availableSpace * (cs.flexGrow / totalFlexGrow);
@@ -938,8 +825,6 @@ void Widget::layoutFlexChildren() {
             }
             childH = cs.height.isSet() ? cs.height.resolve(contentH) : contentH;
             if (childH <= 0 && !cs.height.isSet()) childH = 0;
-
-            // Resolve align-self (Blink: per-item override of align-items)
             AlignItems effectiveAlign = s.alignItems;
             if (cs.alignSelf != AlignSelf::Auto) {
                 switch (cs.alignSelf) {
@@ -951,17 +836,14 @@ void Widget::layoutFlexChildren() {
                     default: break;
                 }
             }
-
             float cy = contentY;
             if (effectiveAlign == AlignItems::Center && contentH > childH) {
                 cy = contentY + (contentH - childH) / 2;
             } else if (effectiveAlign == AlignItems::FlexEnd && contentH > childH) {
                 cy = contentY + contentH - childH;
             }
-
             Rect childArea = {cursor + cs.margin.left, cy + cs.margin.top,
                               std::max(0.0f, childW), std::max(0.0f, childH)};
-            
             if (parallelLayout) {
                 tasks.push_back({child.get(), childArea});
                 cursor += childW + cs.margin.horizontal() + nextGap;
@@ -974,7 +856,7 @@ void Widget::layoutFlexChildren() {
                 cursor += child->bounds.w + cs.margin.horizontal() + nextGap;
                 maxCross = std::max(maxCross, child->bounds.h + cs.margin.vertical());
             }
-            contentEnd = std::max(contentEnd, cursor - nextGap); 
+            contentEnd = std::max(contentEnd, cursor - nextGap);
         } else {
             childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
             if (cs.flexGrow > 0 && totalFlexGrow > 0) {
@@ -982,8 +864,6 @@ void Widget::layoutFlexChildren() {
             } else {
                 childH = measuredMain[i];
             }
-
-            // Resolve align-self (Blink: per-item override of align-items)
             AlignItems effectiveAlign = s.alignItems;
             if (cs.alignSelf != AlignSelf::Auto) {
                 switch (cs.alignSelf) {
@@ -995,17 +875,14 @@ void Widget::layoutFlexChildren() {
                     default: break;
                 }
             }
-
             float cx = contentX;
             if (effectiveAlign == AlignItems::Center && contentW > childW) {
                 cx = contentX + (contentW - childW) / 2;
             } else if (effectiveAlign == AlignItems::FlexEnd && contentW > childW) {
                 cx = contentX + contentW - childW;
             }
-
             Rect childArea = {cx + cs.margin.left, cursor + cs.margin.top,
                               std::max(0.0f, childW), std::max(0.0f, childH)};
-
             if (parallelLayout) {
                 tasks.push_back({child.get(), childArea});
                 cursor += childH + cs.margin.vertical() + nextGap;
@@ -1017,7 +894,6 @@ void Widget::layoutFlexChildren() {
             contentEnd = cursor;
         }
     }
-
     if (parallelLayout) {
         for (auto& task : tasks) {
             futures.push_back(std::async(std::launch::async, [task]() {
@@ -1030,58 +906,47 @@ void Widget::layoutFlexChildren() {
             }));
         }
         for (auto& f : futures) f.get();
-
-        // Second pass to update maxCross
         for (auto& child : children) {
             if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-            maxCross = std::max(maxCross, (isRow ? child->bounds.h : child->bounds.w) + 
+            maxCross = std::max(maxCross, (isRow ? child->bounds.h : child->bounds.w) +
                                           (isRow ? child->computedStyle.margin.vertical() : child->computedStyle.margin.horizontal()));
         }
     }
-
     if (!s.height.isSet() && !isRow && bounds.h <= s.padding.vertical()) {
         bounds.h = (contentEnd - contentY) + s.padding.vertical();
     }
     if (!s.height.isSet() && isRow && bounds.h <= s.padding.vertical() && !children.empty()) {
         bounds.h = maxCross + s.padding.vertical();
     }
-
     contentHeight = isRow ?
         maxCross + s.padding.vertical() :
         std::max(0.0f, contentEnd - bounds.y + s.padding.bottom);
-
     if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s)) {
         bounds.h = std::max(bounds.h, contentHeight);
     }
 }
-
 void Widget::layoutPositionedChildren() {
     auto& s = computedStyle;
     float contentX = bounds.x + s.padding.left;
     float contentY = bounds.y + s.padding.top;
     float contentW = std::max(0.0f, bounds.w - s.padding.horizontal());
     float contentH = std::max(0.0f, bounds.h - s.padding.vertical());
-
     for (auto& child : children) {
         if (!child->visible || isDisplayNone(child.get()) || !isOutOfFlow(child.get())) continue;
         auto& cs = child->computedStyle;
-
         bool hasLeft = cs.left.isSet();
         bool hasRight = cs.right.isSet();
         bool hasTop = cs.top.isSet();
         bool hasBottom = cs.bottom.isSet();
-
         float left = hasLeft ? cs.left.resolve(contentW) : 0.0f;
         float right = hasRight ? cs.right.resolve(contentW) : 0.0f;
         float top = hasTop ? cs.top.resolve(contentH) : 0.0f;
         float bottom = hasBottom ? cs.bottom.resolve(contentH) : 0.0f;
-
         float childW = cs.width.isSet() ? cs.width.resolve(contentW) :
             (hasLeft && hasRight ? contentW - left - right - cs.margin.horizontal()
                                  : contentW - cs.margin.horizontal());
         float childH = cs.height.isSet() ? cs.height.resolve(contentH) :
             (hasTop && hasBottom ? contentH - top - bottom - cs.margin.vertical() : 0.0f);
-
         float childX = hasLeft ? contentX + left :
             (hasRight ? contentX + contentW - right - std::max(0.0f, childW) - cs.margin.horizontal()
                       : contentX);
@@ -1089,7 +954,6 @@ void Widget::layoutPositionedChildren() {
             (hasBottom && childH > 0.0f
                 ? contentY + contentH - bottom - std::max(0.0f, childH) - cs.margin.vertical()
                 : contentY);
-
         Rect childArea = {
             childX + cs.margin.left,
             childY + cs.margin.top,
@@ -1097,7 +961,6 @@ void Widget::layoutPositionedChildren() {
             std::max(0.0f, childH)
         };
         child->layout(childArea);
-
         if (!hasTop && hasBottom && !cs.height.isSet()) {
             childY = contentY + contentH - bottom - child->bounds.h - cs.margin.bottom;
             childArea.y = childY + cs.margin.top;
@@ -1110,11 +973,9 @@ void Widget::layoutPositionedChildren() {
         }
     }
 }
-
 float Widget::maxScrollY() const {
     return std::max(0.0f, contentHeight - bounds.h);
 }
-
 bool Widget::getScrollBarRects(Rect& track, Rect& thumb) const {
     float maxScroll = maxScrollY();
     if (!scrollsOverflowY(computedStyle, contentHeight, bounds.h) || maxScroll <= 1.0f) {
@@ -1122,7 +983,6 @@ bool Widget::getScrollBarRects(Rect& track, Rect& thumb) const {
         thumb = {};
         return false;
     }
-
     float trackW = 14.0f;
     float inset = 2.0f;
     float trackH = std::max(24.0f, bounds.h - inset * 2.0f);
@@ -1130,12 +990,10 @@ bool Widget::getScrollBarRects(Rect& track, Rect& thumb) const {
     float thumbH = std::clamp(trackH * visibleRatio, 32.0f, trackH);
     float thumbTravel = std::max(0.0f, trackH - thumbH);
     float thumbY = bounds.y + inset + thumbTravel * (scrollY / maxScroll);
-
     track = {bounds.x + bounds.w - trackW, bounds.y + inset, trackW, trackH};
     thumb = {bounds.x + bounds.w - 12.0f, thumbY, 10.0f, thumbH};
     return true;
 }
-
 void Widget::clampScroll() {
     float maxScroll = maxScrollY();
     float clampedTarget = std::clamp(targetScrollY, 0.0f, maxScroll);
@@ -1146,28 +1004,19 @@ void Widget::clampScroll() {
     targetScrollY = clampedTarget;
     scrollY = clampedScroll;
 }
-
-// ============================================================
-//  Widget - Update
-// ============================================================
-
 bool Widget::hasActiveAnimations() const {
-    // Check hover spring
     float hoverTarget = hovered ? 1.0f : 0.0f;
     if (std::abs(hoverAnim - hoverTarget) > 0.001f || std::abs(hoverVelocity) > 0.001f) {
         return true;
     }
-    // Check scroll spring
     if (std::abs(scrollY - targetScrollY) > 0.1f || std::abs(scrollVelocity) > 0.1f) {
         return true;
     }
-    // Check children
     for (auto& child : children) {
         if (child && child->hasActiveAnimations()) return true;
     }
     return false;
 }
-
 void Widget::resetTransientMotion() {
     hoverVelocity = 0.0f;
     scrollVelocity = 0.0f;
@@ -1176,12 +1025,10 @@ void Widget::resetTransientMotion() {
     scrollbarDragging = false;
     scrollbarHovered = false;
     pressed = false;
-
     for (auto& child : children) {
         if (child) child->resetTransientMotion();
     }
 }
-
 void Widget::update(const InputState& input) {
     if (!visible || computedStyle.display == Display::None ||
         computedStyle.visibility != Visibility::Visible) {
@@ -1189,9 +1036,7 @@ void Widget::update(const InputState& input) {
         pressed = false;
         return;
     }
-
     hovered = bounds.contains(input.mousePos);
-
     if (input.mouseClicked[0]) {
         if (hovered && (type == "button" || computedStyle.cursor == CursorType::Pointer)) {
             focused = true;
@@ -1199,32 +1044,21 @@ void Widget::update(const InputState& input) {
             focused = false;
         }
     }
-
     if (hovered && input.mouseClicked[0] && onClick) {
         onClick();
     }
-
-    // Smooth hover animation
-    // Spring physics for hover animation
     float target = hovered ? 1.0f : 0.0f;
     float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
     float k = computedStyle.springStiffness;
     float d = computedStyle.springDamping;
-    
-    // Semi-implicit Euler integration
     float force = -k * (hoverAnim - target) - d * hoverVelocity;
     hoverVelocity += force * dt;
     hoverAnim += hoverVelocity * dt;
-
-    // Small epsilon to stabilize
     if (std::abs(hoverAnim - target) < 0.0001f && std::abs(hoverVelocity) < 0.0001f) {
         hoverAnim = target;
         hoverVelocity = 0.0f;
     }
-
     pressed = hovered && input.mouseDown[0];
-
-    // Update current scale based on hover
     float currentScale = computedStyle.scale;
     if (computedStyle.hoverScale >= 0) {
         currentScale = computedStyle.scale + (computedStyle.hoverScale - computedStyle.scale) * hoverAnim;
@@ -1236,16 +1070,12 @@ void Widget::update(const InputState& input) {
         currentScale = computedStyle.activeScale;
     }
     renderScale = currentScale;
-
-    // Scroll handling
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         clampScroll();
-
         Rect track, thumb;
         bool hasScrollbar = getScrollBarRects(track, thumb);
         scrollbarHovered = hasScrollbar && hovered &&
             (track.contains(input.mousePos) || thumb.contains(input.mousePos));
-
         if (hasScrollbar && hovered && input.mouseClicked[0]) {
             if (thumb.contains(input.mousePos)) {
                 scrollbarDragging = true;
@@ -1262,7 +1092,6 @@ void Widget::update(const InputState& input) {
                 scrollbarDragOffset = thumb.h * 0.5f;
             }
         }
-
         if (scrollbarDragging) {
             if (input.mouseDown[0]) {
                 float maxScroll = maxScrollY();
@@ -1275,31 +1104,29 @@ void Widget::update(const InputState& input) {
                 scrollbarDragging = false;
             }
         }
-
         if (hovered && !scrollbarDragging && input.scroll.y != 0) {
             targetScrollY -= input.scroll.y * 72.0f;
             clampScroll();
         }
-
         if (hovered && !scrollbarDragging && input.keyCode != 0) {
             float maxScroll = maxScrollY();
             switch (input.keyCode) {
-            case 0x26: // VK_UP
+            case 0x26:
                 targetScrollY -= 48.0f;
                 break;
-            case 0x28: // VK_DOWN
+            case 0x28:
                 targetScrollY += 48.0f;
                 break;
-            case 0x21: // VK_PRIOR (PAGE UP)
+            case 0x21:
                 targetScrollY -= bounds.h * 0.88f;
                 break;
-            case 0x22: // VK_NEXT (PAGE DOWN)
+            case 0x22:
                 targetScrollY += bounds.h * 0.88f;
                 break;
-            case 0x24: // VK_HOME
+            case 0x24:
                 targetScrollY = 0.0f;
                 break;
-            case 0x23: // VK_END
+            case 0x23:
                 targetScrollY = maxScroll;
                 break;
             default:
@@ -1307,12 +1134,10 @@ void Widget::update(const InputState& input) {
             }
             clampScroll();
         }
-
         float previousScroll = scrollY;
         float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
         scrollY += (targetScrollY - scrollY) * scrollBlend;
         scrollVelocity = (scrollY - previousScroll) / std::max(dt, 0.001f);
-
         if (std::abs(scrollY - targetScrollY) < 0.08f || std::abs(scrollVelocity) < 0.02f) {
             scrollY = targetScrollY;
             scrollVelocity = 0.0f;
@@ -1322,8 +1147,6 @@ void Widget::update(const InputState& input) {
         scrollbarHovered = false;
         scrollbarDragging = false;
     }
-
-    // Pass input to children with adjusted mouse position
     InputState childInput = input;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         if (scrollbarHovered || scrollbarDragging) {
@@ -1333,15 +1156,12 @@ void Widget::update(const InputState& input) {
         }
         childInput.mousePos.y += scrollY;
     }
-
     Rect visibleContent = bounds;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         visibleContent.y += scrollY;
     }
-
     size_t startIndex = 0;
     size_t endIndex = children.size();
-    
     const bool isColumn = (computedStyle.flexDirection == FlexDirection::Column);
     if (children.size() > 256 && isColumn &&
         scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
@@ -1350,23 +1170,15 @@ void Widget::update(const InputState& input) {
                 return w->bounds.y + w->bounds.h < y;
             });
         startIndex = std::distance(children.begin(), itStart);
-        
         auto itEnd = std::upper_bound(itStart, children.end(), visibleContent.y + visibleContent.h + 128.0f,
             [](float y, const std::shared_ptr<Widget>& w) {
                 return y < w->bounds.y;
             });
         endIndex = std::distance(children.begin(), itEnd);
-        
-        // Reset state for non-visible children that were skipped
-        // In a real Ferrari, we might want to do this more selectively, 
-        // but for now we only process the range.
     }
-
     for (size_t i = 0; i < children.size(); i++) {
         auto& child = children[i];
         if (!child->visible || isDisplayNone(child.get())) continue;
-        
-        // If outside the virtualized range, skip update logic but keep focus/dragging
         if (i < startIndex || i >= endIndex) {
             if (!child->focused && !child->scrollbarDragging) {
                 child->hovered = false;
@@ -1374,7 +1186,6 @@ void Widget::update(const InputState& input) {
                 continue;
             }
         }
-
         if (scrollsOverflowY(computedStyle, contentHeight, bounds.h) &&
             !rectIntersects(child->bounds, visibleContent, 128.0f) &&
             !child->focused && !child->scrollbarDragging) {
@@ -1385,7 +1196,6 @@ void Widget::update(const InputState& input) {
         child->update(childInput);
     }
 }
-
 CursorType Widget::cursorAt(Vec2 point) const {
     if (!canHitTestWidget(this)) {
         return CursorType::Default;
@@ -1396,7 +1206,6 @@ CursorType Widget::cursorAt(Vec2 point) const {
     if (!bounds.contains(point)) {
         return CursorType::Default;
     }
-
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         Rect track, thumb;
         if (getScrollBarRects(track, thumb) &&
@@ -1404,55 +1213,39 @@ CursorType Widget::cursorAt(Vec2 point) const {
             return CursorType::Pointer;
         }
     }
-
     Vec2 childPoint = point;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         childPoint.y += scrollY;
     }
-
     for (auto it = children.rbegin(); it != children.rend(); ++it) {
         CursorType childCursor = (*it)->cursorAt(childPoint);
         if (childCursor != CursorType::Default) return childCursor;
     }
-
     return computedStyle.cursor;
 }
-
 Widget* Widget::hitTest(Vec2 point, bool interactiveOnly) {
     if (!canHitTestWidget(this) || !bounds.contains(point)) {
         return nullptr;
     }
-
     Vec2 childPoint = point;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         childPoint.y += scrollY;
     }
-
     for (auto it = children.rbegin(); it != children.rend(); ++it) {
         if (Widget* child = (*it)->hitTest(childPoint, interactiveOnly)) {
             return child;
         }
     }
-
     if (!interactiveOnly || type == "button" || computedStyle.cursor == CursorType::Pointer || onClick) {
         return this;
     }
     return nullptr;
 }
-
-// ============================================================
-//  Widget - Render
-// ============================================================
-
 void Widget::renderBackground(Renderer& renderer) {
     auto& s = computedStyle;
-
-    // Shadow first (behind everything)
     if (s.boxShadow.blur > 0 || s.boxShadow.spread > 0) {
         renderer.drawBoxShadow(bounds, s.boxShadow, s.borderRadius);
     }
-
-    // Background color (with hover interpolation)
     Color bgColor = s.backgroundColor;
     if (s.hasHoverBg && hoverAnim > 0) {
         bgColor = Color::lerp(s.backgroundColor, s.hoverBackgroundColor, hoverAnim);
@@ -1463,7 +1256,6 @@ void Widget::renderBackground(Renderer& renderer) {
     if (pressed && s.hasActiveBg) {
         bgColor = s.activeBackgroundColor;
     }
-
     float opacity = s.opacity;
     if (s.hoverOpacity >= 0 && hoverAnim > 0) {
         opacity = s.opacity + (s.hoverOpacity - s.opacity) * hoverAnim;
@@ -1474,14 +1266,11 @@ void Widget::renderBackground(Renderer& renderer) {
     if (pressed && s.activeOpacity >= 0) {
         opacity = s.activeOpacity;
     }
-
     if (s.backgroundGradient.type != Gradient::None) {
         renderer.drawRoundedRectGradient(bounds, s.backgroundGradient, s.borderRadius, opacity);
     } else if (bgColor.a > 0.001f) {
         renderer.drawRoundedRect(bounds, bgColor, s.borderRadius, opacity);
     }
-
-    // Border
     if (s.border.width > 0) {
         Border b = s.border;
         if (s.hasHoverBorder && hoverAnim > 0) {
@@ -1495,7 +1284,6 @@ void Widget::renderBackground(Renderer& renderer) {
         }
         renderer.drawBorder(bounds, b, s.borderRadius);
     }
-
     auto drawEdgeBorder = [&](const Border& border, const Rect& rect) {
         if (border.width <= 0) return;
         renderer.drawRoundedRect(rect, border.color, BorderRadius(0));
@@ -1516,7 +1304,6 @@ void Widget::renderBackground(Renderer& renderer) {
     if (s.hasBorderLeft) {
         drawEdgeBorder(s.borderLeft, {bounds.x, bounds.y, s.borderLeft.width, bounds.h});
     }
-
     Border outline = s.outline;
     if (focused && s.hasFocusOutline) outline = s.focusOutline;
     if (pressed && s.hasActiveOutline) outline = s.activeOutline;
@@ -1532,7 +1319,6 @@ void Widget::renderBackground(Renderer& renderer) {
                             BorderRadius(s.borderRadius.uniform() + expand));
     }
 }
-
 void Widget::renderChildren(Renderer& renderer) {
     bool scrollable = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
     bool clip = clipsOverflow(computedStyle);
@@ -1540,44 +1326,33 @@ void Widget::renderChildren(Renderer& renderer) {
     if (scrollable) {
         visibleContent.y += scrollY;
     }
-
     if (clip) renderer.pushScissor(bounds);
-
     if (scrollable) {
         renderer.pushTranslation({0, -scrollY});
     }
-
-    // List Virtualization: Use binary search for O(log N) visibility check in large lists
     size_t startIndex = 0;
     size_t endIndex = children.size();
-    
     const bool isColumn = (computedStyle.flexDirection == FlexDirection::Column);
     if (children.size() > 256 && isColumn && scrollable) {
-        // Find first child that could be visible
         auto itStart = std::lower_bound(children.begin(), children.end(), visibleContent.y - 64.0f,
             [](const std::shared_ptr<Widget>& w, float y) {
                 return w->bounds.y + w->bounds.h < y;
             });
         startIndex = std::distance(children.begin(), itStart);
-        
-        // Find first child that is definitely not visible anymore
         auto itEnd = std::upper_bound(itStart, children.end(), visibleContent.y + visibleContent.h + 64.0f,
             [](float y, const std::shared_ptr<Widget>& w) {
                 return y < w->bounds.y;
             });
         endIndex = std::distance(children.begin(), itEnd);
     }
-
     for (size_t i = startIndex; i < endIndex; i++) {
         auto& child = children[i];
         if (!canPaintWidget(child.get())) continue;
         if (clip && !rectIntersects(child->bounds, visibleContent, 64.0f)) continue;
         child->render(renderer);
     }
-
     if (scrollable) {
         renderer.popTranslation();
-
         Rect track, thumb;
         if (getScrollBarRects(track, thumb)) {
             float active = (scrollbarHovered || scrollbarDragging) ? 1.0f : 0.0f;
@@ -1593,7 +1368,6 @@ void Widget::renderChildren(Renderer& renderer) {
                 visualThumb.x += 2.0f;
                 visualThumb.w -= 4.0f;
             }
-
             renderer.drawRoundedRect(visualTrack,
                                      Color(0.13f, 0.14f, 0.16f, 0.32f + active * 0.22f),
                                      BorderRadius(0));
@@ -1605,33 +1379,22 @@ void Widget::renderChildren(Renderer& renderer) {
                                      BorderRadius(5));
         }
     }
-
     if (clip) renderer.popScissor();
 }
-
 void Widget::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-
     bool hasScale = (renderScale != 1.0f);
     if (hasScale) {
         renderer.pushScale(renderScale, bounds.center());
     }
-
     renderBackground(renderer);
     renderChildren(renderer);
-
     if (hasScale) {
         renderer.popScale();
     }
 }
-
-// ============================================================
-//  Text Widget
-// ============================================================
-
 void Text::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
-
     auto& s = computedStyle;
     if (!s.width.isSet() && s.flexGrow <= 0.0f && parentUsesRowFlex(this)) {
         bounds.w = std::max(1.0f, approximateTextWidth(content, s.fontSize) + s.padding.horizontal());
@@ -1640,11 +1403,9 @@ void Text::layout(const Rect& parentBounds) {
         bounds.h = std::max(1.0f, s.fontSize * s.lineHeight + s.padding.vertical());
     }
 }
-
 void Text::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     renderBackground(renderer);
-
     Color textColor = computedStyle.color;
     if (computedStyle.hasHoverColor && hoverAnim > 0) {
         textColor = Color::lerp(computedStyle.color, computedStyle.hoverColor, hoverAnim);
@@ -1655,7 +1416,6 @@ void Text::render(Renderer& renderer) {
     if (pressed && computedStyle.hasActiveColor) {
         textColor = computedStyle.activeColor;
     }
-
     Rect textRect = {
         bounds.x + computedStyle.padding.left,
         bounds.y + computedStyle.padding.top,
@@ -1667,7 +1427,6 @@ void Text::render(Renderer& renderer) {
     } else if (computedStyle.verticalAlign == VerticalAlign::Sub) {
         textRect.y += computedStyle.fontSize * 0.22f;
     }
-
     std::string displayText = applyTextTransform(content, computedStyle.textTransform);
     std::string fontName = renderFontName(computedStyle);
     if (computedStyle.textOverflow == TextOverflow::Ellipsis) {
@@ -1681,29 +1440,19 @@ void Text::render(Renderer& renderer) {
     renderTextDecoration(renderer, displayText, textRect, textColor, computedStyle);
     renderChildren(renderer);
 }
-
-// ============================================================
-//  Button Widget
-// ============================================================
-
 void Button::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
-
     auto& s = computedStyle;
     if (!s.height.isSet()) {
         bounds.h = std::max(36.0f, s.fontSize * s.lineHeight + s.padding.vertical());
     }
 }
-
 void Button::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-
     bool hasScale = (renderScale != 1.0f);
     if (hasScale) {
         renderer.pushScale(renderScale, bounds.center());
     }
-
-    // Pressed effect: slight scale down
     Rect drawBounds = bounds;
     if (pressed) {
         drawBounds.x += 1;
@@ -1711,15 +1460,10 @@ void Button::render(Renderer& renderer) {
         drawBounds.w -= 2;
         drawBounds.h -= 2;
     }
-
     auto& s = computedStyle;
-
-    // Shadow
     if (s.boxShadow.blur > 0) {
         renderer.drawBoxShadow(drawBounds, s.boxShadow, s.borderRadius);
     }
-
-    // Background with hover
     Color bgColor = s.backgroundColor;
     if (s.hasHoverBg && hoverAnim > 0) {
         bgColor = Color::lerp(s.backgroundColor, s.hoverBackgroundColor, hoverAnim);
@@ -1730,17 +1474,14 @@ void Button::render(Renderer& renderer) {
     if (pressed && s.hasActiveBg) {
         bgColor = s.activeBackgroundColor;
     }
-
     if (s.backgroundGradient.type != Gradient::None) {
         renderer.drawRoundedRectGradient(drawBounds, s.backgroundGradient, s.borderRadius, s.opacity);
     } else {
         renderer.drawRoundedRect(drawBounds, bgColor, s.borderRadius, s.opacity);
     }
-
     if (pressed) {
         renderer.drawRoundedRect(drawBounds, Color(0, 0, 0, 0.16f), s.borderRadius);
     }
-
     if (s.border.width > 0) {
         Border b = s.border;
         if (s.hasHoverBorder && hoverAnim > 0) {
@@ -1754,7 +1495,6 @@ void Button::render(Renderer& renderer) {
         }
         renderer.drawBorder(drawBounds, b, s.borderRadius);
     }
-
     Border outline = s.outline;
     if (focused && s.hasFocusOutline) outline = s.focusOutline;
     if (pressed && s.hasActiveOutline) outline = s.activeOutline;
@@ -1764,8 +1504,6 @@ void Button::render(Renderer& renderer) {
                              drawBounds.w + expand * 2.0f, drawBounds.h + expand * 2.0f},
                             outline, BorderRadius(s.borderRadius.uniform() + expand));
     }
-
-    // Label
     Color textColor = s.color;
     if (s.hasHoverColor && hoverAnim > 0) {
         textColor = Color::lerp(s.color, s.hoverColor, hoverAnim);
@@ -1790,39 +1528,27 @@ void Button::render(Renderer& renderer) {
     renderer.drawTextInRect(displayLabel, textRect, textColor,
                             s.fontSize, s.textAlign, s.fontWeight, fontName);
     renderTextDecoration(renderer, displayLabel, textRect, textColor, s);
-
     renderChildren(renderer);
-
     if (hasScale) {
         renderer.popScale();
     }
 }
-
-// ============================================================
-//  TextInput Widget
-// ============================================================
-
 void TextInput::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
-
     auto& s = computedStyle;
     if (!s.height.isSet()) {
         bounds.h = std::max(38.0f, s.fontSize * s.lineHeight + s.padding.vertical());
     }
 }
-
 bool TextInput::hasSelection() const {
     return selectionAnchor_ != selectionFocus_;
 }
-
 size_t TextInput::selectionStart() const {
     return std::min(selectionAnchor_, selectionFocus_);
 }
-
 size_t TextInput::selectionEnd() const {
     return std::max(selectionAnchor_, selectionFocus_);
 }
-
 Rect TextInput::clearButtonRect() const {
     float size = std::min(18.0f, std::max(12.0f, bounds.h - 16.0f));
     return {
@@ -1832,14 +1558,11 @@ Rect TextInput::clearButtonRect() const {
         size
     };
 }
-
 void TextInput::update(const InputState& input) {
     Widget::update(input);
-
     caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
     selectionAnchor_ = clampToUtf8Boundary(value, selectionAnchor_);
     selectionFocus_ = clampToUtf8Boundary(value, selectionFocus_);
-
     auto setCaret = [&](size_t index, bool extendSelection) {
         caretIndex_ = clampToUtf8Boundary(value, index);
         if (extendSelection) {
@@ -1850,7 +1573,6 @@ void TextInput::update(const InputState& input) {
         }
         caretBlinkTime_ = 0;
     };
-
     auto eraseSelection = [&]() -> bool {
         if (!hasSelection()) return false;
         size_t start = selectionStart();
@@ -1862,7 +1584,6 @@ void TextInput::update(const InputState& input) {
         caretBlinkTime_ = 0;
         return true;
     };
-
     auto insertText = [&](const std::string& text) {
         if (text.empty()) return;
         eraseSelection();
@@ -1872,18 +1593,15 @@ void TextInput::update(const InputState& input) {
         selectionFocus_ = caretIndex_;
         caretBlinkTime_ = 0;
     };
-
     auto indexAtMouse = [&]() {
         float localX = input.mousePos.x - bounds.x - computedStyle.padding.left + scrollX_;
         return approximateTextIndexAtX(value, localX, computedStyle.fontSize);
     };
-
     bool shift = (input.modifiers & MOD_SHIFT) != 0;
     bool ctrl = (input.modifiers & MOD_CTRL) != 0;
     Rect clearRect = clearButtonRect();
     clearHovered_ = !value.empty() && clearRect.contains(input.mousePos);
     clearPressed_ = clearHovered_ && input.mouseDown[0];
-
     if (hovered && input.mouseClicked[0]) {
         focused = true;
         if (clearHovered_) {
@@ -1916,25 +1634,18 @@ void TextInput::update(const InputState& input) {
         selectionAnchor_ = caretIndex_;
         selectionFocus_ = caretIndex_;
     }
-
     if (selecting_ && focused && input.mouseDown[0]) {
         setCaret(indexAtMouse(), true);
     }
     if (input.mouseReleased[0]) {
         selecting_ = false;
     }
-
     float focusTarget = focused ? 1.0f : 0.0f;
     float focusSpeed = 16.0f;
     if (focusAnim_ < focusTarget) focusAnim_ = std::min(focusAnim_ + input.deltaTime * focusSpeed, focusTarget);
     if (focusAnim_ > focusTarget) focusAnim_ = std::max(focusAnim_ - input.deltaTime * focusSpeed, focusTarget);
-
     if (!focused) return;
-
     caretBlinkTime_ += input.deltaTime;
-
-    // IME Rect handling removed for pure Win32 simplicity or could use ImmSetCompositionWindow
-
     if (input.keyCode != 0) {
         if (ctrl && input.keyCode == 'A') {
             selectionAnchor_ = 0;
@@ -1958,9 +1669,8 @@ void TextInput::update(const InputState& input) {
             }
             return;
         }
-
         switch (input.keyCode) {
-        case 0x08: // VK_BACK
+        case 0x08:
             if (!eraseSelection() && caretIndex_ > 0) {
                 size_t prev = ctrl ? previousWordBoundary(value, caretIndex_) :
                     previousCodepoint(value, caretIndex_);
@@ -1968,7 +1678,7 @@ void TextInput::update(const InputState& input) {
                 setCaret(prev, false);
             }
             return;
-        case 0x2E: // VK_DELETE
+        case 0x2E:
             if (!eraseSelection() && caretIndex_ < value.size()) {
                 size_t next = ctrl ? nextWordBoundary(value, caretIndex_) :
                     nextCodepoint(value, caretIndex_);
@@ -1976,33 +1686,33 @@ void TextInput::update(const InputState& input) {
                 setCaret(caretIndex_, false);
             }
             return;
-        case 0x25: // VK_LEFT
+        case 0x25:
         {
             size_t target = hasSelection() && !shift ? selectionStart() :
                 (ctrl ? previousWordBoundary(value, caretIndex_) : previousCodepoint(value, caretIndex_));
             setCaret(target, shift);
             return;
         }
-        case 0x27: // VK_RIGHT
+        case 0x27:
         {
             size_t target = hasSelection() && !shift ? selectionEnd() :
                 (ctrl ? nextWordBoundary(value, caretIndex_) : nextCodepoint(value, caretIndex_));
             setCaret(target, shift);
             return;
         }
-        case 0x24: // VK_HOME
+        case 0x24:
             setCaret(0, shift);
             return;
-        case 0x23: // VK_END
+        case 0x23:
             setCaret(value.size(), shift);
             return;
-        case 0x1B: // VK_ESCAPE
+        case 0x1B:
             focused = false;
             selecting_ = false;
             selectionAnchor_ = caretIndex_;
             selectionFocus_ = caretIndex_;
             return;
-        case 0x0D: // VK_RETURN
+        case 0x0D:
             focused = false;
             selecting_ = false;
             return;
@@ -2010,12 +1720,10 @@ void TextInput::update(const InputState& input) {
             break;
         }
     }
-
     if (!ctrl && !input.text.empty()) {
         insertText(input.text);
     }
 }
-
 CursorType TextInput::cursorAt(Vec2 point) const {
     if (!canHitTestWidget(this) || !bounds.contains(point)) {
         return CursorType::Default;
@@ -2025,16 +1733,13 @@ CursorType TextInput::cursorAt(Vec2 point) const {
     }
     return CursorType::Text;
 }
-
 void TextInput::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     renderBackground(renderer);
-
     auto& s = computedStyle;
     caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
     selectionAnchor_ = clampToUtf8Boundary(value, selectionAnchor_);
     selectionFocus_ = clampToUtf8Boundary(value, selectionFocus_);
-
     bool cssHandlesFocus = s.hasFocusOutline || s.hasFocusBorder || s.hasFocusBg;
     bool cssHandlesHover = s.hasHoverBorder || s.hasHoverBg;
     if (!cssHandlesFocus && focusAnim_ > 0.001f) {
@@ -2046,7 +1751,6 @@ void TextInput::render(Renderer& renderer) {
         renderer.drawBorder(bounds, Border(1.0f, Color(0.50f, 0.53f, 0.57f, 0.44f * hoverAnim)),
                             s.borderRadius);
     }
-
     float clearSpace = value.empty() ? 0.0f : 28.0f;
     Rect clipRect = {
         bounds.x + s.padding.left,
@@ -2055,7 +1759,6 @@ void TextInput::render(Renderer& renderer) {
         bounds.h
     };
     std::string fontName = renderFontName(s);
-
     if (value.empty()) {
         scrollX_ = 0;
     } else {
@@ -2068,9 +1771,7 @@ void TextInput::render(Renderer& renderer) {
         }
         scrollX_ = std::max(0.0f, scrollX_);
     }
-
     renderer.pushScissor(clipRect);
-
     if (hasSelection() && !value.empty()) {
         size_t start = selectionStart();
         size_t end = selectionEnd();
@@ -2085,7 +1786,6 @@ void TextInput::render(Renderer& renderer) {
         };
         renderer.drawRoundedRect(selectionRect, Color(0.54f, 0.70f, 0.98f, 0.56f), BorderRadius(2));
     }
-
     std::string displayText = value.empty() ? placeholder : value;
     displayText = applyTextTransform(displayText, s.textTransform);
     Color textColor = value.empty() ? Color(0.81f, 0.84f, 0.87f, 0.56f) : s.color;
@@ -2098,8 +1798,6 @@ void TextInput::render(Renderer& renderer) {
     renderer.drawTextInRect(displayText, textRect, textColor,
                             s.fontSize, TextAlign::Left, s.fontWeight, fontName);
     renderTextDecoration(renderer, displayText, textRect, textColor, s);
-
-    // Cursor blink
     if (focused) {
         float caretX = clipRect.x + renderer.measureText(value.substr(0, caretIndex_), s.fontSize, fontName).x - scrollX_;
         float cursorH = std::min(bounds.h - 12.0f, s.fontSize + 8.0f);
@@ -2110,9 +1808,7 @@ void TextInput::render(Renderer& renderer) {
                                      Color(0.54f, 0.70f, 0.98f, 1.0f), BorderRadius(1));
         }
     }
-
     renderer.popScissor();
-
     if (!value.empty()) {
         Rect clear = clearButtonRect();
         Color iconColor = clearPressed_ ? Color(0.91f, 0.93f, 0.96f, 1.0f) :
@@ -2126,23 +1822,15 @@ void TextInput::render(Renderer& renderer) {
                                 std::max(11.0f, s.fontSize - 1.0f),
                                 TextAlign::Center, FontWeight::Bold);
     }
-
     renderChildren(renderer);
 }
-
-// ============================================================
-//  Icon Widget
-// ============================================================
-
 void Icon::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     renderBackground(renderer);
-
     Color c = computedStyle.color;
     if (computedStyle.hasHoverColor && hoverAnim > 0) {
         c = Color::lerp(computedStyle.color, computedStyle.hoverColor, hoverAnim);
     }
-
     float size = std::max(1.0f, std::min(bounds.w, bounds.h));
     float x = bounds.x + (bounds.w - size) * 0.5f;
     float y = bounds.y + (bounds.h - size) * 0.5f;
@@ -2159,7 +1847,6 @@ void Icon::render(Renderer& renderer) {
                                 std::max(9.0f, size * scale), TextAlign::Center,
                                 FontWeight::Bold);
     };
-
     if (glyph == "dashboard") {
         rect(0.12f, 0.14f, 0.30f, 0.30f, 2);
         rect(0.56f, 0.14f, 0.32f, 0.22f, 2, 0.75f);
@@ -2280,37 +1967,24 @@ void Icon::render(Renderer& renderer) {
     } else {
         rect(0.25f, 0.25f, 0.50f, 0.50f, 8);
     }
-
     renderChildren(renderer);
 }
-
-// ============================================================
-//  Image Widget
-// ============================================================
-
 void Image::updateCurrentSrc() {
     currentSrc = source;
     intrinsicDensity = 1.0f;
-    
     if (srcset.empty()) return;
-    
-    // Very basic srcset parser mirroring blink logic (e.g. "image-1x.png 1x, image-2x.png 2x")
     std::istringstream stream(srcset);
     std::string token;
-    
     float bestDensityDiff = 999.0f;
     std::string bestSrc = currentSrc;
     float bestDensity = 1.0f;
-    
     while (std::getline(stream, token, ',')) {
         size_t start = 0;
         while (start < token.size() && std::isspace((unsigned char)token[start])) ++start;
         if (start >= token.size()) continue;
-        
         size_t space = token.find(' ', start);
         std::string url = token.substr(start, space == std::string::npos ? std::string::npos : space - start);
         float density = 1.0f;
-        
         if (space != std::string::npos) {
             size_t descStart = space + 1;
             while (descStart < token.size() && std::isspace((unsigned char)token[descStart])) ++descStart;
@@ -2322,7 +1996,6 @@ void Image::updateCurrentSrc() {
                 } catch (...) {}
             }
         }
-        
         float diff = std::abs(density - devicePixelRatio);
         if (diff < bestDensityDiff) {
             bestDensityDiff = diff;
@@ -2330,25 +2003,20 @@ void Image::updateCurrentSrc() {
             bestDensity = density;
         }
     }
-    
     currentSrc = bestSrc;
     intrinsicDensity = bestDensity > 0.0f ? bestDensity : 1.0f;
     naturalSize = {0, 0};
     loadState = ImageWidgetState::Idle;
 }
-
 void Image::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
-
     auto& s = computedStyle;
     if ((naturalSize.x <= 0.0f || naturalSize.y <= 0.0f) && !currentSrc.empty()) {
         naturalSize = probeImageNaturalSize(currentSrc);
     }
-
     float naturalW = naturalSize.x > 0.0f ? (naturalSize.x / intrinsicDensity) : 300.0f;
     float naturalH = naturalSize.y > 0.0f ? (naturalSize.y / intrinsicDensity) : 150.0f;
     float ratio = naturalH > 0.0f ? naturalW / naturalH : 1.0f;
-
     bool hasW = s.width.isSet();
     bool hasH = s.height.isSet();
     if (!hasW && !hasH) {
@@ -2362,11 +2030,9 @@ void Image::layout(const Rect& parentBounds) {
         bounds.w = contentH * ratio + s.padding.horizontal();
     }
 }
-
 void Image::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     renderBackground(renderer);
-
     Rect content = {
         bounds.x + computedStyle.padding.left,
         bounds.y + computedStyle.padding.top,
@@ -2377,25 +2043,20 @@ void Image::render(Renderer& renderer) {
         renderChildren(renderer);
         return;
     }
-
-    // --- Blink-aligned load state tracking (mirrors ImageLoader) ---
     if (loadState == ImageWidgetState::Idle) {
         loadState = ImageWidgetState::Loading;
     }
-
     Vec2 natural = { naturalSize.x / intrinsicDensity, naturalSize.y / intrinsicDensity };
     if (natural.x <= 0.0f || natural.y <= 0.0f) {
         Vec2 rawSize = renderer.imageSize(currentSrc);
         natural = { rawSize.x / intrinsicDensity, rawSize.y / intrinsicDensity };
         if (rawSize.x > 0.0f && rawSize.y > 0.0f) {
             naturalSize = rawSize;
-            // Transition: Loading → Complete (mirrors blink::ImageResource::Finish)
             if (loadState == ImageWidgetState::Loading) {
                 loadState = ImageWidgetState::Complete;
                 if (onLoad) onLoad();
             }
         } else {
-            // Transition: Loading → Error
             if (loadState == ImageWidgetState::Loading) {
                 loadState = ImageWidgetState::Error;
                 if (onError) onError();
@@ -2403,13 +2064,10 @@ void Image::render(Renderer& renderer) {
             natural = {content.w, content.h};
         }
     }
-
-    // --- object-fit geometry (mirrors Blink ReplacedContentTransform) ---
     Rect draw = content;
     float scaleX = natural.x > 0.0f ? content.w / natural.x : 1.0f;
     float scaleY = natural.y > 0.0f ? content.h / natural.y : 1.0f;
     bool clipToContent = false;
-
     if (computedStyle.objectFit == ObjectFit::Contain ||
         computedStyle.objectFit == ObjectFit::ScaleDown) {
         float scale = std::min(scaleX, scaleY);
@@ -2440,22 +2098,18 @@ void Image::render(Renderer& renderer) {
                  computedStyle.objectPositionOffset.y;
         clipToContent = true;
     }
-
     if (loadState == ImageWidgetState::Error && !alt.empty()) {
-        // Fallback: draw alt text like Blink does for broken images
         renderer.pushScissor(content);
         Rect altDraw = content;
-        // Basic centering for alt text
         float fontSize = computedStyle.fontSize > 0.0f ? computedStyle.fontSize : 14.0f;
         std::string fontName = computedStyle.fontFamily.empty() ? "sans-serif" : computedStyle.fontFamily;
         altDraw.y += (content.h - fontSize) * 0.5f;
-        altDraw.x += 4.0f; // slight padding
+        altDraw.x += 4.0f;
         renderer.drawText(alt, {altDraw.x, altDraw.y}, Color(0.5f, 0.5f, 0.5f, 1.0f), fontSize, FontWeight::Normal, fontName);
         renderer.popScissor();
         renderChildren(renderer);
         return;
     }
-
     if (clipToContent) {
         Rect visible;
         if (intersectRects(draw, content, visible)) {
@@ -2471,41 +2125,24 @@ void Image::render(Renderer& renderer) {
     }
     renderChildren(renderer);
 }
-
-// ============================================================
-//  ProgressBar
-// ============================================================
-
 void ProgressBar::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     auto& s = computedStyle;
-
-    // Background track
     renderer.drawRoundedRect(bounds, s.backgroundColor.a > 0 ?
         s.backgroundColor : Color(1, 1, 1, 0.1f), s.borderRadius);
-
-    // Fill bar
     if (progress > 0) {
         Rect fillRect = bounds;
         fillRect.w = bounds.w * std::clamp(progress, 0.0f, 1.0f);
         renderer.drawRoundedRect(fillRect, barColor, s.borderRadius);
     }
-
     renderChildren(renderer);
 }
-
-// ============================================================
-//  Canvas
-// ============================================================
-
 void Canvas::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-
     auto& s = computedStyle;
     if (s.backgroundColor.a > 0) {
         renderer.drawRoundedRect(bounds, s.backgroundColor, s.borderRadius);
     }
-
     if (onDraw) {
         renderer.flush();
         renderer.pushScissor(bounds);
@@ -2513,47 +2150,28 @@ void Canvas::render(Renderer& renderer) {
         renderer.flush();
         renderer.popScissor();
     }
-
     renderChildren(renderer);
 }
-
-// ============================================================
-//  StatCard
-// ============================================================
-
 void StatCard::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-
     auto& s = computedStyle;
-
-    // Apply scaling for premium feel
     renderer.pushScale(renderScale, bounds.center());
-
-    // Shadow
     if (s.boxShadow.blur > 0) {
         renderer.drawBoxShadow(bounds, s.boxShadow, s.borderRadius);
     }
-
-    // Card background
     Color bgColor = s.backgroundColor;
     if (bgColor.a < 0.01f) bgColor = Color::fromHex("#131420");
     if (s.hasHoverBg && hoverAnim > 0) {
         bgColor = Color::lerp(bgColor, s.hoverBackgroundColor, hoverAnim);
     }
     renderer.drawRoundedRect(bounds, bgColor, s.borderRadius, s.opacity);
-
-    // Subtle glow based on accent color
     BoxShadow glow;
     glow.blur = 15 + hoverAnim * 10;
     glow.color = accentColor;
     glow.color.a = 0.1f + hoverAnim * 0.1f;
     renderer.drawBoxShadow(bounds, glow, s.borderRadius);
-
-    // Accent bar (vertical on left for premium look)
     Rect accentBar = {bounds.x + 2, bounds.y + 12, 4, bounds.h - 24};
     renderer.drawRoundedRect(accentBar, accentColor, BorderRadius(2));
-
-    // Border
     if (s.border.width > 0) {
         Border b = s.border;
         if (s.hasHoverBorder && hoverAnim > 0) {
@@ -2561,46 +2179,23 @@ void StatCard::render(Renderer& renderer) {
         }
         renderer.drawBorder(bounds, b, s.borderRadius);
     }
-
-    // Content
     float px = (s.padding.left > 0 ? s.padding.left : 24) + 10;
     float py = s.padding.top > 0 ? s.padding.top : 24;
-
-    // Title
     renderer.drawText(title, {bounds.x + px, bounds.y + py},
                       Color(1, 1, 1, 0.78f), 13, FontWeight::Bold);
-
-    // Value (large)
     renderer.drawText(value, {bounds.x + px, bounds.y + py + 22},
                       Color(1, 1, 1, 1.0f), 32, FontWeight::Bold);
-
-    // Subtitle
     renderer.drawText(subtitle, {bounds.x + px, bounds.y + bounds.h - 35},
                       accentColor, 12);
-
     renderChildren(renderer);
     renderer.popScale();
 }
-
-// ============================================================
-//  Application
-// ============================================================
-
-// ============================================================
-//  Application (Win32 Implementation)
-// ============================================================
-
-// ============================================================
-//  Internal Event Handler
-// ============================================================
-
 #ifdef _WIN32
 #include <windows.h>
 #include <windowsx.h>
 void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam) {
     Application* app = static_cast<Application*>(appPtr);
     if (!app) return;
-
     switch (msg) {
     case WM_CLOSE:
         app->running = false;
@@ -2715,16 +2310,10 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
     }
 }
 #else
-// ============================================================
-//  Cross-platform event handler (Linux, macOS, Android)
-//  Mirrors the Windows WndProc handler above using PlatformInputEvent
-// ============================================================
 void Internal_OnWindowEvent(void* app, uint32_t msg, uint64_t w, uint64_t l) {}
-
 static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& event) {
     Application* app = static_cast<Application*>(ctx);
     if (!app) return;
-
     switch (event.type) {
     case PlatformInputEvent::Close:
         app->running = false;
@@ -2834,55 +2423,43 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
     }
 }
 #endif
-
 bool Application::init(const std::string& title, int width, int height) {
     if (!Platform::init()) return false;
-
     PlatformWindowConfig config;
     config.title = title;
     config.width = width;
     config.height = height;
-    
     window_ = Platform::createWindow(config);
     if (!window_) return false;
-
 #ifdef _WIN32
     SetWindowLongPtr((HWND)window_, GWLP_USERDATA, (LONG_PTR)this);
 #else
     Platform::setEventCallback(this, fluxuiPlatformEventHandler);
 #endif
-
     renderer_.setBackend(backendPreference_);
     if (!renderer_.init(window_)) return false;
-
     defaultCursor_ = Platform::createSystemCursor(CursorType::Default);
     pointerCursor_ = Platform::createSystemCursor(CursorType::Pointer);
     textCursor_ = Platform::createSystemCursor(CursorType::Text);
-
     routes_.reserve(FLUXUI_PREALLOC_ROUTES);
     eventListeners_.reserve(FLUXUI_PREALLOC_EVENT_LISTENERS);
-
     root_ = std::make_shared<Panel>();
     root_->id = "root";
     root_->className = "root";
     root_->reserveChildren(FLUXUI_PREALLOC_ROOT_CHILDREN);
     root_->computedStyle.display = Display::Flex;
     root_->computedStyle.flexDirection = FlexDirection::Row;
-
     input_.windowSize = {(float)width, (float)height};
     return true;
 }
-
 bool Application::init(const std::string& title, int width, int height, RenderBackendType backend) {
     setBackend(backend);
     return init(title, width, height);
 }
-
 void Application::setBackend(RenderBackendType backend) {
     backendPreference_ = backend;
     renderer_.setBackend(backend);
 }
-
 void Application::processEvents() {
     input_.mouseClicked[0] = input_.mouseClicked[1] = input_.mouseClicked[2] = false;
     input_.mouseReleased[0] = input_.mouseReleased[1] = input_.mouseReleased[2] = false;
@@ -2891,38 +2468,32 @@ void Application::processEvents() {
     input_.scroll = {0, 0};
     input_.text.clear();
     input_.keyCode = 0;
-
     Platform::processEvents(running);
 }
-
 void Application::updateCursor(CursorType cursor) {
     if (cursor == activeCursor_) return;
     Platform::setCursor((NativeCursorHandle)
-        (cursor == CursorType::Pointer ? pointerCursor_ : 
+        (cursor == CursorType::Pointer ? pointerCursor_ :
          (cursor == CursorType::Text ? textCursor_ : defaultCursor_)));
     activeCursor_ = cursor;
 }
-
 bool Application::loadStylesheet(const std::string& path) {
     bool ok = stylesheet_.loadFile(path);
     if (ok && root_) root_->markStyleDirtyRecursive();
     if (ok) needsRedraw_ = true;
     return ok;
 }
-
 void Application::addStylesheet(const std::string& css) {
     stylesheet_.parse(css);
     if (root_) root_->markStyleDirtyRecursive();
     needsRedraw_ = true;
 }
-
 size_t Application::on(UIEventType type, EventCallback callback) {
     if (!callback) return 0;
     size_t id = nextEventListenerId_++;
     eventListeners_.push_back({id, type, std::move(callback)});
     return id;
 }
-
 void Application::off(size_t listenerId) {
     eventListeners_.erase(
         std::remove_if(eventListeners_.begin(), eventListeners_.end(),
@@ -2931,7 +2502,6 @@ void Application::off(size_t listenerId) {
                        }),
         eventListeners_.end());
 }
-
 void Application::emit(UIEvent event) {
     for (auto& listener : eventListeners_) {
         if (listener.type == UIEventType::Any || listener.type == event.type) {
@@ -2940,7 +2510,6 @@ void Application::emit(UIEvent event) {
         }
     }
 }
-
 void Application::addRoute(const std::string& path, RouteBuilder builder) {
     if (path.empty() || !builder) return;
     routes_[path] = std::move(builder);
@@ -2949,21 +2518,17 @@ void Application::addRoute(const std::string& path, RouteBuilder builder) {
         routeDirty_ = true;
     }
 }
-
 void Application::setNotFoundRoute(RouteBuilder builder) {
     notFoundRoute_ = std::move(builder);
 }
-
 bool Application::navigate(const std::string& path) {
     if (path.empty()) return false;
     bool found = routes_.find(path) != routes_.end();
     if (!found && !notFoundRoute_) return false;
     if (path == currentRoute_ && !routeDirty_) return found;
-
     std::string previous = currentRoute_;
     currentRoute_ = path;
     routeDirty_ = true;
-
     UIEvent event;
     event.type = UIEventType::RouteChanged;
     event.route = currentRoute_;
@@ -2972,7 +2537,6 @@ bool Application::navigate(const std::string& path) {
     needsRedraw_ = true;
     return found;
 }
-
 bool Application::renderRoute(Widget* container) {
     if (!container) return false;
     auto route = routes_.find(currentRoute_);
@@ -2984,42 +2548,34 @@ bool Application::renderRoute(Widget* container) {
         container->markStyleDirtyRecursive();
         return false;
     }
-
     container->clearChildren();
     route->second(*this, container);
     routeDirty_ = false;
     container->markStyleDirtyRecursive();
     return true;
 }
-
 #ifdef _WIN32
 #include <windows.h>
 #endif
-
 void Application::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
     bool windowVisible = false;
-
 #if FLUXUI_SHOW_WINDOW_ON_INIT
     if (window_) {
         Platform::showWindow(window_);
         windowVisible = true;
     }
 #endif
-
     while (running) {
         processEvents();
         if (!running) {
             break;
         }
-
         bool hasAnimations = false;
         if (!needsRedraw_ && !firstFrame && root_) {
             hasAnimations = root_->hasActiveAnimations();
         }
-        
-        // If nothing needs to be drawn and no animations are active, sleep until an event occurs
         if (!needsRedraw_ && !hasAnimations && !firstFrame) {
 #ifdef _WIN32
             WaitMessage();
@@ -3029,16 +2585,12 @@ void Application::run() {
             lastTime = std::chrono::high_resolution_clock::now();
             continue;
         }
-
         auto now = std::chrono::high_resolution_clock::now();
         std::chrono::duration<float> elapsed = now - lastTime;
         input_.deltaTime = std::clamp(elapsed.count(), 0.001f, 1.0f / 30.0f);
         lastTime = now;
-
-        // Cross-platform window size query — works on Win32, Linux, macOS, Android
         int w = 0, h = 0;
         Platform::getWindowSize(window_, w, h);
-
         if (w <= 0 || h <= 0) {
             if (root_) root_->resetTransientMotion();
             needsRedraw_ = false;
@@ -3050,21 +2602,13 @@ void Application::run() {
             lastTime = std::chrono::high_resolution_clock::now();
             continue;
         }
-
-        // Consume the redraw flag
         needsRedraw_ = false;
         if (onUpdate) onUpdate(input_.deltaTime);
-
-        // Resolve styles
         if (stylesheet_.setViewportSize((float)w, (float)h)) {
             root_->markStyleDirtyRecursive();
         }
         root_->resolveStyles(stylesheet_);
-
-        // Layout
         root_->layout({0, 0, (float)w, (float)h});
-
-        // Update
         root_->update(input_);
         if (input_.mouseClicked[0]) {
             UIEvent clickEvent;
@@ -3078,23 +2622,19 @@ void Application::run() {
             }
         }
         updateCursor(root_->cursorAt(input_.mousePos));
-
-        // Render
         renderer_.beginFrame(w, h);
         root_->render(renderer_);
         if (onRender) onRender();
+        renderer_.endFrame();
 #if FLUXUI_REVEAL_WINDOW_ON_FIRST_FRAME
         if (firstFrame && window_ && !windowVisible) {
             Platform::showWindow(window_);
             windowVisible = true;
         }
 #endif
-        renderer_.endFrame();
-
         if (firstFrame) {
             firstFrame = false;
         }
-
 #if FLUXUI_TARGET_FPS > 0
         constexpr float targetFrameSeconds = 1.0f / static_cast<float>(FLUXUI_TARGET_FPS);
         auto frameElapsed = std::chrono::duration<float>(
@@ -3110,7 +2650,6 @@ void Application::run() {
 #endif
     }
 }
-
 void Application::shutdown() {
     renderer_.shutdown();
     if (window_) {
@@ -3119,5 +2658,4 @@ void Application::shutdown() {
     }
     Platform::shutdown();
 }
-
-} // namespace FluxUI
+}
