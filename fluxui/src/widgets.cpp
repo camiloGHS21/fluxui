@@ -2479,6 +2479,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.keyCode = app->input().keyCode;
         event.modifiers = app->input().modifiers;
         app->emit(std::move(event));
+        app->dispatchKeyAction(app->input().keyCode, app->input().modifiers);
         app->requestRedraw();
         break;
     }
@@ -2581,6 +2582,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
         uiEvent.keyCode = event.button;
         uiEvent.modifiers = event.modifiers;
         app->emit(std::move(uiEvent));
+        app->dispatchKeyAction(event.button, event.modifiers);
         app->requestRedraw();
         break;
     }
@@ -2697,6 +2699,47 @@ void Application::emit(UIEvent event) {
             if (event.handled) break;
         }
     }
+}
+size_t Application::addAction(const std::string& name,
+                              int keyCode,
+                              int modifiers,
+                              ActionCallback callback) {
+    if (name.empty() || !callback) return 0;
+    size_t id = nextActionId_++;
+    actionBindings_.push_back({id, name, keyCode, modifiers, std::move(callback)});
+    return id;
+}
+void Application::removeAction(size_t actionId) {
+    actionBindings_.erase(
+        std::remove_if(actionBindings_.begin(), actionBindings_.end(),
+                       [actionId](const ActionBinding& binding) {
+                           return binding.id == actionId;
+                       }),
+        actionBindings_.end());
+}
+bool Application::dispatchAction(const std::string& name) {
+    if (name.empty()) return false;
+    for (auto& binding : actionBindings_) {
+        if (binding.name == name && binding.callback) {
+            binding.callback(*this, binding.name);
+            requestRedraw();
+            return true;
+        }
+    }
+    return false;
+}
+bool Application::dispatchKeyAction(int keyCode, int modifiers) {
+    if (keyCode == 0) return false;
+    for (auto& binding : actionBindings_) {
+        if (binding.keyCode == keyCode &&
+            (binding.modifiers & modifiers) == binding.modifiers &&
+            binding.callback) {
+            binding.callback(*this, binding.name);
+            requestRedraw();
+            return true;
+        }
+    }
+    return false;
 }
 void Application::addRoute(const std::string& path, RouteBuilder builder) {
     if (path.empty() || !builder) return;

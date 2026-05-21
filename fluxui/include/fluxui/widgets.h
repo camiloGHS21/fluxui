@@ -735,6 +735,7 @@ class Application {
 public:
     using EventCallback = std::function<void(UIEvent&)>;
     using RouteBuilder = std::function<void(Application&, Widget*)>;
+    using ActionCallback = std::function<void(Application&, const std::string&)>;
     static Application* instance();
     bool init(const std::string& title, int width, int height);
     bool init(const std::string& title, int width, int height, RenderBackendType backend);
@@ -753,6 +754,13 @@ public:
     size_t on(UIEventType type, EventCallback callback);
     void off(size_t listenerId);
     void emit(UIEvent event);
+    size_t addAction(const std::string& name,
+                     int keyCode,
+                     int modifiers,
+                     ActionCallback callback);
+    void removeAction(size_t actionId);
+    bool dispatchAction(const std::string& name);
+    bool dispatchKeyAction(int keyCode, int modifiers);
     void addRoute(const std::string& path, RouteBuilder builder);
     void setNotFoundRoute(RouteBuilder builder);
     bool navigate(const std::string& path);
@@ -792,6 +800,15 @@ private:
     };
     std::vector<EventListener> eventListeners_;
     size_t nextEventListenerId_ = 1;
+    struct ActionBinding {
+        size_t id = 0;
+        std::string name;
+        int keyCode = 0;
+        int modifiers = 0;
+        ActionCallback callback;
+    };
+    std::vector<ActionBinding> actionBindings_;
+    size_t nextActionId_ = 1;
     void processEvents();
     void updateCursor(CursorType cursor);
 };

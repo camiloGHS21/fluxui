@@ -49,6 +49,8 @@ pub mod sys {
         extern "C" fn(widget: *mut FluxUIWidget, renderer_ptr: *mut c_void, bounds: FluxUIRect, user_data: *mut c_void);
     pub type FluxUIVirtualListItemCallback =
         extern "C" fn(item: *mut FluxUIWidget, index: u32, user_data: *mut c_void);
+    pub type FluxUIActionCallback =
+        extern "C" fn(app: *mut FluxUIApp, action_name: *const c_char, user_data: *mut c_void);
     pub type FluxUIRenderBackend = i32;
 
     pub const FLUXUI_BACKEND_AUTO: FluxUIRenderBackend = 0;
@@ -104,6 +106,16 @@ pub mod sys {
             user_data: *mut c_void,
         );
         pub fn fluxui_app_root(app: *mut FluxUIApp) -> *mut FluxUIWidget;
+        pub fn fluxui_app_add_action(
+            app: *mut FluxUIApp,
+            name: *const c_char,
+            key_code: i32,
+            modifiers: i32,
+            callback: Option<FluxUIActionCallback>,
+            user_data: *mut c_void,
+        ) -> u64;
+        pub fn fluxui_app_remove_action(app: *mut FluxUIApp, action_id: u64);
+        pub fn fluxui_app_dispatch_action(app: *mut FluxUIApp, name: *const c_char) -> i32;
 
         pub fn fluxui_widget_clear_children(widget: *mut FluxUIWidget);
         pub fn fluxui_widget_reserve_children(widget: *mut FluxUIWidget, count: u32);
@@ -407,6 +419,36 @@ impl App {
     pub fn root(&self) -> Option<Widget> {
         let raw = unsafe { sys::fluxui_app_root(self.raw.as_ptr()) };
         NonNull::new(raw).map(|raw| Widget { raw })
+    }
+
+    pub fn add_action(
+        &self,
+        name: &str,
+        key_code: i32,
+        modifiers: i32,
+        callback: sys::FluxUIActionCallback,
+        user_data: *mut c_void,
+    ) -> Result<u64> {
+        let name = cstring(name)?;
+        Ok(unsafe {
+            sys::fluxui_app_add_action(
+                self.raw.as_ptr(),
+                name.as_ptr(),
+                key_code,
+                modifiers,
+                Some(callback),
+                user_data,
+            )
+        })
+    }
+
+    pub fn remove_action(&self, action_id: u64) {
+        unsafe { sys::fluxui_app_remove_action(self.raw.as_ptr(), action_id) }
+    }
+
+    pub fn dispatch_action(&self, name: &str) -> bool {
+        let Ok(name) = cstring(name) else { return false };
+        unsafe { sys::fluxui_app_dispatch_action(self.raw.as_ptr(), name.as_ptr()) != 0 }
     }
 
     pub fn raw(&self) -> *mut sys::FluxUIApp {

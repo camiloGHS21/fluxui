@@ -1,6 +1,8 @@
 import io.fluxui.App;
 import io.fluxui.Backend;
 import io.fluxui.FluxUI;
+import io.fluxui.Keys;
+import io.fluxui.Modifiers;
 import io.fluxui.Widget;
 
 import java.nio.file.Path;
@@ -34,6 +36,7 @@ public final class Minimal {
             root.addText("Hello from Java", "title");
             root.addText("This app uses the native FluxUI Java binding.", "body");
             root.addButton("Close", "button").setOnClick(app::stop);
+            app.addAction("app.close", Keys.ESCAPE, Modifiers.NONE, action -> app.stop());
 
             app.run();
         }

@@ -128,6 +128,7 @@ try (App app = App.create()) {
     app.setUpdateCallback(deltaTime -> {
         // update app state from the native run loop
     });
+    app.addAction("app.close", Keys.ESCAPE, Modifiers.NONE, action -> app.stop());
     app.run();
 }
 ```
@@ -148,6 +149,7 @@ Compile the Java classes and example:
 $sources = @(Get-ChildItem bindings\java\io\fluxui,examples\java -Filter *.java | ForEach-Object FullName)
 javac -d build\java\classes $sources
 java -cp build\java\classes Smoke build\Release
+java -cp build\java\classes ActionSmoke build\Release
 java -cp build\java\classes AutoClose build\Release
 java -cp build\java\classes Minimal build\Release
 ```

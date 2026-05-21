@@ -103,6 +103,25 @@ void java_update_callback(FluxUIApp*, float delta_time, void* user_data) {
     finish_callback(env, detach);
 }
 
+void java_action_callback(FluxUIApp*, const char* action_name, void* user_data) {
+    jobject callback = reinterpret_cast<jobject>(user_data);
+    if (!callback) return;
+    bool detach = false;
+    JNIEnv* env = current_env(detach);
+    if (!env) return;
+
+    jstring actionString = env->NewStringUTF(action_name ? action_name : "");
+    jclass cls = env->GetObjectClass(callback);
+    jmethodID run = cls ? env->GetMethodID(cls, "run", "(Ljava/lang/String;)V") : nullptr;
+    if (run && actionString) {
+        env->CallVoidMethod(callback, run, actionString);
+    }
+
+    if (actionString) env->DeleteLocalRef(actionString);
+    if (cls) env->DeleteLocalRef(cls);
+    finish_callback(env, detach);
+}
+
 void java_route_callback(FluxUIApp*, FluxUIWidget* container, const char* route, void* user_data) {
     jobject builder = reinterpret_cast<jobject>(user_data);
     if (!builder) return;
@@ -323,6 +342,53 @@ extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appRenderRoute(
     jlong app,
     jlong container) {
     return fluxui_app_render_route(as_app(app), as_widget(container)) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL Java_io_fluxui_Native_appAddAction(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring name,
+    jint keyCode,
+    jint modifiers,
+    jobject callback) {
+    UtfChars nameChars(env, name);
+    jobject callbackRef = callback ? env->NewGlobalRef(callback) : nullptr;
+    uint64_t actionId = fluxui_app_add_action(
+        as_app(app),
+        nameChars.c_str(),
+        keyCode,
+        modifiers,
+        callbackRef ? java_action_callback : nullptr,
+        callbackRef);
+    if (actionId == 0 && callbackRef) {
+        env->DeleteGlobalRef(callbackRef);
+        callbackRef = nullptr;
+    }
+    jlong values[2] = {
+        static_cast<jlong>(actionId),
+        as_jlong(callbackRef)
+    };
+    jlongArray result = env->NewLongArray(2);
+    env->SetLongArrayRegion(result, 0, 2, values);
+    return result;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appRemoveAction(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jlong actionId) {
+    fluxui_app_remove_action(as_app(app), static_cast<uint64_t>(actionId));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appDispatchAction(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring name) {
+    UtfChars nameChars(env, name);
+    return fluxui_app_dispatch_action(as_app(app), nameChars.c_str()) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetClearChildren(

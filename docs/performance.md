@@ -78,6 +78,17 @@ Input events, route changes, widget clicks, and custom events share the same
 listener path. The router keeps page construction centralized and lets apps
 rebuild only the active view instead of maintaining ad hoc navigation switches.
 
+Apps can also register command-style actions with keyboard bindings. This keeps
+large apps closer to Zed's command model: input is translated once into semantic
+actions, while widgets and routes stay focused on UI state.
+
+```cpp
+app.addAction("app.close", 0x1B, FluxUI::MOD_NONE,
+              [](FluxUI::Application& app, const std::string&) {
+                  app.running = false;
+              });
+```
+
 ## Less Verbose UI Code
 
 Every widget now has short child builders for common controls and HTML-like

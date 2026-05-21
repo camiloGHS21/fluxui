@@ -97,6 +97,32 @@ pub const App = struct {
         return .{ .raw = raw_widget };
     }
 
+    pub fn addAction(
+        self: App,
+        name: [*:0]const u8,
+        key_code: i32,
+        modifiers: i32,
+        callback: c.FluxUIActionCallback,
+        user_data: ?*anyopaque,
+    ) u64 {
+        return c.fluxui_app_add_action(
+            self.raw,
+            name,
+            key_code,
+            modifiers,
+            callback,
+            user_data,
+        );
+    }
+
+    pub fn removeAction(self: App, action_id: u64) void {
+        c.fluxui_app_remove_action(self.raw, action_id);
+    }
+
+    pub fn dispatchAction(self: App, name: [*:0]const u8) bool {
+        return c.fluxui_app_dispatch_action(self.raw, name) != 0;
+    }
+
     pub fn userData(self: App) ?*anyopaque {
         return @ptrCast(self.raw);
     }

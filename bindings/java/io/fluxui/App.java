@@ -95,6 +95,23 @@ public final class App implements AutoCloseable {
         return Native.appRenderRoute(handle(), container.rawHandle());
     }
 
+    public long addAction(String name, int keyCode, int modifiers, ActionCallback callback) {
+        long[] result = Native.appAddAction(handle(), name, keyCode, modifiers, callback);
+        if (result.length > 1) {
+            retainCallback(result[1]);
+        }
+        return result.length > 0 ? result[0] : 0;
+    }
+
+    public App removeAction(long actionId) {
+        Native.appRemoveAction(handle(), actionId);
+        return this;
+    }
+
+    public boolean dispatchAction(String name) {
+        return Native.appDispatchAction(handle(), name);
+    }
+
     public void run() {
         Native.appRun(handle());
     }

@@ -93,6 +93,9 @@ typedef struct FluxUIEvent {
 typedef void (*FluxUIEventCallback)(FluxUIApp* app,
                                     const FluxUIEvent* event,
                                     void* user_data);
+typedef void (*FluxUIActionCallback)(FluxUIApp* app,
+                                     const char* action_name,
+                                     void* user_data);
 
 // Application lifecycle
 FLUXUI_API FluxUIApp* fluxui_app_create(void);
@@ -128,6 +131,14 @@ FLUXUI_API void fluxui_app_off_event(FluxUIApp* app, uint64_t listener_id);
 FLUXUI_API void fluxui_app_emit_custom_event(FluxUIApp* app,
                                              const char* name,
                                              const char* text);
+FLUXUI_API uint64_t fluxui_app_add_action(FluxUIApp* app,
+                                          const char* name,
+                                          int key_code,
+                                          int modifiers,
+                                          FluxUIActionCallback callback,
+                                          void* user_data);
+FLUXUI_API void fluxui_app_remove_action(FluxUIApp* app, uint64_t action_id);
+FLUXUI_API int fluxui_app_dispatch_action(FluxUIApp* app, const char* name);
 FLUXUI_API void fluxui_app_add_route(FluxUIApp* app,
                                      const char* path,
                                      FluxUIRouteCallback callback,

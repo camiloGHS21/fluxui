@@ -277,6 +277,34 @@ void fluxui_app_emit_custom_event(FluxUIApp* app,
     app->app.emit(std::move(event));
 }
 
+uint64_t fluxui_app_add_action(FluxUIApp* app,
+                               const char* name,
+                               int key_code,
+                               int modifiers,
+                               FluxUIActionCallback callback,
+                               void* user_data) {
+    if (!app || !name || !callback) return 0;
+    std::string actionName = safe_cstr(name);
+    size_t id = app->app.addAction(
+        actionName,
+        key_code,
+        modifiers,
+        [app, callback, user_data](Application&, const std::string& dispatchedName) {
+            callback(app, dispatchedName.c_str(), user_data);
+        });
+    return static_cast<uint64_t>(id);
+}
+
+void fluxui_app_remove_action(FluxUIApp* app, uint64_t action_id) {
+    if (!app) return;
+    app->app.removeAction(static_cast<size_t>(action_id));
+}
+
+int fluxui_app_dispatch_action(FluxUIApp* app, const char* name) {
+    if (!app || !name) return 0;
+    return app->app.dispatchAction(safe_cstr(name)) ? 1 : 0;
+}
+
 void fluxui_app_add_route(FluxUIApp* app,
                           const char* path,
                           FluxUIRouteCallback callback,

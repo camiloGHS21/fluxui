@@ -28,6 +28,13 @@ final class Native {
     static native String appCurrentRoute(long app);
     static native boolean appRouteDirty(long app);
     static native boolean appRenderRoute(long app, long container);
+    static native long[] appAddAction(long app,
+                                      String name,
+                                      int keyCode,
+                                      int modifiers,
+                                      ActionCallback callback);
+    static native void appRemoveAction(long app, long actionId);
+    static native boolean appDispatchAction(long app, String name);
 
     static native void widgetClearChildren(long widget);
     static native void widgetReserveChildren(long widget, int count);
