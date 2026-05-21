@@ -347,7 +347,8 @@ configure_fluxui_target(fluxui)
 target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC)
 enable_release_lto(fluxui)
 
-option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig FFI" ON)
+option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig/Java FFI" ON)
+option(FLUXUI_BUILD_JAVA "Build FluxUI Java JNI bindings" ON)
 if(FLUXUI_BUILD_SHARED)
     add_library(fluxui_shared SHARED
         ${FLUXUI_SOURCES}
@@ -355,6 +356,27 @@ if(FLUXUI_BUILD_SHARED)
     configure_fluxui_target(fluxui_shared)
     target_compile_definitions(fluxui_shared PRIVATE FLUXUI_SHARED FLUXUI_BUILDING_DLL)
     enable_release_lto(fluxui_shared)
+
+    if(FLUXUI_BUILD_JAVA)
+        find_package(JNI QUIET)
+        if(JNI_FOUND)
+            add_library(fluxui_java SHARED
+                bindings/java/native/fluxui_jni.cpp
+            )
+            target_include_directories(fluxui_java PRIVATE
+                "${CMAKE_SOURCE_DIR}/fluxui/include"
+                ${JNI_INCLUDE_DIRS}
+            )
+            target_link_libraries(fluxui_java PRIVATE
+                fluxui_shared
+                ${JNI_LIBRARIES}
+            )
+            target_compile_definitions(fluxui_java PRIVATE FLUXUI_SHARED)
+            enable_release_lto(fluxui_java)
+        else()
+            message(STATUS "JNI was not found; skipping FluxUI Java native binding.")
+        endif()
+    endif()
 endif()
 
 # ============================================================

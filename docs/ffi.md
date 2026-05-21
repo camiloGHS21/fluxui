@@ -1,7 +1,8 @@
 # FluxUI FFI
 
 FluxUI is written in C++, but it now exposes a C ABI in `fluxui/fluxui_c.h`.
-Use that ABI for C, Rust, Zig, and any language that can call C functions.
+Use that ABI for C, Rust, Zig, Java/JNI, and any language that can call C
+functions.
 
 ## Build
 
@@ -13,6 +14,7 @@ This produces:
 
 - `build/Release/fluxui.lib` for C++ static linking.
 - `build/Release/fluxui_shared.dll` plus its import library for C/Rust/Zig FFI on Windows.
+- `build/Release/fluxui_java.dll` for Java/JNI bindings when a JDK is available.
 - `build/Release/DataLeakGuard.exe` for the demo app.
 
 ## C++
@@ -109,7 +111,38 @@ zig build-exe --dep fluxui "-Mroot=examples/zig/minimal.zig" "-Mfluxui=bindings/
 PowerShell users should keep the `-M...=.zig` and `-femit-bin=...exe` arguments quoted so Zig receives each one as a single argument.
 The Zig wrapper exposes backend selection with `app.setBackend(.auto)`, `.vulkan`, `.direct3d12`, `.metal`, or `.compatibility`.
 
-Run Rust and Zig examples from a directory where `fluxui_shared.dll`, `SDL2.dll`, and the assets your app needs are available.
+## Java
+
+Java uses a thin JNI layer in `bindings/java/native/fluxui_jni.cpp` and the
+high-level wrapper classes in `bindings/java/io/fluxui`.
+
+```java
+import io.fluxui.*;
+
+try (App app = App.create()) {
+    app.setBackend(Backend.AUTO);
+    app.init("FluxUI Java", 900, 600);
+    Widget root = app.root();
+    root.addText("Hello from Java", "title");
+    root.addButton("Close", "button").setOnClick(app::stop);
+    app.run();
+}
+```
+
+Compile the Java classes and example:
+
+```powershell
+$sources = @(Get-ChildItem bindings\java\io\fluxui,examples\java -Filter *.java | ForEach-Object FullName)
+javac -d build\java\classes $sources
+java -cp build\java\classes Smoke build\Release
+java -cp build\java\classes Minimal build\Release
+```
+
+The optional path argument tells `FluxUI.loadFrom(...)` where to load
+`fluxui_shared.dll` and `fluxui_java.dll`.
+
+Run Rust, Zig, and Java examples from a directory where `fluxui_shared.dll`,
+`SDL2.dll`, and the assets your app needs are available.
 
 ## ABI Rules
 
@@ -120,3 +153,5 @@ Run Rust and Zig examples from a directory where `fluxui_shared.dll`, `SDL2.dll`
 - Prefer CSS classes for production layouts. Inline style helpers are meant for small apps and FFI examples.
 - Route callbacks receive a container for the active page. Widget handles from a
   previous render become invalid after the route container is rebuilt.
+- Java `Widget` wrappers are lightweight handles over native widgets; keep the
+  owning `App` alive for as long as callbacks or widgets can be used.

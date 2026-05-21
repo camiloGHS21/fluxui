@@ -307,7 +307,11 @@ int main() {
     state.initStars();
     state.reset();
 
-    app.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    if (!app.renderer().loadDefaultFont(16.0f)) {
+        app.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    }
+    app.renderer().warmFontCache(std::vector<float>{12.0f, 13.0f, 18.0f, 24.0f, 28.0f, 32.0f});
+    app.renderer().releaseFontSources();
     app.addStylesheet(
         ".root { display: flex; flex-direction: row; background-color: #080a0c; color: #edf3f8; }"
         ".sidebar { width: 280px; height: 100%; background-color: #101418; padding: 24px; display: flex; flex-direction: column; gap: 20px; border-right: 1px solid #202830; }"

@@ -390,6 +390,49 @@ FluxUIWidget* fluxui_widget_add_canvas(FluxUIWidget* parent, const char* class_n
     return as_c_widget(p->add<Canvas>(safe_cstr(class_name)));
 }
 
+FluxUIWidget* fluxui_widget_add_virtual_list(FluxUIWidget* parent,
+                                             const char* class_name,
+                                             uint32_t item_count,
+                                             float item_height,
+                                             FluxUIVirtualListItemCallback callback,
+                                             void* user_data) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    auto builder = [callback, user_data](Widget* item, size_t index) {
+        if (callback) {
+            callback(as_c_widget(item), static_cast<uint32_t>(index), user_data);
+        }
+    };
+    return as_c_widget(p->add<VirtualList>(
+        static_cast<size_t>(item_count),
+        item_height,
+        std::move(builder),
+        safe_cstr(class_name)));
+}
+
+void fluxui_virtual_list_set_item_count(FluxUIWidget* widget, uint32_t item_count) {
+    if (auto* w = as<VirtualList>(widget)) {
+        w->setItemCount(static_cast<size_t>(item_count));
+    }
+}
+
+void fluxui_virtual_list_refresh(FluxUIWidget* widget) {
+    if (auto* w = as<VirtualList>(widget)) {
+        w->refresh();
+    }
+}
+
+void fluxui_virtual_list_scroll_to_index(FluxUIWidget* widget, uint32_t index, int strategy) {
+    if (auto* w = as<VirtualList>(widget)) {
+        VirtualListScrollStrategy scrollStrategy = VirtualListScrollStrategy::Nearest;
+        if (strategy >= static_cast<int>(VirtualListScrollStrategy::Start) &&
+            strategy <= static_cast<int>(VirtualListScrollStrategy::Nearest)) {
+            scrollStrategy = static_cast<VirtualListScrollStrategy>(strategy);
+        }
+        w->scrollToIndex(static_cast<size_t>(index), scrollStrategy);
+    }
+}
+
 void fluxui_canvas_set_on_draw(FluxUIWidget* canvas, FluxUIDrawCallback callback, void* user_data) {
     auto* c = as<Canvas>(canvas);
     if (!c) return;

@@ -32,6 +32,9 @@ then the CPU software compatibility renderer.
   CSS merge work after the first resolved frame.
 - Layout is dirty-flagged and cached by parent bounds, so stable subtrees skip
   flex/block layout recalculation.
+- `VirtualList` materializes only the visible rows plus a small overdraw window,
+  similar to Zed's uniform list pattern. Large logs, tables, feeds, and file
+  lists avoid building and laying out thousands of off-screen widgets.
 - Widget children can be pooled through the lazy per-parent widget arena and
   pre-sized through `reserveChildren()` to reduce allocator churn.
 - MSAA and vsync can be disabled at configure time for low-power devices or
@@ -96,6 +99,21 @@ These helpers still use the same retained widget tree, arena allocator, dirty
 style flags, and layout cache, but avoid repetitive `add<T>()` boilerplate.
 `setId()`, `classes()`, `addClass()`, `removeClass()`, and `toggleClass()` make
 stateful UI updates feel closer to DOM class manipulation.
+
+For long, same-height lists, prefer `virtualList()` so the retained tree stays
+small while scrolling:
+
+```cpp
+auto* logs = view->virtualList(events.size(), 36.0f, [&](FluxUI::Widget* row, size_t index) {
+    row->text(events[index].title, "log-title");
+    row->text(events[index].time, "log-time");
+}, "log-list");
+```
+
+When the backing data changes, call `logs->setItemCount(newCount)` or
+`logs->refresh()` to rebuild the visible rows. For search or keyboard
+selection, `logs->scrollToIndex(index)` jumps to an item without materializing
+the off-screen rows between the current viewport and the target.
 
 ## Browser-Like CSS Cascade
 

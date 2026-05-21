@@ -1,6 +1,7 @@
 #include "fluxui/FluxUI.h"
 
 #include <iostream>
+#include <vector>
 
 int main() {
     FluxUI::Application app;
@@ -8,7 +9,11 @@ int main() {
         return 1;
     }
 
-    app.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    if (!app.renderer().loadDefaultFont(16.0f)) {
+        app.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    }
+    app.renderer().warmFontCache(std::vector<float>{14.0f, 16.0f, 26.0f});
+    app.renderer().releaseFontSources();
     app.addStylesheet(
         ".root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 16px; }"
         ".title { height: 36px; font-size: 26px; font-weight: 700; color: #edf3f8; }"

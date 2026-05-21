@@ -52,6 +52,9 @@ typedef void (*FluxUIRouteCallback)(FluxUIApp* app,
                                     const char* route,
                                     void* user_data);
 typedef void (*FluxUIDrawCallback)(FluxUIWidget* widget, void* renderer_ptr, FluxUIRect bounds, void* user_data);
+typedef void (*FluxUIVirtualListItemCallback)(FluxUIWidget* item,
+                                              uint32_t index,
+                                              void* user_data);
 
 typedef enum FluxUIEventType {
     FLUXUI_EVENT_ANY = 0,
@@ -159,6 +162,17 @@ FLUXUI_API FluxUIWidget* fluxui_widget_add_stat_card(FluxUIWidget* parent,
                                                      const char* subtitle,
                                                      FluxUIColor accent);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_canvas(FluxUIWidget* parent, const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_virtual_list(FluxUIWidget* parent,
+                                                        const char* class_name,
+                                                        uint32_t item_count,
+                                                        float item_height,
+                                                        FluxUIVirtualListItemCallback callback,
+                                                        void* user_data);
+FLUXUI_API void fluxui_virtual_list_set_item_count(FluxUIWidget* widget, uint32_t item_count);
+FLUXUI_API void fluxui_virtual_list_refresh(FluxUIWidget* widget);
+FLUXUI_API void fluxui_virtual_list_scroll_to_index(FluxUIWidget* widget,
+                                                    uint32_t index,
+                                                    int strategy);
 FLUXUI_API void fluxui_canvas_set_on_draw(FluxUIWidget* canvas, FluxUIDrawCallback callback, void* user_data);
 
 // Canvas 2D Drawing Primitives (usable inside draw callback)

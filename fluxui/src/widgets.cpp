@@ -2156,6 +2156,189 @@ void Canvas::render(Renderer& renderer) {
     }
     renderChildren(renderer);
 }
+void VirtualList::setItemCount(size_t count) {
+    if (itemCount == count) return;
+    itemCount = count;
+    forceRebuild_ = true;
+    markLayoutDirty();
+}
+void VirtualList::refresh() {
+    forceRebuild_ = true;
+    markLayoutDirty();
+}
+void VirtualList::scrollToIndex(size_t index, VirtualListScrollStrategy strategy) {
+    if (itemCount == 0) return;
+    itemHeight = std::max(1.0f, itemHeight);
+    index = std::min(index, itemCount - 1);
+    float viewportH = std::max(0.0f, bounds.h - computedStyle.padding.vertical());
+    if (viewportH <= 0.0f) {
+        targetScrollY = itemHeight * static_cast<float>(index);
+        scrollY = targetScrollY;
+        forceRebuild_ = true;
+        markLayoutDirty();
+        return;
+    }
+
+    float itemTop = itemHeight * static_cast<float>(index);
+    float itemBottom = itemTop + itemHeight;
+    float target = scrollY;
+    switch (strategy) {
+    case VirtualListScrollStrategy::Start:
+        target = itemTop;
+        break;
+    case VirtualListScrollStrategy::Center:
+        target = itemTop - (viewportH - itemHeight) * 0.5f;
+        break;
+    case VirtualListScrollStrategy::End:
+        target = itemBottom - viewportH;
+        break;
+    case VirtualListScrollStrategy::Nearest:
+    default:
+        if (itemTop < scrollY) {
+            target = itemTop;
+        } else if (itemBottom > scrollY + viewportH) {
+            target = itemBottom - viewportH;
+        } else {
+            return;
+        }
+        break;
+    }
+
+    float maxScroll = std::max(0.0f, contentHeight - bounds.h);
+    targetScrollY = std::clamp(target, 0.0f, maxScroll);
+    scrollY = targetScrollY;
+    forceRebuild_ = true;
+    rebuildVisibleItems();
+}
+void VirtualList::layout(const Rect& parentBounds) {
+    if (itemHeight <= 0.0f) {
+        itemHeight = 1.0f;
+    }
+    if (computedStyle.display == Display::None) {
+        bounds = {parentBounds.x, parentBounds.y, 0.0f, 0.0f};
+        contentHeight = 0.0f;
+        children.clear();
+        visibleStart_ = visibleEnd_ = 0;
+        layoutDirty = false;
+        return;
+    }
+    if (!layoutDirty && rectEqual(lastLayoutParentBounds, parentBounds)) {
+        contentHeight = computedStyle.padding.vertical() + itemHeight * static_cast<float>(itemCount);
+        clampScroll();
+        rebuildVisibleItems();
+        return;
+    }
+
+    lastLayoutParentBounds = parentBounds;
+    auto& s = computedStyle;
+    bool heightProvidedByParentFlex = consumesParentMainAxisHeight(this, s);
+    float x = parentBounds.x + s.margin.left;
+    float y = parentBounds.y + s.margin.top;
+    float w = s.width.isSet() ? s.width.resolve(parentBounds.w) :
+              (parentBounds.w < 9999 ? parentBounds.w - s.margin.horizontal() : 0);
+    float h = s.height.isSet() ? s.height.resolve(parentBounds.h) :
+              (parentBounds.h < 9999 ? parentBounds.h - s.margin.vertical() : 0);
+    bool widthControlsRatio = s.aspectRatio > 0.0f && s.width.isSet() && !s.height.isSet();
+    bool heightControlsRatio = s.aspectRatio > 0.0f && s.height.isSet() && !s.width.isSet();
+    if (s.minWidth.isSet()) w = std::max(w, s.minWidth.resolve(parentBounds.w));
+    if (s.maxWidth.isSet()) w = std::min(w, s.maxWidth.resolve(parentBounds.w));
+    if (widthControlsRatio) h = w / s.aspectRatio;
+    if (s.minHeight.isSet()) h = std::max(h, s.minHeight.resolve(parentBounds.h));
+    if (s.maxHeight.isSet()) h = std::min(h, s.maxHeight.resolve(parentBounds.h));
+    if (heightControlsRatio) w = h * s.aspectRatio;
+    if (s.hasBoxSizing && s.boxSizing == BoxSizing::ContentBox) {
+        if (s.width.isSet()) w += s.padding.horizontal() + usedBorderHorizontal(s);
+        if (s.height.isSet()) h += s.padding.vertical() + usedBorderVertical(s);
+    }
+
+    bounds = {x, y, std::max(0.0f, w), std::max(0.0f, h)};
+    contentHeight = s.padding.vertical() + itemHeight * static_cast<float>(itemCount);
+    if (!s.height.isSet() && !heightProvidedByParentFlex && !clipsOverflow(s)) {
+        bounds.h = std::max(bounds.h, contentHeight);
+    }
+    clampScroll();
+    rebuildVisibleItems();
+    layoutPositionedChildren();
+    layoutDirty = false;
+}
+void VirtualList::update(const InputState& input) {
+    float previousScroll = scrollY;
+    float previousTargetScroll = targetScrollY;
+    Widget::update(input);
+    if (std::abs(previousScroll - scrollY) > 0.01f ||
+        std::abs(previousTargetScroll - targetScrollY) > 0.01f) {
+        rebuildVisibleItems();
+    }
+}
+void VirtualList::rebuildVisibleItems() {
+    itemHeight = std::max(1.0f, itemHeight);
+    const Style& s = computedStyle;
+    float contentX = bounds.x + s.padding.left;
+    float contentY = bounds.y + s.padding.top;
+    float contentW = std::max(0.0f, bounds.w - s.padding.horizontal());
+    float viewportH = std::max(0.0f, bounds.h - s.padding.vertical());
+    float listHeight = itemHeight * static_cast<float>(itemCount);
+
+    size_t nextStart = 0;
+    size_t nextEnd = 0;
+    if (itemCount > 0 && viewportH > 0.0f) {
+        float startPx = std::max(0.0f, scrollY - overdraw);
+        float endPx = std::min(listHeight, scrollY + viewportH + overdraw);
+        nextStart = std::min(itemCount, static_cast<size_t>(std::floor(startPx / itemHeight)));
+        nextEnd = std::min(itemCount, static_cast<size_t>(std::ceil(endPx / itemHeight)));
+        if (nextEnd <= nextStart) {
+            nextEnd = std::min(itemCount, nextStart + 1);
+        }
+    }
+
+    bool rangeChanged = nextStart != visibleStart_ || nextEnd != visibleEnd_;
+    bool widthChanged = std::abs(contentW - lastBuildWidth_) > 0.5f;
+    bool itemHeightChanged = std::abs(itemHeight - lastBuildItemHeight_) > 0.01f;
+    if (forceRebuild_ || rangeChanged || widthChanged || itemHeightChanged) {
+        children.clear();
+        children.reserve(nextEnd - nextStart);
+        if (!childArena) {
+            childArena = detail::makeWidgetArena();
+        }
+        for (size_t index = nextStart; index < nextEnd; ++index) {
+            detail::WidgetArenaAllocator<Panel> allocator(childArena);
+            auto row = std::allocate_shared<Panel>(allocator, itemClassName);
+            row->type = "virtual-list-item";
+            row->parent = this;
+            row->style.height = CSSValue::px(itemHeight);
+            row->style.width = CSSValue::pct(100.0f);
+            row->reserveChildren(2);
+            if (itemBuilder) {
+                itemBuilder(row.get(), index);
+            }
+            children.push_back(std::move(row));
+        }
+        visibleStart_ = nextStart;
+        visibleEnd_ = nextEnd;
+        lastBuildWidth_ = contentW;
+        lastBuildItemHeight_ = itemHeight;
+        forceRebuild_ = false;
+    }
+
+    Application* app = Application::instance();
+    StyleSheet* sheet = app ? &app->stylesheet() : nullptr;
+    for (size_t offset = 0; offset < children.size(); ++offset) {
+        auto& row = children[offset];
+        if (!row) continue;
+        if (sheet) {
+            row->resolveStyles(*sheet);
+        }
+        size_t index = visibleStart_ + offset;
+        Rect rowArea = {
+            contentX,
+            contentY + static_cast<float>(index) * itemHeight,
+            contentW,
+            itemHeight
+        };
+        row->layout(rowArea);
+    }
+    subtreeStyleDirty = false;
+}
 void StatCard::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     auto& s = computedStyle;

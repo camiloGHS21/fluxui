@@ -62,6 +62,13 @@ class ProgressBar;
 class Placeholder;
 class Canvas;
 class LazyPanel;
+class VirtualList;
+enum class VirtualListScrollStrategy {
+    Start = 0,
+    Center = 1,
+    End = 2,
+    Nearest = 3
+};
 class Widget {
 public:
     std::string id;
@@ -138,6 +145,10 @@ public:
     Placeholder* placeholder(const std::string& text = "Loading...", const std::string& cls = "");
     Placeholder* skeleton(const std::string& cls = "", size_t lines = 3);
     Canvas* canvas(const std::string& cls = "");
+    VirtualList* virtualList(size_t itemCount,
+                             float itemHeight,
+                             std::function<void(Widget*, size_t)> itemBuilder,
+                             const std::string& cls = "");
     LazyPanel* lazyPanel(std::function<void()> worker,
                          std::function<void(Widget*)> skeleton,
                          std::function<void(Widget*)> content);
@@ -327,6 +338,46 @@ public:
     Canvas(const std::string& cls) { type = "canvas"; className = cls; }
     void render(Renderer& renderer) override;
 };
+class VirtualList : public Widget {
+public:
+    using ItemBuilder = std::function<void(Widget*, size_t)>;
+
+    size_t itemCount = 0;
+    float itemHeight = 32.0f;
+    float overdraw = 96.0f;
+    std::string itemClassName = "virtual-list-item";
+    ItemBuilder itemBuilder;
+
+    VirtualList() { type = "virtual-list"; }
+    VirtualList(size_t count,
+                float rowHeight,
+                ItemBuilder builder,
+                const std::string& cls = "")
+        : itemCount(count),
+          itemHeight(rowHeight),
+          itemBuilder(std::move(builder)) {
+        type = "virtual-list";
+        className = cls;
+        style.overflowY = Overflow::Auto;
+        style.display = Display::Block;
+    }
+
+    void setItemCount(size_t count);
+    void refresh();
+    void scrollToIndex(size_t index,
+                       VirtualListScrollStrategy strategy = VirtualListScrollStrategy::Nearest);
+    void layout(const Rect& parentBounds) override;
+    void update(const InputState& input) override;
+
+private:
+    size_t visibleStart_ = 0;
+    size_t visibleEnd_ = 0;
+    float lastBuildWidth_ = -1.0f;
+    float lastBuildItemHeight_ = -1.0f;
+    bool forceRebuild_ = true;
+
+    void rebuildVisibleItems();
+};
 inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     auto* widget = add<Panel>(cls);
     if (reserve > 0) {
@@ -372,6 +423,12 @@ inline ProgressBar* Widget::progress(float value,
 }
 inline Canvas* Widget::canvas(const std::string& cls) {
     return add<Canvas>(cls);
+}
+inline VirtualList* Widget::virtualList(size_t itemCount,
+                                        float itemHeight,
+                                        std::function<void(Widget*, size_t)> itemBuilder,
+                                        const std::string& cls) {
+    return add<VirtualList>(itemCount, itemHeight, std::move(itemBuilder), cls);
 }
 inline LazyPanel* Widget::lazyPanel(std::function<void()> worker,
                                     std::function<void(Widget*)> skeleton,

@@ -17,6 +17,13 @@ pub const Backend = enum(c_uint) {
     }
 };
 
+pub const ScrollStrategy = enum(c_int) {
+    start = 0,
+    center = 1,
+    end = 2,
+    nearest = 3,
+};
+
 pub const Error = error{
     CreateFailed,
     InitFailed,
@@ -132,6 +139,36 @@ pub const Widget = struct {
 
     pub fn addCanvas(self: Widget, class_name: [*:0]const u8) Error!Widget {
         return fromRaw(c.fluxui_widget_add_canvas(self.raw, class_name));
+    }
+
+    pub fn addVirtualList(
+        self: Widget,
+        class_name: [*:0]const u8,
+        item_count: u32,
+        item_height: f32,
+        callback: c.FluxUIVirtualListItemCallback,
+        user_data: ?*anyopaque,
+    ) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_virtual_list(
+            self.raw,
+            class_name,
+            item_count,
+            item_height,
+            callback,
+            user_data,
+        ));
+    }
+
+    pub fn setVirtualListItemCount(self: Widget, item_count: u32) void {
+        c.fluxui_virtual_list_set_item_count(self.raw, item_count);
+    }
+
+    pub fn refreshVirtualList(self: Widget) void {
+        c.fluxui_virtual_list_refresh(self.raw);
+    }
+
+    pub fn scrollVirtualListToIndex(self: Widget, index: u32, strategy: ScrollStrategy) void {
+        c.fluxui_virtual_list_scroll_to_index(self.raw, index, @intFromEnum(strategy));
     }
 
     pub fn setOnDraw(self: Widget, callback: c.FluxUIDrawCallback, user_data: ?*anyopaque) void {

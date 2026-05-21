@@ -47,6 +47,8 @@ pub mod sys {
         extern "C" fn(app: *mut FluxUIApp, delta_time: f32, user_data: *mut c_void);
     pub type FluxUIDrawCallback =
         extern "C" fn(widget: *mut FluxUIWidget, renderer_ptr: *mut c_void, bounds: FluxUIRect, user_data: *mut c_void);
+    pub type FluxUIVirtualListItemCallback =
+        extern "C" fn(item: *mut FluxUIWidget, index: u32, user_data: *mut c_void);
     pub type FluxUIRenderBackend = i32;
 
     pub const FLUXUI_BACKEND_AUTO: FluxUIRenderBackend = 0;
@@ -145,6 +147,21 @@ pub mod sys {
             parent: *mut FluxUIWidget,
             class_name: *const c_char,
         ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_virtual_list(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+            item_count: u32,
+            item_height: f32,
+            callback: Option<FluxUIVirtualListItemCallback>,
+            user_data: *mut c_void,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_virtual_list_set_item_count(widget: *mut FluxUIWidget, item_count: u32);
+        pub fn fluxui_virtual_list_refresh(widget: *mut FluxUIWidget);
+        pub fn fluxui_virtual_list_scroll_to_index(
+            widget: *mut FluxUIWidget,
+            index: u32,
+            strategy: i32,
+        );
         pub fn fluxui_canvas_set_on_draw(
             canvas: *mut FluxUIWidget,
             callback: Option<FluxUIDrawCallback>,
@@ -232,6 +249,15 @@ pub enum Backend {
     DirectX12,
     Metal,
     Compatibility,
+}
+
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ScrollStrategy {
+    Start = 0,
+    Center = 1,
+    End = 2,
+    Nearest = 3,
 }
 
 impl Backend {
@@ -438,6 +464,45 @@ impl Widget {
                 class_name.as_ptr(),
             )
         }))
+    }
+
+    pub fn add_virtual_list(
+        self,
+        class_name: &str,
+        item_count: u32,
+        item_height: f32,
+        callback: sys::FluxUIVirtualListItemCallback,
+        user_data: *mut c_void,
+    ) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_virtual_list(
+                self.raw.as_ptr(),
+                class_name.as_ptr(),
+                item_count,
+                item_height,
+                Some(callback),
+                user_data,
+            )
+        }))
+    }
+
+    pub fn set_virtual_list_item_count(self, item_count: u32) {
+        unsafe { sys::fluxui_virtual_list_set_item_count(self.raw.as_ptr(), item_count) }
+    }
+
+    pub fn refresh_virtual_list(self) {
+        unsafe { sys::fluxui_virtual_list_refresh(self.raw.as_ptr()) }
+    }
+
+    pub fn scroll_virtual_list_to_index(self, index: u32, strategy: ScrollStrategy) {
+        unsafe {
+            sys::fluxui_virtual_list_scroll_to_index(
+                self.raw.as_ptr(),
+                index,
+                strategy as i32,
+            )
+        }
     }
 
     pub fn set_on_draw<F>(self, callback: F)
