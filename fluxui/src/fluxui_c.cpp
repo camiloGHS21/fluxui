@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace FluxUI;
 
@@ -194,6 +195,22 @@ int fluxui_app_load_font_named(FluxUIApp* app, const char* path, float size, con
     return app->app.renderer().loadFont(path, size, safe_cstr(name)) ? 1 : 0;
 }
 
+int fluxui_app_load_default_font(FluxUIApp* app, float size) {
+    if (!app) return 0;
+    return app->app.renderer().loadDefaultFont(size) ? 1 : 0;
+}
+
+void fluxui_app_warm_font_cache(FluxUIApp* app, const float* sizes, uint32_t count, const char* name) {
+    if (!app || !sizes || count == 0) return;
+    std::vector<float> requestedSizes(sizes, sizes + count);
+    app->app.renderer().warmFontCache(requestedSizes, (name && name[0]) ? name : "default");
+}
+
+void fluxui_app_release_font_sources(FluxUIApp* app) {
+    if (!app) return;
+    app->app.renderer().releaseFontSources();
+}
+
 void fluxui_app_set_update_callback(FluxUIApp* app,
                                     FluxUIUpdateCallback callback,
                                     void* user_data) {
@@ -291,6 +308,12 @@ void fluxui_widget_clear_children(FluxUIWidget* widget) {
     Widget* w = as_widget(widget);
     if (!w) return;
     w->clearChildren();
+}
+
+void fluxui_widget_reserve_children(FluxUIWidget* widget, uint32_t count) {
+    Widget* w = as_widget(widget);
+    if (!w) return;
+    w->reserveChildren(static_cast<size_t>(count));
 }
 
 FluxUIWidget* fluxui_widget_add_panel(FluxUIWidget* parent, const char* class_name) {

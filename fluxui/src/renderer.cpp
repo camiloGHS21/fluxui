@@ -1729,7 +1729,21 @@ float softwareSampleFontAlpha(const FontData& font,
 //  Shader Compilation
 // ============================================================
 
-Renderer::Renderer() = default;
+Renderer::Renderer() {
+#if FLUXUI_FAST_STARTUP
+    fonts_.reserve(FLUXUI_PREALLOC_FONTS);
+    images_.reserve(FLUXUI_PREALLOC_IMAGES);
+#if FLUXUI_TEXT_MEASURE_CACHE_SIZE > 0
+    textMeasureCache_.reserve(FLUXUI_TEXT_MEASURE_CACHE_SIZE);
+#endif
+    scissorStack_.reserve(FLUXUI_PREALLOC_SCISSORS);
+    translationStack_.reserve(FLUXUI_PREALLOC_TRANSFORMS);
+    scaleStack_.reserve(FLUXUI_PREALLOC_TRANSFORMS);
+    scalePivotStack_.reserve(FLUXUI_PREALLOC_TRANSFORMS);
+    rectBatch_.reserve(FLUXUI_PREALLOC_RECT_BATCH);
+    textVertexScratch_.reserve(FLUXUI_PREALLOC_TEXT_FLOATS);
+#endif
+}
 Renderer::~Renderer() = default;
 
 void Renderer::setBackend(RenderBackendType backend) {
@@ -3594,7 +3608,7 @@ void Renderer::setupQuad() {
 }
 
 void Renderer::setupTextBuffer() {
-    constexpr size_t initialFloatCapacity = 4096;
+    constexpr size_t initialFloatCapacity = FLUXUI_PREALLOC_TEXT_FLOATS;
 
     glGenVertexArrays(1, &textVAO_);
     glGenBuffers(1, &textVBO_);
@@ -3614,7 +3628,7 @@ void Renderer::setupTextBuffer() {
 }
 
 void Renderer::setupInstanceBuffer() {
-    constexpr size_t initialCapacity = 256; // 256 instances
+    constexpr size_t initialCapacity = FLUXUI_PREALLOC_RECT_BATCH;
     glGenBuffers(1, &instanceVBO_);
     glBindBuffer(GL_ARRAY_BUFFER, instanceVBO_);
     glBufferData(GL_ARRAY_BUFFER, initialCapacity * sizeof(RoundedRectInstance),
@@ -3865,11 +3879,15 @@ bool Renderer::initVulkan(void* windowHandle) {
 
     VkPhysicalDeviceProperties properties = {};
     vkGetPhysicalDeviceProperties(state.physicalDevice, &properties);
+#if !FLUXUI_SILENT_STARTUP
     std::cout << "FluxUI Renderer initialized (Vulkan "
               << vkVersionMajor(properties.apiVersion) << "."
               << vkVersionMinor(properties.apiVersion) << "."
               << vkVersionPatch(properties.apiVersion)
               << ", device " << properties.deviceName << ")" << std::endl;
+#else
+    (void)properties;
+#endif
 
     backendInitialized_ = true;
     return true;
@@ -3959,8 +3977,8 @@ bool Renderer::beginVulkanFrame(int w, int h) {
     }
 
     vkResetCommandBuffer(frame.commandBuffer, 0);
-    trimVulkanDynamicPool(state, frame.roundedInstances, 1);
-    trimVulkanDynamicPool(state, frame.textVertices, 1);
+    trimVulkanDynamicPool(state, frame.roundedInstances, FLUXUI_VULKAN_RETAINED_DYNAMIC_PAGES);
+    trimVulkanDynamicPool(state, frame.textVertices, FLUXUI_VULKAN_RETAINED_DYNAMIC_PAGES);
     resetVulkanDynamicPool(frame.roundedInstances);
     state.roundedBatchOffsetBytes = 0;
     state.roundedBatchPageIndex = 0;
@@ -4087,8 +4105,10 @@ bool Renderer::initSoftware(void* windowHandle) {
                            softwarePackOpaque(Color(0.06f, 0.06f, 0.09f, 1.0f)));
     activeBackend_ = RenderBackendType::Compatibility;
     backendInitialized_ = true;
+#if !FLUXUI_SILENT_STARTUP
     std::cout << "FluxUI Renderer initialized (CPU software compatibility)"
               << std::endl;
+#endif
     return true;
 #else
     (void)windowHandle;
@@ -6226,6 +6246,7 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
 
 Vec2 Renderer::measureText(const std::string& text, float fontSize,
                             const std::string& fontName) const {
+#if FLUXUI_TEXT_MEASURE_CACHE_SIZE > 0
     std::string key;
     key.reserve(fontName.size() + text.size() + 24);
     key += fontName;
@@ -6238,6 +6259,7 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
     if (cached != textMeasureCache_.end()) {
         return cached->second;
     }
+#endif
 
     const FontData* fontPtr = findFontForMeasure(fontName, fontSize);
     if (!fontPtr || !fontPtr->loaded) return {0, fontSize};
@@ -6275,10 +6297,12 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
         }
     }
     Vec2 measured = {width, fontSize};
-    if (textMeasureCache_.size() > 4096) {
+#if FLUXUI_TEXT_MEASURE_CACHE_SIZE > 0
+    if (textMeasureCache_.size() >= FLUXUI_TEXT_MEASURE_CACHE_SIZE) {
         textMeasureCache_.clear();
     }
     textMeasureCache_[std::move(key)] = measured;
+#endif
     return measured;
 }
 

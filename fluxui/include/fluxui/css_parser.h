@@ -51,6 +51,8 @@ struct CSSRuleIndexKey {
 
 class StyleSheet {
 public:
+    StyleSheet();
+
     std::vector<CSSRule> rules;
 
     // Load and parse a CSS file

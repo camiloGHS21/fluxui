@@ -5,7 +5,12 @@ pub fn main() !void {
     defer app.deinit();
 
     try app.init("FluxUI Zig Example", 900, 600);
-    _ = app.loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0);
+    if (!app.loadDefaultFont(16.0)) {
+        _ = app.loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0);
+    }
+    const font_sizes = [_]f32{ 14.0, 16.0, 26.0 };
+    app.warmFontCache(font_sizes[0..], "default");
+    app.releaseFontSources();
     app.addStylesheet(
         ".root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 16px; }" ++
         ".title { height: 36px; font-size: 26px; font-weight: 700; color: #edf3f8; }" ++
@@ -14,6 +19,7 @@ pub fn main() !void {
     );
 
     const root = try app.root();
+    root.reserveChildren(3);
     _ = try root.addText("Hello from Zig", "title");
     _ = try root.addText("This imports FluxUI as a Zig module.", "body");
     const close = try root.addButton("Close", "button");

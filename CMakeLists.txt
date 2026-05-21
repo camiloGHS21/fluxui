@@ -23,6 +23,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
 
 option(DATALEAKGUARD_ENABLE_LTO "Enable release link-time optimization for faster startup/runtime" ON)
+option(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS "Enable aggressive optimizations for maximum runtime speed" ON)
+
 if(DATALEAKGUARD_ENABLE_LTO)
     check_ipo_supported(RESULT DATALEAKGUARD_IPO_SUPPORTED
                         OUTPUT DATALEAKGUARD_IPO_ERROR)
@@ -35,6 +37,28 @@ function(enable_release_lto target_name)
     if(DATALEAKGUARD_ENABLE_LTO AND DATALEAKGUARD_IPO_SUPPORTED)
         set_property(TARGET ${target_name} PROPERTY
             INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    endif()
+
+    if(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS)
+        if(MSVC)
+            target_compile_options(${target_name} PRIVATE
+                $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /Gw /Gy /Gs>
+                $<$<CONFIG:RelWithDebInfo>:/O2 /Oi /Ot /GL /Gw /Gy /Gs>
+            )
+            target_link_options(${target_name} PRIVATE
+                $<$<CONFIG:Release>:/OPT:REF /OPT:ICF /LTCG>
+                $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /LTCG>
+            )
+        else()
+            target_compile_options(${target_name} PRIVATE
+                $<$<CONFIG:Release>:-O3 -flto -ffunction-sections -fdata-sections>
+                $<$<CONFIG:RelWithDebInfo>:-O3 -flto -ffunction-sections -fdata-sections>
+            )
+            target_link_options(${target_name} PRIVATE
+                $<$<CONFIG:Release>:-flto -Wl,--gc-sections>
+                $<$<CONFIG:RelWithDebInfo>:-flto -Wl,--gc-sections>
+            )
+        endif()
     endif()
 endfunction()
 
@@ -82,12 +106,15 @@ find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
 
 option(DATALEAKGUARD_PREBAKE_UI_FONTS "Bake UI font atlases at build time for faster startup and stable text quality" ON)
-if(DATALEAKGUARD_PREBAKE_UI_FONTS)
+option(DATALEAKGUARD_EMBED_FONT_GENERATOR "Embed font atlas generator into build process (required for prebake)" ON)
+
+if(DATALEAKGUARD_PREBAKE_UI_FONTS AND DATALEAKGUARD_EMBED_FONT_GENERATOR)
     add_executable(dataleakguard_font_atlas_generator
         tools/font_atlas_generator.cpp
     )
     target_link_libraries(dataleakguard_font_atlas_generator PRIVATE Freetype::Freetype)
     target_compile_features(dataleakguard_font_atlas_generator PRIVATE cxx_std_17)
+    enable_release_lto(dataleakguard_font_atlas_generator)
 
     add_custom_target(dataleakguard_prebaked_fonts
         COMMAND "$<TARGET_FILE:dataleakguard_font_atlas_generator>"
@@ -102,7 +129,7 @@ endif()
 option(FLUXUI_ENABLE_MSAA "Enable 4x multisample antialiasing for smoother UI edges" ON)
 option(FLUXUI_ENABLE_VSYNC "Enable swap interval vsync by default" ON)
 option(FLUXUI_ENABLE_VULKAN "Compile optional Vulkan backend metadata/probing support" ON)
-option(FLUXUI_LOW_MEMORY "Favor lower RAM/VRAM usage over extra buffering" ON)
+option(FLUXUI_LOW_MEMORY "Favor lower RAM/VRAM usage over extra buffering" OFF)
 if(WIN32)
     set(FLUXUI_ENABLE_D3D12_DEFAULT ON)
 else()
@@ -198,6 +225,37 @@ function(configure_fluxui_target target_name)
         fluxui/include
         vendor/stb
         vendor/glad/include
+        "${CMAKE_SOURCE_DIR}"
+    )
+
+    # Include optimization configurations
+    target_compile_definitions(${target_name} PUBLIC
+        FLUXUI_FAST_STARTUP=1
+        FLUXUI_SHOW_WINDOW_ON_INIT=0
+        FLUXUI_REVEAL_WINDOW_ON_FIRST_FRAME=1
+        FLUXUI_PREALLOC_WIDGETS=512
+        FLUXUI_PREALLOC_TEXT_NODES=1024
+        FLUXUI_PREALLOC_PANELS=256
+        FLUXUI_PREALLOC_ROOT_CHILDREN=16
+        FLUXUI_PREALLOC_ROUTES=24
+        FLUXUI_PREALLOC_EVENT_LISTENERS=32
+        FLUXUI_PREALLOC_FONTS=32
+        FLUXUI_PREALLOC_IMAGES=96
+        FLUXUI_PREALLOC_SCISSORS=16
+        FLUXUI_PREALLOC_TRANSFORMS=16
+        FLUXUI_PREALLOC_RECT_BATCH=512
+        FLUXUI_PREALLOC_TEXT_FLOATS=16384
+        FLUXUI_IMMEDIATE_RENDER=1
+        FLUXUI_STYLE_CACHE_SIZE=4096
+        FLUXUI_TEXT_MEASURE_CACHE_SIZE=8192
+        FLUXUI_OPTIMIZE_LAYOUT=1
+        FLUXUI_MINIMAL_ALLOCS=1
+        FLUXUI_GPU_OPTIMIZE=1
+        FLUXUI_TARGET_FPS=120
+    )
+
+    target_compile_definitions(${target_name} PUBLIC
+        $<$<NOT:$<CONFIG:Debug>>:FLUXUI_SILENT_STARTUP=1>
     )
 
     target_link_libraries(${target_name} PUBLIC

@@ -133,12 +133,12 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     Window root = RootWindow(g_display, screen);
 
     XSetWindowAttributes attributes;
-    attributes.background_pixel = initialBackgroundPixel();
+    attributes.background_pixmap = None;
     attributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | 
                             ButtonPressMask | ButtonReleaseMask | PointerMotionMask | 
                             StructureNotifyMask | FocusChangeMask;
 
-    unsigned long mask = CWEventMask | CWBackPixel;
+    unsigned long mask = CWEventMask | CWBackPixmap;
 
     Window window = XCreateWindow(g_display, root, 0, 0, 
                                   config.width, config.height, 0, 
@@ -168,7 +168,6 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
 void Platform::showWindow(NativeWindowHandle window) {
     if (g_display && window) {
         XMapRaised(g_display, (Window)window);
-        paintInitialBackground((Window)window);
         XFlush(g_display);
     }
 }
@@ -330,7 +329,9 @@ void Platform::processEvents(bool& running) {
         }
         case Expose: {
             if (xev.xexpose.count == 0) {
-                paintInitialBackground(xev.xexpose.window);
+                if (!g_eventContext) {
+                    paintInitialBackground(xev.xexpose.window);
+                }
                 PlatformInputEvent e{};
                 e.type = PlatformInputEvent::Expose;
                 dispatchEvent(e);

@@ -109,6 +109,9 @@ FLUXUI_API int fluxui_app_load_stylesheet(FluxUIApp* app, const char* path);
 FLUXUI_API void fluxui_app_add_stylesheet(FluxUIApp* app, const char* css);
 FLUXUI_API int fluxui_app_load_font(FluxUIApp* app, const char* path, float size);
 FLUXUI_API int fluxui_app_load_font_named(FluxUIApp* app, const char* path, float size, const char* name);
+FLUXUI_API int fluxui_app_load_default_font(FluxUIApp* app, float size);
+FLUXUI_API void fluxui_app_warm_font_cache(FluxUIApp* app, const float* sizes, uint32_t count, const char* name);
+FLUXUI_API void fluxui_app_release_font_sources(FluxUIApp* app);
 FLUXUI_API void fluxui_app_set_update_callback(FluxUIApp* app,
                                                FluxUIUpdateCallback callback,
                                                void* user_data);
@@ -132,6 +135,7 @@ FLUXUI_API int fluxui_app_render_route(FluxUIApp* app, FluxUIWidget* container);
 
 // Tree mutation
 FLUXUI_API void fluxui_widget_clear_children(FluxUIWidget* widget);
+FLUXUI_API void fluxui_widget_reserve_children(FluxUIWidget* widget, uint32_t count);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_panel(FluxUIWidget* parent, const char* class_name);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_text(FluxUIWidget* parent,
                                                 const char* text,

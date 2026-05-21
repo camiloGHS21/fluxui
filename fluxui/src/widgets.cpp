@@ -2859,9 +2859,13 @@ bool Application::init(const std::string& title, int width, int height) {
     pointerCursor_ = Platform::createSystemCursor(CursorType::Pointer);
     textCursor_ = Platform::createSystemCursor(CursorType::Text);
 
+    routes_.reserve(FLUXUI_PREALLOC_ROUTES);
+    eventListeners_.reserve(FLUXUI_PREALLOC_EVENT_LISTENERS);
+
     root_ = std::make_shared<Panel>();
     root_->id = "root";
     root_->className = "root";
+    root_->reserveChildren(FLUXUI_PREALLOC_ROOT_CHILDREN);
     root_->computedStyle.display = Display::Flex;
     root_->computedStyle.flexDirection = FlexDirection::Row;
 
@@ -2902,12 +2906,14 @@ void Application::updateCursor(CursorType cursor) {
 bool Application::loadStylesheet(const std::string& path) {
     bool ok = stylesheet_.loadFile(path);
     if (ok && root_) root_->markStyleDirtyRecursive();
+    if (ok) needsRedraw_ = true;
     return ok;
 }
 
 void Application::addStylesheet(const std::string& css) {
     stylesheet_.parse(css);
     if (root_) root_->markStyleDirtyRecursive();
+    needsRedraw_ = true;
 }
 
 size_t Application::on(UIEventType type, EventCallback callback) {
@@ -2993,10 +2999,14 @@ bool Application::renderRoute(Widget* container) {
 void Application::run() {
     auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
+    bool windowVisible = false;
 
+#if FLUXUI_SHOW_WINDOW_ON_INIT
     if (window_) {
         Platform::showWindow(window_);
+        windowVisible = true;
     }
+#endif
 
     while (running) {
         processEvents();
@@ -3073,13 +3083,20 @@ void Application::run() {
         renderer_.beginFrame(w, h);
         root_->render(renderer_);
         if (onRender) onRender();
+#if FLUXUI_REVEAL_WINDOW_ON_FIRST_FRAME
+        if (firstFrame && window_ && !windowVisible) {
+            Platform::showWindow(window_);
+            windowVisible = true;
+        }
+#endif
         renderer_.endFrame();
 
         if (firstFrame) {
             firstFrame = false;
         }
 
-        constexpr float targetFrameSeconds = 1.0f / 120.0f;
+#if FLUXUI_TARGET_FPS > 0
+        constexpr float targetFrameSeconds = 1.0f / static_cast<float>(FLUXUI_TARGET_FPS);
         auto frameElapsed = std::chrono::duration<float>(
             std::chrono::high_resolution_clock::now() - now).count();
         if (frameElapsed < targetFrameSeconds) {
@@ -3088,6 +3105,9 @@ void Application::run() {
         } else {
             std::this_thread::yield();
         }
+#else
+        std::this_thread::yield();
+#endif
     }
 }
 

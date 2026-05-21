@@ -31,26 +31,6 @@ static void dispatchEvent(const PlatformInputEvent& event) {
     }
 }
 
-static void clearInitialBackground(ANativeWindow* window) {
-    if (!window) return;
-    ANativeWindow_Buffer buffer = {};
-    if (ANativeWindow_lock(window, &buffer, nullptr) != 0) {
-        return;
-    }
-
-    for (int y = 0; y < buffer.height; ++y) {
-        auto* row = static_cast<unsigned char*>(buffer.bits) +
-                    static_cast<size_t>(y) * buffer.stride * 4u;
-        for (int x = 0; x < buffer.width; ++x) {
-            row[x * 4 + 0] = 15;
-            row[x * 4 + 1] = 15;
-            row[x * 4 + 2] = 23;
-            row[x * 4 + 3] = 255;
-        }
-    }
-    ANativeWindow_unlockAndPost(window);
-}
-
 // Convert Android AKEYCODE to Windows-compatible VK code
 static int androidKeyToVK(int32_t keycode) {
     if (keycode >= AKEYCODE_A && keycode <= AKEYCODE_Z)
@@ -172,7 +152,6 @@ static void handleAppCmd(struct android_app* app, int32_t cmd) {
     switch (cmd) {
     case APP_CMD_INIT_WINDOW:
         if (app->window) {
-            clearInitialBackground(app->window);
             int w = ANativeWindow_getWidth(app->window);
             int h = ANativeWindow_getHeight(app->window);
             PlatformInputEvent e{};
@@ -185,7 +164,6 @@ static void handleAppCmd(struct android_app* app, int32_t cmd) {
     case APP_CMD_WINDOW_RESIZED:
     case APP_CMD_CONFIG_CHANGED:
         if (app->window) {
-            clearInitialBackground(app->window);
             int w = ANativeWindow_getWidth(app->window);
             int h = ANativeWindow_getHeight(app->window);
             PlatformInputEvent e{};
@@ -237,7 +215,6 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
         }
         if (g_app->destroyRequested) return nullptr;
     }
-    clearInitialBackground(g_app->window);
     return (NativeWindowHandle)g_app->window;
 }
 

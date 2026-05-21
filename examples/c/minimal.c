@@ -12,7 +12,14 @@ int main(void) {
         return 1;
     }
 
-    fluxui_app_load_font(app, "C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    if (!fluxui_app_load_default_font(app, 16.0f)) {
+        fluxui_app_load_font(app, "C:/Windows/Fonts/segoeui.ttf", 16.0f);
+    }
+    {
+        const float font_sizes[] = {14.0f, 16.0f, 26.0f};
+        fluxui_app_warm_font_cache(app, font_sizes, 3, "default");
+        fluxui_app_release_font_sources(app);
+    }
     fluxui_app_add_stylesheet(app,
         ".root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 16px; }"
         ".title { height: 36px; font-size: 26px; font-weight: 700; color: #edf3f8; }"
@@ -21,6 +28,7 @@ int main(void) {
     );
 
     FluxUIWidget* root = fluxui_app_root(app);
+    fluxui_widget_reserve_children(root, 3);
     fluxui_widget_add_text(root, "Hello from C", "title");
     fluxui_widget_add_text(root, "This UI is built through the FluxUI C ABI.", "body");
     FluxUIWidget* button = fluxui_widget_add_button(root, "Close", "button");

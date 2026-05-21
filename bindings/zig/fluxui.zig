@@ -63,6 +63,19 @@ pub const App = struct {
         return c.fluxui_app_load_font(self.raw, path, size) != 0;
     }
 
+    pub fn loadDefaultFont(self: App, size: f32) bool {
+        return c.fluxui_app_load_default_font(self.raw, size) != 0;
+    }
+
+    pub fn warmFontCache(self: App, sizes: []const f32, name: [*:0]const u8) void {
+        if (sizes.len == 0) return;
+        c.fluxui_app_warm_font_cache(self.raw, sizes.ptr, @intCast(sizes.len), name);
+    }
+
+    pub fn releaseFontSources(self: App) void {
+        c.fluxui_app_release_font_sources(self.raw);
+    }
+
     pub fn loadStylesheet(self: App, path: [*:0]const u8) bool {
         return c.fluxui_app_load_stylesheet(self.raw, path) != 0;
     }
@@ -87,6 +100,10 @@ pub const Widget = struct {
 
     pub fn clearChildren(self: Widget) void {
         c.fluxui_widget_clear_children(self.raw);
+    }
+
+    pub fn reserveChildren(self: Widget, count: u32) void {
+        c.fluxui_widget_reserve_children(self.raw, count);
     }
 
     pub fn addPanel(self: Widget, class_name: [*:0]const u8) Error!Widget {

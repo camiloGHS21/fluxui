@@ -9,8 +9,12 @@ fn main() -> Result<(), fluxui::Error> {
     // Initialize the window using FluxUI Vulkan backend (default fallback)
     app.init("FluxUI Rust Example", 900, 600)?;
     
-    // Load standard Segoe UI font
-    app.load_font("C:/Windows/Fonts/segoeui.ttf", 16.0);
+    // Load and warm the default UI font before the first frame.
+    if !app.load_default_font(16.0) {
+        app.load_font("C:/Windows/Fonts/segoeui.ttf", 16.0);
+    }
+    app.warm_font_cache(&[14.0, 16.0, 18.0, 26.0, 28.0, 32.0], "default");
+    app.release_font_sources();
     
     // Add modern and sleek dark mode style sheet
     app.add_stylesheet(
@@ -85,6 +89,7 @@ fn main() -> Result<(), fluxui::Error> {
     
     // Get the root widget of the application
     let root = app.root().ok_or(fluxui::Error::InitFailed)?;
+    root.reserve_children(4);
     
     // Header section
     let header = root.add_panel("header")?.ok_or(fluxui::Error::InitFailed)?;
@@ -95,6 +100,7 @@ fn main() -> Result<(), fluxui::Error> {
     
     // Card Section
     let cards = root.add_panel("card-container")?.ok_or(fluxui::Error::InitFailed)?;
+    cards.reserve_children(2);
     
     // Card 1
     let card1 = cards.add_panel("card")?.ok_or(fluxui::Error::InitFailed)?;

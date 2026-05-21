@@ -88,6 +88,14 @@ pub mod sys {
             size: f32,
             name: *const c_char,
         ) -> i32;
+        pub fn fluxui_app_load_default_font(app: *mut FluxUIApp, size: f32) -> i32;
+        pub fn fluxui_app_warm_font_cache(
+            app: *mut FluxUIApp,
+            sizes: *const f32,
+            count: u32,
+            name: *const c_char,
+        );
+        pub fn fluxui_app_release_font_sources(app: *mut FluxUIApp);
         pub fn fluxui_app_set_update_callback(
             app: *mut FluxUIApp,
             callback: Option<FluxUIUpdateCallback>,
@@ -96,6 +104,7 @@ pub mod sys {
         pub fn fluxui_app_root(app: *mut FluxUIApp) -> *mut FluxUIWidget;
 
         pub fn fluxui_widget_clear_children(widget: *mut FluxUIWidget);
+        pub fn fluxui_widget_reserve_children(widget: *mut FluxUIWidget, count: u32);
         pub fn fluxui_widget_add_panel(
             parent: *mut FluxUIWidget,
             class_name: *const c_char,
@@ -334,6 +343,30 @@ impl App {
         unsafe { sys::fluxui_app_load_font(self.raw.as_ptr(), path.as_ptr(), size) != 0 }
     }
 
+    pub fn load_default_font(&self, size: f32) -> bool {
+        unsafe { sys::fluxui_app_load_default_font(self.raw.as_ptr(), size) != 0 }
+    }
+
+    pub fn warm_font_cache(&self, sizes: &[f32], name: &str) -> bool {
+        if sizes.is_empty() {
+            return true;
+        }
+        let Ok(name) = cstring(name) else { return false };
+        unsafe {
+            sys::fluxui_app_warm_font_cache(
+                self.raw.as_ptr(),
+                sizes.as_ptr(),
+                sizes.len().min(u32::MAX as usize) as u32,
+                name.as_ptr(),
+            );
+        }
+        true
+    }
+
+    pub fn release_font_sources(&self) {
+        unsafe { sys::fluxui_app_release_font_sources(self.raw.as_ptr()) }
+    }
+
     pub fn load_stylesheet(&self, path: &str) -> bool {
         let Ok(path) = cstring(path) else { return false };
         unsafe { sys::fluxui_app_load_stylesheet(self.raw.as_ptr(), path.as_ptr()) != 0 }
@@ -424,6 +457,10 @@ impl Widget {
 
     pub fn clear_children(self) {
         unsafe { sys::fluxui_widget_clear_children(self.raw.as_ptr()) }
+    }
+
+    pub fn reserve_children(self, count: u32) {
+        unsafe { sys::fluxui_widget_reserve_children(self.raw.as_ptr(), count) }
     }
 
     pub fn bounds(self) -> Rect {

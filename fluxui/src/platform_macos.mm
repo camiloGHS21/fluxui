@@ -93,9 +93,9 @@ static int cocoaKeyToVK(unsigned short keyCode) {
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)wantsUpdateLayer { return YES; }
 - (BOOL)isFlipped { return YES; } // Match top-left origin like Win32/X11
-- (BOOL)isOpaque { return YES; }  // Prevent background blend/flicker
+- (BOOL)isOpaque { return g_eventContext ? NO : YES; }
 - (void)updateLayer {
-    self.layer.backgroundColor = [initialBackgroundColor() CGColor];
+    self.layer.backgroundColor = g_eventContext ? nil : [initialBackgroundColor() CGColor];
 }
 @end
 
@@ -163,6 +163,13 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
 void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     NSWindow* nsWindow = (NSWindow*)window;
+    if (g_eventContext) {
+        [nsWindow setOpaque:NO];
+        [nsWindow setBackgroundColor:[NSColor clearColor]];
+        if (nsWindow.contentView.layer) {
+            nsWindow.contentView.layer.backgroundColor = nil;
+        }
+    }
     [nsWindow makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }

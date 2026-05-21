@@ -55,13 +55,18 @@ static LRESULT CALLBACK FluxUI_WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     }
     
     if (msg == WM_ERASEBKGND) {
+        if (app) {
+            return 1;
+        }
         paintInitialBackground(hwnd, (HDC)wParam);
         return 1;
     }
     if (msg == WM_PAINT) {
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(hwnd, &ps);
-        paintInitialBackground(hwnd, dc);
+        if (!app) {
+            paintInitialBackground(hwnd, dc);
+        }
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -125,7 +130,9 @@ void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     HWND hwnd = (HWND)window;
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
-    UpdateWindow(hwnd);
+    if (!GetWindowLongPtr(hwnd, GWLP_USERDATA)) {
+        UpdateWindow(hwnd);
+    }
 }
 
 void Platform::destroyWindow(NativeWindowHandle window) {

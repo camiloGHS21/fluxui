@@ -8,6 +8,18 @@
 
 namespace FluxUI {
 
+StyleSheet::StyleSheet() {
+#if FLUXUI_FAST_STARTUP
+    rules.reserve(FLUXUI_STYLE_CACHE_SIZE / 4);
+    variables_.reserve(64);
+    resolvedCache_.reserve(FLUXUI_STYLE_CACHE_SIZE);
+    idRuleIndex_.reserve(64);
+    classRuleIndex_.reserve(256);
+    typeRuleIndex_.reserve(64);
+    universalRuleIndex_.reserve(64);
+#endif
+}
+
 std::string StyleSheet::trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\n\r");
     size_t end = s.find_last_not_of(" \t\n\r");
@@ -982,10 +994,12 @@ Style StyleSheet::resolve(const std::string& className,
         appendFloat(parentStyle->padding.bottom);
         appendFloat(parentStyle->padding.left);
     }
+#if FLUXUI_STYLE_CACHE_SIZE > 0
     auto cached = resolvedCache_.find(key);
     if (cached != resolvedCache_.end()) {
         return cached->second;
     }
+#endif
 
     Style style;
     applyUserAgentDefaults(style, type, ancestors);
@@ -1098,7 +1112,12 @@ Style StyleSheet::resolve(const std::string& className,
         StyleSheet::mergeActiveProperty(target, name, value);
     }, activeCustomProperties);
 
+#if FLUXUI_STYLE_CACHE_SIZE > 0
+    if (resolvedCache_.size() >= FLUXUI_STYLE_CACHE_SIZE) {
+        resolvedCache_.clear();
+    }
     resolvedCache_[std::move(key)] = style;
+#endif
     return style;
 }
 

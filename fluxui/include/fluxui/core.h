@@ -2,6 +2,8 @@
 // Copyright (c) 2026 - MIT License
 #pragma once
 
+#include "fluxui/config.h"
+
 #include <string>
 #include <vector>
 #include <unordered_map>
