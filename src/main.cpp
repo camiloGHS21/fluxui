@@ -702,11 +702,14 @@ static void runStyleResolutionBenchmark(Application& app) {
     g_allocation_count = 0;
     g_allocated_bytes = 0;
     g_recorded_allocs = 0;
+    log_print("  Iteration 0...");
     g_tracking_allocations = true;
     try {
         for (int it = 0; it < iterations; ++it) {
-            if (it % 1000 == 0) {
+            if (it > 0 && it % 1000 == 0) {
+                g_tracking_allocations = false;
                 log_print("  Iteration " + std::to_string(it) + "...");
+                g_tracking_allocations = true;
             }
             // Force complete style dirtying
             root->markStyleDirtyRecursive();

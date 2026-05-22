@@ -1041,6 +1041,7 @@ void Widget::update(const InputState& input) {
         pressed = false;
         return;
     }
+    float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
     hovered = bounds.contains(input.mousePos);
     if (input.mouseClicked[0]) {
         if (hovered && (type == "button" || computedStyle.cursor == CursorType::Pointer)) {
@@ -1053,15 +1054,16 @@ void Widget::update(const InputState& input) {
         onClick();
     }
     float target = hovered ? 1.0f : 0.0f;
-    float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
-    float k = computedStyle.springStiffness;
-    float d = computedStyle.springDamping;
-    float force = -k * (hoverAnim - target) - d * hoverVelocity;
-    hoverVelocity += force * dt;
-    hoverAnim += hoverVelocity * dt;
-    if (std::abs(hoverAnim - target) < 0.0001f && std::abs(hoverVelocity) < 0.0001f) {
-        hoverAnim = target;
-        hoverVelocity = 0.0f;
+    if (hoverAnim != target || hoverVelocity != 0.0f) {
+        float k = computedStyle.springStiffness;
+        float d = computedStyle.springDamping;
+        float force = -k * (hoverAnim - target) - d * hoverVelocity;
+        hoverVelocity += force * dt;
+        hoverAnim += hoverVelocity * dt;
+        if (std::abs(hoverAnim - target) < 0.0001f && std::abs(hoverVelocity) < 0.0001f) {
+            hoverAnim = target;
+            hoverVelocity = 0.0f;
+        }
     }
     pressed = hovered && input.mouseDown[0];
     float currentScale = computedStyle.scale;
@@ -1139,15 +1141,17 @@ void Widget::update(const InputState& input) {
             }
             clampScroll();
         }
-        float previousScroll = scrollY;
-        float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
-        scrollY += (targetScrollY - scrollY) * scrollBlend;
-        scrollVelocity = (scrollY - previousScroll) / std::max(dt, 0.001f);
-        if (std::abs(scrollY - targetScrollY) < 0.08f || std::abs(scrollVelocity) < 0.02f) {
-            scrollY = targetScrollY;
-            scrollVelocity = 0.0f;
+        if (scrollY != targetScrollY || scrollVelocity != 0.0f) {
+            float previousScroll = scrollY;
+            float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
+            scrollY += (targetScrollY - scrollY) * scrollBlend;
+            scrollVelocity = (scrollY - previousScroll) / std::max(dt, 0.001f);
+            if (std::abs(scrollY - targetScrollY) < 0.08f || std::abs(scrollVelocity) < 0.02f) {
+                scrollY = targetScrollY;
+                scrollVelocity = 0.0f;
+            }
+            clampScroll();
         }
-        clampScroll();
     } else {
         scrollbarHovered = false;
         scrollbarDragging = false;

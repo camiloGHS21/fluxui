@@ -26,6 +26,12 @@ struct CSSRule {
     std::vector<CSSProperty> properties;
     std::string mediaQuery;
     int specificity = 0;
+
+    // Cached pre-parsed selector data for faster matching
+    std::string selectorWithoutPseudo;
+    std::string pseudoState;
+    std::vector<std::string> parts;
+    std::vector<char> combinators;
 };
 
 struct CSSSelectorNode {
@@ -108,17 +114,12 @@ private:
                               const std::vector<CSSSelectorNode>& ancestors = {});
     static std::string trim(const std::string& s);
     static std::vector<std::string> splitTopLevel(const std::string& value, char delimiter);
-    static bool selectorMatches(const std::string& selector,
-                                std::string_view className,
-                                std::string_view id,
-                                std::string_view type,
-                                std::string* pseudo = nullptr);
-    static bool selectorMatches(const std::string& selector,
+    static bool selectorMatches(const CSSRule& rule,
                                 std::string_view className,
                                 std::string_view id,
                                 std::string_view type,
                                 const std::vector<CSSSelectorNode>& ancestors,
-                                std::string* pseudo = nullptr);
+                                std::string_view* pseudo = nullptr);
     static int selectorSpecificity(const std::string& selector);
     static CSSRuleIndexKey selectorIndexKey(const std::string& selector);
     static void appendClassTokens(std::string_view className, std::vector<std::string>& out);

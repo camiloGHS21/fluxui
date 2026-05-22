@@ -436,42 +436,27 @@ void StyleSheet::buildCacheKey(std::string& key,
     }
 }
 
-bool StyleSheet::selectorMatches(const std::string& selector,
-                                 std::string_view className,
-                                 std::string_view id,
-                                 std::string_view type,
-                                 std::string* pseudo) {
-    static const std::vector<CSSSelectorNode> noAncestors;
-    return selectorMatches(selector, className, id, type, noAncestors, pseudo);
-}
-
-bool StyleSheet::selectorMatches(const std::string& selector,
+bool StyleSheet::selectorMatches(const CSSRule& rule,
                                  std::string_view className,
                                  std::string_view id,
                                  std::string_view type,
                                  const std::vector<CSSSelectorNode>& ancestors,
-                                 std::string* pseudo) {
-    std::string s = trim(selector);
-    if (pseudo) *pseudo = "";
-    if (s.empty()) return false;
+                                 std::string_view* pseudo) {
+    if (pseudo) {
+        *pseudo = rule.pseudoState;
+    }
+    if (rule.parts.empty()) return false;
 
-    extractTrailingStatePseudo(s, pseudo);
-
-    std::vector<std::string> parts;
-    std::vector<char> combinators;
-    splitSelectorChain(s, parts, combinators);
-    if (parts.empty()) return false;
-
-    int last = (int)parts.size() - 1;
-    if (!matchCompoundSelector(parts[(size_t)last], className, id, type)) return false;
+    int last = (int)rule.parts.size() - 1;
+    if (!matchCompoundSelector(rule.parts[(size_t)last], className, id, type)) return false;
 
     size_t ancestorCursor = 0;
     for (int i = last - 1; i >= 0; --i) {
-        char combinator = combinators[(size_t)i];
+        char combinator = rule.combinators[(size_t)i];
         if (combinator == '>') {
             if (ancestorCursor >= ancestors.size()) return false;
             const auto& ancestor = ancestors[ancestorCursor];
-            if (!matchCompoundSelector(parts[(size_t)i],
+            if (!matchCompoundSelector(rule.parts[(size_t)i],
                                        ancestor.className,
                                        ancestor.id,
                                        ancestor.type)) {
@@ -485,7 +470,7 @@ bool StyleSheet::selectorMatches(const std::string& selector,
         while (ancestorCursor < ancestors.size()) {
             const auto& ancestor = ancestors[ancestorCursor];
             ancestorCursor++;
-            if (matchCompoundSelector(parts[(size_t)i],
+            if (matchCompoundSelector(rule.parts[(size_t)i],
                                       ancestor.className,
                                       ancestor.id,
                                       ancestor.type)) {
@@ -826,6 +811,11 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         rule.selector = cleanSelector;
         rule.mediaQuery = mediaQuery;
         rule.specificity = selectorSpecificity(cleanSelector);
+
+        rule.selectorWithoutPseudo = cleanSelector;
+        extractTrailingStatePseudo(rule.selectorWithoutPseudo, &rule.pseudoState);
+        splitSelectorChain(rule.selectorWithoutPseudo, rule.parts, rule.combinators);
+
         for (const auto& prop : properties) {
             rule.properties.push_back(prop);
         }
@@ -986,6 +976,12 @@ static void appendInt(std::string& s, int value) {
     s.append(p);
 }
 
+struct CascadedProperty {
+    const CSSProperty* property = nullptr;
+    int specificity = 0;
+    bool important = false;
+};
+
 Style StyleSheet::resolve(std::string_view className,
                           std::string_view id,
                           std::string_view type,
@@ -996,14 +992,20 @@ Style StyleSheet::resolve(std::string_view className,
     std::string& key = tlsKey;
     buildCacheKey(key, className, id, type, ancestors);
     if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
-        std::vector<std::pair<std::string, std::string>> inherited(
-            inheritedCustomProperties->begin(), inheritedCustomProperties->end());
-        std::sort(inherited.begin(), inherited.end());
-        for (const auto& entry : inherited) {
+        thread_local std::vector<std::pair<std::string_view, std::string_view>> t_inherited;
+        t_inherited.clear();
+        t_inherited.reserve(inheritedCustomProperties->size());
+        for (const auto& entry : *inheritedCustomProperties) {
+            t_inherited.push_back({entry.first, entry.second});
+        }
+        std::sort(t_inherited.begin(), t_inherited.end(), [](const auto& a, const auto& b) {
+            return a.first < b.first;
+        });
+        for (const auto& entry : t_inherited) {
             key.push_back('\x1d');
-            key += entry.first;
+            key.append(entry.first);
             key.push_back('=');
-            key += entry.second;
+            key.append(entry.second);
         }
     }
     if (parentStyle) {
@@ -1047,18 +1049,18 @@ Style StyleSheet::resolve(std::string_view className,
 
     Style style;
     applyUserAgentDefaults(style, type, ancestors);
-    style.customProperties = variables_;
-    if (inheritedCustomProperties) {
-        for (const auto& entry : *inheritedCustomProperties) {
-            style.customProperties[entry.first] = entry.second;
+    if (!variables_.empty()) {
+        style.customProperties = variables_;
+    }
+    if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
+        if (style.customProperties.empty()) {
+            style.customProperties = *inheritedCustomProperties;
+        } else {
+            for (const auto& entry : *inheritedCustomProperties) {
+                style.customProperties[entry.first] = entry.second;
+            }
         }
     }
-
-    struct CascadedProperty {
-        const CSSProperty* property = nullptr;
-        int specificity = 0;
-        bool important = false;
-    };
 
     auto lessCascadePriority = [](const CascadedProperty& a, const CascadedProperty& b) {
         if (a.important != b.important) return !a.important && b.important;
@@ -1066,19 +1068,26 @@ Style StyleSheet::resolve(std::string_view className,
         return a.property->sourceOrder < b.property->sourceOrder;
     };
 
-    std::vector<CascadedProperty> baseProperties;
-    std::vector<CascadedProperty> hoverProperties;
-    std::vector<CascadedProperty> focusProperties;
-    std::vector<CascadedProperty> activeProperties;
-    std::vector<size_t> candidateRules;
+    thread_local std::vector<CascadedProperty> baseProperties;
+    thread_local std::vector<CascadedProperty> hoverProperties;
+    thread_local std::vector<CascadedProperty> focusProperties;
+    thread_local std::vector<CascadedProperty> activeProperties;
+    thread_local std::vector<size_t> candidateRules;
+
+    baseProperties.clear();
+    hoverProperties.clear();
+    focusProperties.clear();
+    activeProperties.clear();
+    candidateRules.clear();
+
     collectCandidateRules(className, id, type, candidateRules);
 
     for (size_t ruleIndex : candidateRules) {
         if (ruleIndex >= rules.size()) continue;
         const auto& rule = rules[ruleIndex];
         if (!mediaQueryMatches(rule.mediaQuery)) continue;
-        std::string pseudo;
-        if (selectorMatches(rule.selector, className, id, type, ancestors, &pseudo)) {
+        std::string_view pseudo;
+        if (selectorMatches(rule, className, id, type, ancestors, &pseudo)) {
             if (!pseudo.empty() && pseudo != "hover" &&
                 pseudo != "focus" && pseudo != "focus-visible" &&
                 pseudo != "active") continue;

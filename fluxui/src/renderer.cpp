@@ -6333,13 +6333,38 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
 Vec2 Renderer::measureText(const std::string& text, float fontSize,
                             const std::string& fontName) const {
 #if FLUXUI_TEXT_MEASURE_CACHE_SIZE > 0
-    std::string key;
-    key.reserve(fontName.size() + text.size() + 24);
-    key += fontName;
-    key.push_back('\x1f');
-    key += std::to_string((int)std::round(fontSize * 100.0f));
-    key.push_back('\x1f');
-    key += text;
+    uint64_t h1 = 14695981039346656037ULL;
+    for (char c : fontName) {
+        h1 ^= static_cast<uint8_t>(c);
+        h1 *= 1099511628211ULL;
+    }
+    {
+        const char* bytes = reinterpret_cast<const char*>(&fontSize);
+        for (size_t i = 0; i < sizeof(float); ++i) {
+            h1 ^= static_cast<uint8_t>(bytes[i]);
+            h1 *= 1099511628211ULL;
+        }
+    }
+    for (char c : text) {
+        h1 ^= static_cast<uint8_t>(c);
+        h1 *= 1099511628211ULL;
+    }
+
+    uint64_t h2 = 5381;
+    for (char c : fontName) {
+        h2 = ((h2 << 5) + h2) + static_cast<uint8_t>(c);
+    }
+    {
+        const char* bytes = reinterpret_cast<const char*>(&fontSize);
+        for (size_t i = 0; i < sizeof(float); ++i) {
+            h2 = ((h2 << 5) + h2) + static_cast<uint8_t>(bytes[i]);
+        }
+    }
+    for (char c : text) {
+        h2 = ((h2 << 5) + h2) + static_cast<uint8_t>(c);
+    }
+
+    TextMeasureKey key{h1, h2};
 
     auto cached = textMeasureCache_.find(key);
     if (cached != textMeasureCache_.end()) {
@@ -6387,7 +6412,7 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
     if (textMeasureCache_.size() >= FLUXUI_TEXT_MEASURE_CACHE_SIZE) {
         textMeasureCache_.clear();
     }
-    textMeasureCache_[std::move(key)] = measured;
+    textMeasureCache_[key] = measured;
 #endif
     return measured;
 }
