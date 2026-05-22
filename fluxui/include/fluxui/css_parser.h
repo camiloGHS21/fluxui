@@ -122,7 +122,7 @@ private:
                                 std::string_view* pseudo = nullptr);
     static int selectorSpecificity(const std::string& selector);
     static CSSRuleIndexKey selectorIndexKey(const std::string& selector);
-    static void appendClassTokens(std::string_view className, std::vector<std::string>& out);
+    static void appendClassTokens(std::string_view className, std::vector<std::string_view>& out);
     static std::vector<std::string> splitDeclarations(const std::string& body);
     static bool stripImportant(std::string& value);
     static void applyUserAgentDefaults(Style& style,

@@ -484,14 +484,14 @@ bool StyleSheet::selectorMatches(const CSSRule& rule,
     return true;
 }
 
-void StyleSheet::appendClassTokens(std::string_view className, std::vector<std::string>& out) {
+void StyleSheet::appendClassTokens(std::string_view className, std::vector<std::string_view>& out) {
     size_t pos = 0;
     while (pos < className.size()) {
         while (pos < className.size() && std::isspace((unsigned char)className[pos])) pos++;
         if (pos >= className.size()) break;
         size_t start = pos;
         while (pos < className.size() && !std::isspace((unsigned char)className[pos])) pos++;
-        out.push_back(std::string(className.substr(start, pos - start)));
+        out.push_back(className.substr(start, pos - start));
     }
 }
 
@@ -1188,20 +1188,29 @@ void StyleSheet::collectCandidateRules(std::string_view className,
     append(universalRuleIndex_);
 
     if (!id.empty()) {
-        auto it = idRuleIndex_.find(std::string(id));
+        thread_local std::string idKey;
+        idKey.assign(id.data(), id.size());
+        auto it = idRuleIndex_.find(idKey);
         if (it != idRuleIndex_.end()) append(it->second);
     }
 
-    std::vector<std::string> classes;
+    thread_local std::vector<std::string_view> classes;
+    classes.clear();
     appendClassTokens(className, classes);
     for (const auto& cls : classes) {
-        auto it = classRuleIndex_.find(cls);
+        thread_local std::string clsKey;
+        clsKey.assign(cls.data(), cls.size());
+        auto it = classRuleIndex_.find(clsKey);
         if (it != classRuleIndex_.end()) append(it->second);
     }
 
-    std::string lowerType = lowerAscii(std::string(type));
-    if (!lowerType.empty()) {
-        auto it = typeRuleIndex_.find(lowerType);
+    if (!type.empty()) {
+        thread_local std::string typeKey;
+        typeKey.resize(type.size());
+        for (size_t i = 0; i < type.size(); ++i) {
+            typeKey[i] = (char)std::tolower((unsigned char)type[i]);
+        }
+        auto it = typeRuleIndex_.find(typeKey);
         if (it != typeRuleIndex_.end()) append(it->second);
     }
 

@@ -311,19 +311,7 @@ private:
 
     // Font data
     std::unordered_map<std::string, FontData> fonts_;
-    struct TextMeasureKey {
-        uint64_t h1;
-        uint64_t h2;
-        bool operator==(const TextMeasureKey& other) const {
-            return h1 == other.h1 && h2 == other.h2;
-        }
-    };
-    struct TextMeasureKeyHash {
-        size_t operator()(const TextMeasureKey& k) const {
-            return k.h1 ^ (k.h2 << 1);
-        }
-    };
-    mutable std::unordered_map<TextMeasureKey, Vec2, TextMeasureKeyHash> textMeasureCache_;
+    mutable std::unordered_map<uint64_t, Vec2> textMeasureCache_;
     FontData* currentFont_ = nullptr;
     std::unordered_map<std::string, ImageData> images_;
 
