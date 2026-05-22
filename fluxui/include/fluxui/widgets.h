@@ -192,6 +192,7 @@ public:
     void markStyleDirtyRecursive();
     void markSubtreeStyleDirty();
     virtual void layout(const Rect& parentBounds);
+    void translateLayout(float dx, float dy);
     bool hasActiveAnimations() const;
     void resetTransientMotion();
     virtual void update(const InputState& input);

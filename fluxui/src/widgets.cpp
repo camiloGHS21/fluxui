@@ -9,10 +9,80 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
+#include <type_traits>
 #include <stb_image.h>
 #include "fluxui/platform.h"
 #include <nlohmann/json.hpp>
 namespace FluxUI {
+
+class ThreadPool {
+public:
+    ThreadPool(size_t threads) : stop(false) {
+        for(size_t i = 0; i<threads; ++i)
+            workers.emplace_back(
+                [this] {
+                    for(;;) {
+                        std::function<void()> task;
+                        {
+                            std::unique_lock<std::mutex> lock(this->queue_mutex);
+                            this->condition.wait(lock,
+                                [this]{ return this->stop || !this->tasks.empty(); });
+                            if(this->stop && this->tasks.empty())
+                                return;
+                            task = std::move(this->tasks.front());
+                            this->tasks.pop();
+                        }
+                        task();
+                    }
+                }
+            );
+    }
+
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) 
+        -> std::future<typename std::invoke_result<F, Args...>::type> {
+        using return_type = typename std::invoke_result<F, Args...>::type;
+
+        auto task = std::make_shared< std::packaged_task<return_type()> >(
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+        );
+        
+        std::future<return_type> res = task->get_future();
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            if(stop)
+                throw std::runtime_error("enqueue on stopped ThreadPool");
+            tasks.emplace([task](){ (*task)(); });
+        }
+        condition.notify_one();
+        return res;
+    }
+
+    ~ThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for(std::thread &worker: workers)
+            if(worker.joinable())
+                worker.join();
+    }
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
+};
+
+static ThreadPool& getLayoutThreadPool() {
+    static ThreadPool pool(std::max(1u, std::thread::hardware_concurrency()));
+    return pool;
+}
 static Application* g_activeApp = nullptr;
 Application* Application::instance() {
     return g_activeApp;
@@ -639,7 +709,26 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     }
     subtreeStyleDirty = false;
 }
+void Widget::translateLayout(float dx, float dy) {
+    bounds.x += dx;
+    bounds.y += dy;
+    lastLayoutParentBounds.x += dx;
+    lastLayoutParentBounds.y += dy;
+    for (auto& child : children) {
+        if (child) {
+            child->translateLayout(dx, dy);
+        }
+    }
+}
 void Widget::layout(const Rect& parentBounds) {
+    if (!layoutDirty && lastLayoutParentBounds.w == parentBounds.w && lastLayoutParentBounds.h == parentBounds.h) {
+        float dx = parentBounds.x - lastLayoutParentBounds.x;
+        float dy = parentBounds.y - lastLayoutParentBounds.y;
+        if (dx != 0.0f || dy != 0.0f) {
+            translateLayout(dx, dy);
+        }
+        return;
+    }
     if (!layoutDirty && rectEqual(lastLayoutParentBounds, parentBounds)) {
         return;
     }
@@ -901,7 +990,7 @@ void Widget::layoutFlexChildren() {
     }
     if (parallelLayout) {
         for (auto& task : tasks) {
-            futures.push_back(std::async(std::launch::async, [task]() {
+            futures.push_back(getLayoutThreadPool().enqueue([task]() {
                 task.widget->layout(task.area);
                 if (!task.widget->computedStyle.height.isSet() &&
                     !clipsOverflow(task.widget->computedStyle) &&
@@ -2018,6 +2107,14 @@ void Image::updateCurrentSrc() {
     loadState = ImageWidgetState::Idle;
 }
 void Image::layout(const Rect& parentBounds) {
+    if (!layoutDirty && lastLayoutParentBounds.w == parentBounds.w && lastLayoutParentBounds.h == parentBounds.h) {
+        float dx = parentBounds.x - lastLayoutParentBounds.x;
+        float dy = parentBounds.y - lastLayoutParentBounds.y;
+        if (dx != 0.0f || dy != 0.0f) {
+            translateLayout(dx, dy);
+        }
+        return;
+    }
     Widget::layout(parentBounds);
     auto& s = computedStyle;
     if ((naturalSize.x <= 0.0f || naturalSize.y <= 0.0f) && !currentSrc.empty()) {
@@ -2225,6 +2322,17 @@ void VirtualList::layout(const Rect& parentBounds) {
         children.clear();
         visibleStart_ = visibleEnd_ = 0;
         layoutDirty = false;
+        return;
+    }
+    if (!layoutDirty && lastLayoutParentBounds.w == parentBounds.w && lastLayoutParentBounds.h == parentBounds.h) {
+        float dx = parentBounds.x - lastLayoutParentBounds.x;
+        float dy = parentBounds.y - lastLayoutParentBounds.y;
+        if (dx != 0.0f || dy != 0.0f) {
+            translateLayout(dx, dy);
+        }
+        contentHeight = computedStyle.padding.vertical() + itemHeight * static_cast<float>(itemCount);
+        clampScroll();
+        rebuildVisibleItems();
         return;
     }
     if (!layoutDirty && rectEqual(lastLayoutParentBounds, parentBounds)) {
