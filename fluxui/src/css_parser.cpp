@@ -244,6 +244,19 @@ static bool selectorPseudoMatches(const std::string& pseudoName,
     if (pseudoName == "indeterminate") return selectorHasFlag(actualType, "indeterminate");
     if (pseudoName == "enabled") return true;
     if (pseudoName == "disabled") return false;
+    if (pseudoName == "read-write" || pseudoName == "read-only") {
+        std::string_view baseType = selectorBaseType(actualType);
+        std::string_view inputType = selectorAttributeValue(actualType, "type");
+        bool editable = baseType == "textarea";
+        if (baseType == "input") {
+            editable = inputType.empty() || inputType == "text" || inputType == "password" ||
+                       inputType == "search" || inputType == "email" || inputType == "url" ||
+                       inputType == "tel" || inputType == "number" || inputType == "date" ||
+                       inputType == "time" || inputType == "month" || inputType == "week" ||
+                       inputType == "datetime-local";
+        }
+        return pseudoName == "read-write" ? editable : !editable;
+    }
     return false;
 }
 
@@ -290,7 +303,8 @@ static bool matchCompoundSelector(const std::string& compound,
             std::string inner = s.substr(innerStart, i - innerStart);
             ++i;
 
-            if (pseudoName != "is" && pseudoName != "where" && pseudoName != "not") {
+            if (pseudoName != "is" && pseudoName != "where" &&
+                pseudoName != "-webkit-any" && pseudoName != "not") {
                 return false;
             }
 
@@ -1762,6 +1776,22 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.hasTextAlign = true;
         style.display = Display::InlineBlock;
     };
+    auto pushButtonControl = [&]() {
+        smallControl();
+        style.appearance = Appearance::PushButton;
+        style.hasAppearance = true;
+        style.cursor = CursorType::Default;
+        style.textAlign = TextAlign::Center;
+        style.hasTextAlign = true;
+        style.padding = EdgeInsets(2.0f, 6.0f, 3.0f, 6.0f);
+        style.border = Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
+        style.borderRadius = BorderRadius(2.0f);
+        style.backgroundColor = Color(0.94f, 0.94f, 0.94f, 1.0f);
+        style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
+        style.hasColor = true;
+        style.boxSizing = BoxSizing::BorderBox;
+        style.hasBoxSizing = true;
+    };
 
     if (t == "head" || t == "meta" || t == "title" || t == "link" ||
         t == "style" || t == "script" || t == "param" || t == "datalist") {
@@ -1920,22 +1950,55 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         block();
         style.padding = EdgeInsets(0.0f, 2.0f, 0.0f, 2.0f);
     } else if (t == "button") {
+        pushButtonControl();
+    } else if (t == "input" && inputKind == "hidden") {
+        smallControl();
+        style.display = Display::None;
+        style.appearance = Appearance::Auto;
+        style.hasAppearance = true;
+        style.cursor = CursorType::Default;
+        style.padding = EdgeInsets(0.0f);
+        style.border = Border(0.0f, Color(0, 0, 0, 0));
+        style.backgroundColor = Color(0, 0, 0, 0);
+        style.width = CSSValue::px(0.0f);
+        style.height = CSSValue::px(0.0f);
+    } else if (t == "input" && (inputKind == "button" ||
+               inputKind == "submit" || inputKind == "reset")) {
+        pushButtonControl();
+    } else if (t == "input" && inputKind == "file") {
         smallControl();
         style.appearance = Appearance::Auto;
         style.hasAppearance = true;
         style.cursor = CursorType::Default;
-        style.textAlign = TextAlign::Center;
-        style.hasTextAlign = true;
-        style.padding = EdgeInsets(1.0f, 6.0f, 1.0f, 6.0f);
-        style.border = Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
-        style.borderRadius = BorderRadius(2.0f);
+        style.padding = EdgeInsets(0.0f);
+        style.border = Border(0.0f, Color(0, 0, 0, 0));
+        style.backgroundColor = Color(0, 0, 0, 0);
+        style.width = CSSValue::px(253.0f);
+        style.height = CSSValue::px(21.0f);
+    } else if (t == "input" && inputKind == "image") {
+        smallControl();
+        style.appearance = Appearance::Auto;
+        style.hasAppearance = true;
+        style.cursor = CursorType::Pointer;
+        style.padding = EdgeInsets(0.0f);
+        style.border = Border(0.0f, Color(0, 0, 0, 0));
+        style.backgroundColor = Color(0, 0, 0, 0);
+    } else if (t == "input" && inputKind == "color") {
+        smallControl();
+        style.appearance = Appearance::SquareButton;
+        style.hasAppearance = true;
+        style.cursor = CursorType::Default;
+        style.width = CSSValue::px(44.0f);
+        style.height = CSSValue::px(23.0f);
+        style.padding = EdgeInsets(1.0f, 2.0f, 1.0f, 2.0f);
+        style.border = Border(1.0f, Color(0.663f, 0.663f, 0.663f, 1.0f));
         style.backgroundColor = Color(0.94f, 0.94f, 0.94f, 1.0f);
-        style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
-        style.hasColor = true;
+        style.boxSizing = BoxSizing::BorderBox;
+        style.hasBoxSizing = true;
     } else if (t == "input" && inputKind != "checkbox" &&
                inputKind != "radio" && inputKind != "range") {
         smallControl();
-        style.appearance = Appearance::Auto;
+        style.appearance = inputKind == "search" ? Appearance::SearchField : Appearance::TextField;
         style.hasAppearance = true;
         style.cursor = CursorType::Text;
         style.padding = EdgeInsets(1.0f, 2.0f, 1.0f, 2.0f);

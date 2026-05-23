@@ -289,16 +289,28 @@ enum class TextInputType {
     Email,
     Url,
     Tel,
-    Number
+    Number,
+    Hidden,
+    Button,
+    Submit,
+    Reset,
+    File,
+    Color,
+    Date,
+    Time,
+    Month,
+    Week,
+    DateTimeLocal,
+    Image
 };
 class TextInput : public Widget {
 public:
     std::string value;
     std::string placeholder;
     TextInputType inputType = TextInputType::Text;
-    TextInput() { type = "input"; style.cursor = CursorType::Text; }
+    TextInput() { type = "input"; }
     TextInput(const std::string& ph, const std::string& cls = "")
-        : placeholder(ph) { type = "input"; className = cls; style.cursor = CursorType::Text; }
+        : placeholder(ph) { type = "input"; className = cls; }
     TextInput* setInputType(TextInputType kind);
     TextInput* setInputType(const std::string& kind);
     bool isPassword() const { return inputType == TextInputType::Password; }

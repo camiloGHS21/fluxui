@@ -379,6 +379,38 @@ static std::string inputVisibleRange(TextInputType type,
     if (end < start) std::swap(start, end);
     return text.substr(start, end - start);
 }
+static bool isTextEditingInputType(TextInputType type) {
+    switch (type) {
+    case TextInputType::Text:
+    case TextInputType::Password:
+    case TextInputType::Search:
+    case TextInputType::Email:
+    case TextInputType::Url:
+    case TextInputType::Tel:
+    case TextInputType::Number:
+    case TextInputType::Date:
+    case TextInputType::Time:
+    case TextInputType::Month:
+    case TextInputType::Week:
+    case TextInputType::DateTimeLocal:
+        return true;
+    default:
+        return false;
+    }
+}
+static bool isButtonLikeInputType(TextInputType type) {
+    switch (type) {
+    case TextInputType::Button:
+    case TextInputType::Submit:
+    case TextInputType::Reset:
+    case TextInputType::File:
+    case TextInputType::Color:
+    case TextInputType::Image:
+        return true;
+    default:
+        return false;
+    }
+}
 static int normalizeTextEditingKey(int keyCode) {
     switch (keyCode) {
     case 0x4000004a: return 0x24; // SDL home
@@ -523,6 +555,18 @@ static const char* textInputTypeSelector(TextInputType type) {
     case TextInputType::Url: return "url";
     case TextInputType::Tel: return "tel";
     case TextInputType::Number: return "number";
+    case TextInputType::Hidden: return "hidden";
+    case TextInputType::Button: return "button";
+    case TextInputType::Submit: return "submit";
+    case TextInputType::Reset: return "reset";
+    case TextInputType::File: return "file";
+    case TextInputType::Color: return "color";
+    case TextInputType::Date: return "date";
+    case TextInputType::Time: return "time";
+    case TextInputType::Month: return "month";
+    case TextInputType::Week: return "week";
+    case TextInputType::DateTimeLocal: return "datetime-local";
+    case TextInputType::Image: return "image";
     case TextInputType::Text:
     default: return "text";
     }
@@ -1999,9 +2043,16 @@ void Button::render(Renderer& renderer) {
 }
 void TextInput::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
+    if (inputType == TextInputType::Hidden) {
+        bounds.w = 0.0f;
+        bounds.h = 0.0f;
+        contentHeight = 0.0f;
+        return;
+    }
     auto& s = computedStyle;
     if (!s.height.isSet()) {
         float browserMinHeight = type == "textarea" ? 54.0f : 20.0f;
+        if (inputType == TextInputType::Color) browserMinHeight = 23.0f;
         bounds.h = std::max(browserMinHeight, s.fontSize * s.lineHeight +
             s.padding.vertical() + usedBorderVertical(s));
     }
@@ -2025,8 +2076,12 @@ Rect TextInput::clearButtonRect() const {
     };
 }
 TextInput* TextInput::setInputType(TextInputType kind) {
+    if (inputType == kind) return this;
     inputType = kind;
-    markLayoutDirty();
+    clearHovered_ = false;
+    clearPressed_ = false;
+    selecting_ = false;
+    markStyleDirty();
     return this;
 }
 TextInput* TextInput::setInputType(const std::string& kind) {
@@ -2040,6 +2095,20 @@ TextInput* TextInput::setInputType(const std::string& kind) {
     if (lower == "url") return setInputType(TextInputType::Url);
     if (lower == "tel" || lower == "telephone") return setInputType(TextInputType::Tel);
     if (lower == "number") return setInputType(TextInputType::Number);
+    if (lower == "hidden") return setInputType(TextInputType::Hidden);
+    if (lower == "button") return setInputType(TextInputType::Button);
+    if (lower == "submit") return setInputType(TextInputType::Submit);
+    if (lower == "reset") return setInputType(TextInputType::Reset);
+    if (lower == "file") return setInputType(TextInputType::File);
+    if (lower == "color") return setInputType(TextInputType::Color);
+    if (lower == "date") return setInputType(TextInputType::Date);
+    if (lower == "time") return setInputType(TextInputType::Time);
+    if (lower == "month") return setInputType(TextInputType::Month);
+    if (lower == "week") return setInputType(TextInputType::Week);
+    if (lower == "datetime-local" || lower == "datetimelocal") {
+        return setInputType(TextInputType::DateTimeLocal);
+    }
+    if (lower == "image") return setInputType(TextInputType::Image);
     return setInputType(TextInputType::Text);
 }
 void TextInput::update(const InputState& input) {
@@ -2047,6 +2116,39 @@ void TextInput::update(const InputState& input) {
     caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
     selectionAnchor_ = clampToUtf8Boundary(value, selectionAnchor_);
     selectionFocus_ = clampToUtf8Boundary(value, selectionFocus_);
+    auto updateFocusAnimation = [&]() {
+        float focusTarget = focused ? 1.0f : 0.0f;
+        float focusSpeed = 16.0f;
+        if (focusAnim_ < focusTarget) {
+            focusAnim_ = std::min(focusAnim_ + input.deltaTime * focusSpeed, focusTarget);
+        }
+        if (focusAnim_ > focusTarget) {
+            focusAnim_ = std::max(focusAnim_ - input.deltaTime * focusSpeed, focusTarget);
+        }
+    };
+    bool textEditing = type == "textarea" || isTextEditingInputType(inputType);
+    if (inputType == TextInputType::Hidden || !textEditing) {
+        clearHovered_ = false;
+        clearPressed_ = false;
+        selecting_ = false;
+        selectionAnchor_ = caretIndex_;
+        selectionFocus_ = caretIndex_;
+        if (hovered && input.mouseClicked[0]) {
+            focused = true;
+        } else if (!hovered && input.mouseClicked[0]) {
+            focused = false;
+        }
+        int keyCode = normalizeTextEditingKey(input.keyCode);
+        bool keyboardActivate = focused && isButtonLikeInputType(inputType) &&
+            (keyCode == 0x0D || keyCode == 0x20) &&
+            (input.modifiers & (MOD_CTRL | MOD_ALT | MOD_GUI)) == 0;
+        if (keyboardActivate) {
+            pressed = true;
+            if (onClick) onClick();
+        }
+        updateFocusAnimation();
+        return;
+    }
     auto setCaret = [&](size_t index, bool extendSelection) {
         caretIndex_ = clampToUtf8Boundary(value, index);
         if (extendSelection) {
@@ -2133,10 +2235,7 @@ void TextInput::update(const InputState& input) {
     if (input.mouseReleased[0]) {
         selecting_ = false;
     }
-    float focusTarget = focused ? 1.0f : 0.0f;
-    float focusSpeed = 16.0f;
-    if (focusAnim_ < focusTarget) focusAnim_ = std::min(focusAnim_ + input.deltaTime * focusSpeed, focusTarget);
-    if (focusAnim_ > focusTarget) focusAnim_ = std::max(focusAnim_ - input.deltaTime * focusSpeed, focusTarget);
+    updateFocusAnimation();
     if (!focused) return;
     caretBlinkTime_ += input.deltaTime;
     if (keyCode != 0) {
@@ -2221,13 +2320,20 @@ CursorType TextInput::cursorAt(Vec2 point) const {
     if (!canHitTestWidget(this) || !bounds.contains(point)) {
         return CursorType::Default;
     }
+    if (inputType == TextInputType::Hidden) {
+        return CursorType::Default;
+    }
     if (inputType == TextInputType::Search && !value.empty() && clearButtonRect().contains(point)) {
         return CursorType::Pointer;
+    }
+    if (type != "textarea" && !isTextEditingInputType(inputType)) {
+        return inputType == TextInputType::Image ? CursorType::Pointer : CursorType::Default;
     }
     return CursorType::Text;
 }
 void TextInput::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
+    if (inputType == TextInputType::Hidden) return;
     renderBackground(renderer);
     auto& s = computedStyle;
     caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
@@ -2243,6 +2349,69 @@ void TextInput::render(Renderer& renderer) {
     } else if (!cssHandlesHover && hoverAnim > 0.001f) {
         renderer.drawBorder(bounds, Border(1.0f, Color(0.50f, 0.53f, 0.57f, 0.44f * hoverAnim)),
                             s.borderRadius);
+    }
+    bool textEditing = type == "textarea" || isTextEditingInputType(inputType);
+    if (!textEditing) {
+        std::string fontName = renderFontName(s);
+        Color textColor = s.color;
+        if (inputType == TextInputType::Color) {
+            Color swatch = value.empty() ? Color(0.0f, 0.0f, 0.0f, 1.0f) : Color::fromHex(value);
+            Rect swatchRect = {
+                bounds.x + std::max(2.0f, s.padding.left + 2.0f),
+                bounds.y + std::max(3.0f, s.padding.top + 3.0f),
+                std::max(0.0f, bounds.w - s.padding.horizontal() - 8.0f),
+                std::max(0.0f, bounds.h - s.padding.vertical() - 8.0f)
+            };
+            renderer.drawRoundedRect(swatchRect, swatch, BorderRadius(0.0f));
+            renderer.drawBorder(swatchRect,
+                                Border(1.0f, Color(0.466f, 0.466f, 0.466f, 1.0f)),
+                                BorderRadius(0.0f));
+        } else if (inputType == TextInputType::File) {
+            const std::string chooseText = placeholder.empty() ? "Choose File" : placeholder;
+            const std::string fileText = value.empty() ? "No file chosen" : value;
+            float buttonW = std::min(std::max(84.0f,
+                renderer.measureText(chooseText, s.fontSize, fontName).x + 22.0f),
+                std::max(84.0f, bounds.w * 0.62f));
+            Rect buttonRect = {
+                bounds.x + s.padding.left,
+                bounds.y + s.padding.top,
+                std::max(0.0f, buttonW),
+                std::max(0.0f, bounds.h - s.padding.vertical())
+            };
+            renderer.drawRoundedRect(buttonRect,
+                                     pressed ? Color(0.82f, 0.82f, 0.82f, 1.0f)
+                                             : Color(0.94f, 0.94f, 0.94f, 1.0f),
+                                     BorderRadius(2.0f));
+            renderer.drawBorder(buttonRect,
+                                Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f)),
+                                BorderRadius(2.0f));
+            renderer.drawTextInRect(chooseText, buttonRect, Color(0, 0, 0, 1),
+                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName);
+            Rect labelRect = {
+                buttonRect.x + buttonRect.w + 6.0f,
+                bounds.y,
+                std::max(0.0f, bounds.x + bounds.w - (buttonRect.x + buttonRect.w + 6.0f)),
+                bounds.h
+            };
+            renderer.drawTextInRect(fileText, labelRect, textColor,
+                                    s.fontSize, TextAlign::Left, s.fontWeight, fontName);
+        } else {
+            std::string label = value.empty() ? placeholder : value;
+            if (label.empty()) {
+                if (inputType == TextInputType::Submit) label = "Submit";
+                else if (inputType == TextInputType::Reset) label = "Reset";
+            }
+            Rect textRect = {
+                bounds.x + s.padding.left,
+                bounds.y + s.padding.top,
+                std::max(0.0f, bounds.w - s.padding.horizontal()),
+                std::max(0.0f, bounds.h - s.padding.vertical())
+            };
+            renderer.drawTextInRect(label, textRect, textColor,
+                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName);
+        }
+        renderChildren(renderer);
+        return;
     }
     const bool passwordMode = inputType == TextInputType::Password;
     std::string visibleValue = inputVisibleRange(inputType, value, 0, value.size());
