@@ -158,9 +158,9 @@ public:
                              bool* valid = nullptr) const;
 
     // Merge a resolved style onto a base style
-    static void mergeProperty(Style& style, const std::string& name, const std::string& value);
-    static bool mergePropertyPart1(Style& style, const std::string& name, const std::string& value);
-    static void mergePropertyPart2(Style& style, const std::string& name, const std::string& value);
+    static void mergeProperty(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
+    static bool mergePropertyPart1(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
+    static void mergePropertyPart2(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static std::string trim(const std::string& s);
 
     static bool selectorMatches(const CSSRule& rule,
@@ -223,10 +223,10 @@ private:
     static float parseLengthPixels(const std::string& val, float emBase = 16.0f);
     static float parseFontSizePixels(const std::string& val, float currentSize = 16.0f);
     static float parseLineHeight(const std::string& val, float fontSize);
-    static EdgeInsets parseEdgeInsets(const std::string& val);
-    static BorderRadius parseBorderRadius(const std::string& val);
-    static Border parseBorder(const std::string& val);
-    static BoxShadow parseBoxShadow(const std::string& val);
+    static EdgeInsets parseEdgeInsets(const std::string& val, float emBase = 16.0f);
+    static BorderRadius parseBorderRadius(const std::string& val, float emBase = 16.0f);
+    static Border parseBorder(const std::string& val, float emBase = 16.0f);
+    static BoxShadow parseBoxShadow(const std::string& val, float emBase = 16.0f);
     static Gradient parseGradient(const std::string& val);
     static float parseFloat(const std::string& val);
     static float parseDuration(const std::string& val);
