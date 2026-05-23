@@ -159,6 +159,8 @@ public:
 
     // Merge a resolved style onto a base style
     static void mergeProperty(Style& style, const std::string& name, const std::string& value);
+    static bool mergePropertyPart1(Style& style, const std::string& name, const std::string& value);
+    static void mergePropertyPart2(Style& style, const std::string& name, const std::string& value);
     static std::string trim(const std::string& s);
 
     static bool selectorMatches(const CSSRule& rule,

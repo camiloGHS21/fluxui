@@ -897,6 +897,8 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.hasTextAlign) computedStyle.textAlign = inherited.textAlign;
             if (!computedStyle.hasLineHeight) computedStyle.lineHeight = inherited.lineHeight;
             if (!computedStyle.hasFontFamily) computedStyle.fontFamily = inherited.fontFamily;
+            if (!computedStyle.hasDirection) computedStyle.direction = inherited.direction;
+            if (!computedStyle.hasWritingMode) computedStyle.writingMode = inherited.writingMode;
         }
         if (style.width.isSet()) computedStyle.width = style.width;
         if (style.height.isSet()) computedStyle.height = style.height;
@@ -1032,6 +1034,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                                       prop.name,
                                       value);
         }
+        computedStyle.resolveLogicalProperties();
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);
         if (nextLayoutSignature != layoutSignature) {
             layoutSignature = nextLayoutSignature;
@@ -1040,6 +1043,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         styleDirty = false;
         
         Style beforeStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "before");
+        beforeStyle.resolveLogicalProperties();
         if (!beforeStyle.content.empty()) {
             if (!beforePseudoNode) {
                 beforePseudoNode = std::make_shared<Text>(beforeStyle.content, "");
@@ -1060,6 +1064,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         }
 
         Style afterStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "after");
+        afterStyle.resolveLogicalProperties();
         if (!afterStyle.content.empty()) {
             if (!afterPseudoNode) {
                 afterPseudoNode = std::make_shared<Text>(afterStyle.content, "");

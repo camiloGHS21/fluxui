@@ -1980,7 +1980,10 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
             style.fontSize = size;
             style.hasFontSize = true;
         }
-        style.margin = EdgeInsets(marginEm * medium, 0.0f, marginEm * medium, 0.0f);
+        style.marginBlockStart = marginEm * medium;
+        style.marginBlockEnd = marginEm * medium;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
         style.fontWeight = FontWeight::Bold;
         style.hasFontWeight = true;
     };
@@ -2046,7 +2049,10 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         heading(0.67f * medium, 2.33f);
     } else if (t == "p") {
         block();
-        style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
     } else if (t == "html") {
         block();
     } else if (t == "body") {
@@ -2054,10 +2060,24 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.margin = EdgeInsets(8.0f);
     } else if (t == "blockquote") {
         block();
-        style.margin = EdgeInsets(medium, 40.0f, medium, 40.0f);
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.marginInlineStart = 40.0f;
+        style.marginInlineEnd = 40.0f;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
+        style.hasMarginInlineStart = true;
+        style.hasMarginInlineEnd = true;
     } else if (t == "figure") {
         block();
-        style.margin = EdgeInsets(medium, 40.0f, medium, 40.0f);
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.marginInlineStart = 40.0f;
+        style.marginInlineEnd = 40.0f;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
+        style.hasMarginInlineStart = true;
+        style.hasMarginInlineEnd = true;
     } else if (t == "figcaption" || t == "dt" || t == "form" ||
                t == "layer" || t == "hgroup" || t == "search" ||
                t == "frameset" || t == "frame") {
@@ -2068,10 +2088,14 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.hasFontStyle = true;
     } else if (t == "dl") {
         block();
-        style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
     } else if (t == "dd") {
         block();
-        style.margin.left = 40.0f;
+        style.marginInlineStart = 40.0f;
+        style.hasMarginInlineStart = true;
     } else if (t == "center") {
         block();
         style.textAlign = TextAlign::Center;
@@ -2081,12 +2105,19 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.overflow = Overflow::Hidden;
         style.overflowX = Overflow::Hidden;
         style.overflowY = Overflow::Hidden;
-        style.margin = EdgeInsets(0.5f * medium, 0.0f, 0.5f * medium, 0.0f);
+        style.marginBlockStart = 0.5f * medium;
+        style.marginBlockEnd = 0.5f * medium;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
         style.border = Border(1.0f, Color(0.5f, 0.5f, 0.5f, 1.0f));
     } else if (t == "ul" || t == "ol" || t == "menu" || t == "dir") {
         block();
-        style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
-        style.padding.left = 40.0f;
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.paddingInlineStart = 40.0f;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
+        style.hasPaddingInlineStart = true;
     } else if (t == "li") {
         style.display = Display::ListItem;
     } else if (t == "table") {
@@ -2177,7 +2208,10 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.hasFontSize = true;
     } else if (t == "pre" || t == "xmp" || t == "plaintext" || t == "listing") {
         block();
-        style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
+        style.marginBlockStart = medium;
+        style.marginBlockEnd = medium;
+        style.hasMarginBlockStart = true;
+        style.hasMarginBlockEnd = true;
         style.fontFamily = "monospace";
         style.hasFontFamily = true;
         style.whiteSpace = WhiteSpace::Pre;
@@ -2561,6 +2595,11 @@ static bool parseObjectPosition(const std::string& value,
 }
 
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value) {
+    mergePropertyPart1(style, name, value);
+    mergePropertyPart2(style, name, value);
+}
+
+bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const std::string& value) {
     if (name.rfind("--", 0) == 0) {
         style.customProperties[name] = value;
     } else if (name == "color") {
@@ -2580,18 +2619,30 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.borderRadius = parseBorderRadius(value);
     } else if (name == "border") {
         style.border = parseBorder(value);
-    } else if (name == "border-top" || name == "border-block-start") {
+    } else if (name == "border-top") {
         style.borderTop = parseBorder(value);
         style.hasBorderTop = true;
-    } else if (name == "border-right" || name == "border-inline-end") {
+    } else if (name == "border-right") {
         style.borderRight = parseBorder(value);
         style.hasBorderRight = true;
-    } else if (name == "border-bottom" || name == "border-block-end") {
+    } else if (name == "border-bottom") {
         style.borderBottom = parseBorder(value);
         style.hasBorderBottom = true;
-    } else if (name == "border-left" || name == "border-inline-start") {
+    } else if (name == "border-left") {
         style.borderLeft = parseBorder(value);
         style.hasBorderLeft = true;
+    } else if (name == "border-block-start") {
+        style.borderBlockStart = parseBorder(value);
+        style.hasBorderBlockStart = true;
+    } else if (name == "border-block-end") {
+        style.borderBlockEnd = parseBorder(value);
+        style.hasBorderBlockEnd = true;
+    } else if (name == "border-inline-start") {
+        style.borderInlineStart = parseBorder(value);
+        style.hasBorderInlineStart = true;
+    } else if (name == "border-inline-end") {
+        style.borderInlineEnd = parseBorder(value);
+        style.hasBorderInlineEnd = true;
     } else if (name == "border-color") {
         style.border.color = parseColor(value);
     } else if (name == "border-width") {
@@ -2618,22 +2669,30 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.padding.top = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
-        style.padding.bottom = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.padding.top;
+        style.paddingBlockStart = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.paddingBlockEnd = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.paddingBlockStart;
+        style.hasPaddingBlockStart = count > 0;
+        style.hasPaddingBlockEnd = count > 0;
     } else if (name == "padding-inline") {
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.padding.left = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
-        style.padding.right = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.padding.left;
+        style.paddingInlineStart = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.paddingInlineEnd = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.paddingInlineStart;
+        style.hasPaddingInlineStart = count > 0;
+        style.hasPaddingInlineEnd = count > 0;
     } else if (name == "padding-block-start") {
-        style.padding.top = parseLengthPixels(value);
+        style.paddingBlockStart = parseLengthPixels(value);
+        style.hasPaddingBlockStart = true;
     } else if (name == "padding-block-end") {
-        style.padding.bottom = parseLengthPixels(value);
+        style.paddingBlockEnd = parseLengthPixels(value);
+        style.hasPaddingBlockEnd = true;
     } else if (name == "padding-inline-start") {
-        style.padding.left = parseLengthPixels(value);
+        style.paddingInlineStart = parseLengthPixels(value);
+        style.hasPaddingInlineStart = true;
     } else if (name == "padding-inline-end") {
-        style.padding.right = parseLengthPixels(value);
+        style.paddingInlineEnd = parseLengthPixels(value);
+        style.hasPaddingInlineEnd = true;
     } else if (name == "margin") {
         style.margin = parseEdgeInsets(value);
     } else if (name == "margin-top") {
@@ -2648,22 +2707,30 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.margin.top = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
-        style.margin.bottom = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.margin.top;
+        style.marginBlockStart = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.marginBlockEnd = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.marginBlockStart;
+        style.hasMarginBlockStart = count > 0;
+        style.hasMarginBlockEnd = count > 0;
     } else if (name == "margin-inline") {
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.margin.left = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
-        style.margin.right = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.margin.left;
+        style.marginInlineStart = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.marginInlineEnd = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.marginInlineStart;
+        style.hasMarginInlineStart = count > 0;
+        style.hasMarginInlineEnd = count > 0;
     } else if (name == "margin-block-start") {
-        style.margin.top = parseLengthPixels(value);
+        style.marginBlockStart = parseLengthPixels(value);
+        style.hasMarginBlockStart = true;
     } else if (name == "margin-block-end") {
-        style.margin.bottom = parseLengthPixels(value);
+        style.marginBlockEnd = parseLengthPixels(value);
+        style.hasMarginBlockEnd = true;
     } else if (name == "margin-inline-start") {
-        style.margin.left = parseLengthPixels(value);
+        style.marginInlineStart = parseLengthPixels(value);
+        style.hasMarginInlineStart = true;
     } else if (name == "margin-inline-end") {
-        style.margin.right = parseLengthPixels(value);
+        style.marginInlineEnd = parseLengthPixels(value);
+        style.hasMarginInlineEnd = true;
     } else if (name == "inset") {
         EdgeInsets inset = parseEdgeInsets(value);
         style.top = CSSValue::px(inset.top);
@@ -2674,35 +2741,66 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.top = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
-        style.bottom = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.top;
+        style.insetBlockStart = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
+        style.insetBlockEnd = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.insetBlockStart;
+        style.hasInsetBlockStart = count > 0;
+        style.hasInsetBlockEnd = count > 0;
     } else if (name == "inset-inline") {
         std::string_view tokens[4];
         int count = 0;
         splitWhitespace(value, tokens, 4, count);
-        style.left = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
-        style.right = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.left;
+        style.insetInlineStart = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
+        style.insetInlineEnd = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.insetInlineStart;
+        style.hasInsetInlineStart = count > 0;
+        style.hasInsetInlineEnd = count > 0;
     } else if (name == "inset-block-start") {
-        style.top = parseCSSValue(value);
+        style.insetBlockStart = parseCSSValue(value);
+        style.hasInsetBlockStart = true;
     } else if (name == "inset-block-end") {
-        style.bottom = parseCSSValue(value);
+        style.insetBlockEnd = parseCSSValue(value);
+        style.hasInsetBlockEnd = true;
     } else if (name == "inset-inline-start") {
-        style.left = parseCSSValue(value);
+        style.insetInlineStart = parseCSSValue(value);
+        style.hasInsetInlineStart = true;
     } else if (name == "inset-inline-end") {
-        style.right = parseCSSValue(value);
-    } else if (name == "width" || name == "inline-size") {
+        style.insetInlineEnd = parseCSSValue(value);
+        style.hasInsetInlineEnd = true;
+    } else if (name == "width") {
         style.width = parseCSSValue(value);
-    } else if (name == "height" || name == "block-size") {
+    } else if (name == "inline-size") {
+        style.inlineSize = parseCSSValue(value);
+        style.hasInlineSize = true;
+    } else if (name == "height") {
         style.height = parseCSSValue(value);
-    } else if (name == "min-width" || name == "min-inline-size") {
+    } else if (name == "block-size") {
+        style.blockSize = parseCSSValue(value);
+        style.hasBlockSize = true;
+    } else if (name == "min-width") {
         style.minWidth = parseCSSValue(value);
-    } else if (name == "min-height" || name == "min-block-size") {
+    } else if (name == "min-inline-size") {
+        style.minInlineSize = parseCSSValue(value);
+        style.hasMinInlineSize = true;
+    } else if (name == "min-height") {
         style.minHeight = parseCSSValue(value);
-    } else if (name == "max-width" || name == "max-inline-size") {
+    } else if (name == "min-block-size") {
+        style.minBlockSize = parseCSSValue(value);
+        style.hasMinBlockSize = true;
+    } else if (name == "max-width") {
         style.maxWidth = parseCSSValue(value);
-    } else if (name == "max-height" || name == "max-block-size") {
+    } else if (name == "max-inline-size") {
+        style.maxInlineSize = parseCSSValue(value);
+        style.hasMaxInlineSize = true;
+    } else if (name == "max-height") {
         style.maxHeight = parseCSSValue(value);
-    } else if (name == "font-size") {
+    } else if (name == "max-block-size") {
+        style.maxBlockSize = parseCSSValue(value);
+        style.hasMaxBlockSize = true;
+    }
+    return false;
+}
+
+void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const std::string& value) {
+    if (name == "font-size") {
         style.fontSize = parseFontSizePixels(value, style.fontSize);
         style.hasFontSize = true;
     } else if (name == "font") {
@@ -2785,6 +2883,25 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "line-height") {
         style.lineHeight = parseLineHeight(value, style.fontSize);
         style.hasLineHeight = true;
+    } else if (name == "direction") {
+        if (value == "rtl") {
+            style.direction = Direction::Rtl;
+            style.hasDirection = true;
+        } else {
+            style.direction = Direction::Ltr;
+            style.hasDirection = true;
+        }
+    } else if (name == "writing-mode") {
+        if (value == "vertical-rl") {
+            style.writingMode = WritingMode::VerticalRl;
+            style.hasWritingMode = true;
+        } else if (value == "vertical-lr") {
+            style.writingMode = WritingMode::VerticalLr;
+            style.hasWritingMode = true;
+        } else {
+            style.writingMode = WritingMode::HorizontalTb;
+            style.hasWritingMode = true;
+        }
     } else if (name == "opacity") {
         style.opacity = parseFloat(value);
     } else if (name == "float") {

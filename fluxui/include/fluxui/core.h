@@ -212,6 +212,8 @@ enum class Display {
     TableCaption,
     Contents
 };
+enum class Direction { Ltr, Rtl };
+enum class WritingMode { HorizontalTb, VerticalRl, VerticalLr };
 enum class FlexDirection { Row, Column, RowReverse, ColumnReverse };
 enum class FlexWrap { NoWrap, Wrap, WrapReverse };
 enum class JustifyContent { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly };
@@ -485,6 +487,120 @@ struct Style {
     // Spacing
     EdgeInsets padding;
     EdgeInsets margin;
+
+    // Direction & Writing Mode
+    Direction direction = Direction::Ltr;
+    bool hasDirection = false;
+    WritingMode writingMode = WritingMode::HorizontalTb;
+    bool hasWritingMode = false;
+
+    // Logical Spacing & Inset/Border properties
+    float marginInlineStart = 0.0f, marginInlineEnd = 0.0f;
+    float marginBlockStart = 0.0f, marginBlockEnd = 0.0f;
+    bool hasMarginInlineStart = false, hasMarginInlineEnd = false;
+    bool hasMarginBlockStart = false, hasMarginBlockEnd = false;
+
+    float paddingInlineStart = 0.0f, paddingInlineEnd = 0.0f;
+    float paddingBlockStart = 0.0f, paddingBlockEnd = 0.0f;
+    bool hasPaddingInlineStart = false, hasPaddingInlineEnd = false;
+    bool hasPaddingBlockStart = false, hasPaddingBlockEnd = false;
+
+    CSSValue insetInlineStart, insetInlineEnd;
+    CSSValue insetBlockStart, insetBlockEnd;
+    bool hasInsetInlineStart = false, hasInsetInlineEnd = false;
+    bool hasInsetBlockStart = false, hasInsetBlockEnd = false;
+
+    Border borderInlineStart, borderInlineEnd;
+    Border borderBlockStart, borderBlockEnd;
+    bool hasBorderInlineStart = false, hasBorderInlineEnd = false;
+    bool hasBorderBlockStart = false, hasBorderBlockEnd = false;
+
+    // Logical Dimensions
+    CSSValue inlineSize, blockSize;
+    CSSValue minInlineSize, minBlockSize;
+    CSSValue maxInlineSize, maxBlockSize;
+    bool hasInlineSize = false, hasBlockSize = false;
+    bool hasMinInlineSize = false, hasMinBlockSize = false;
+    bool hasMaxInlineSize = false, hasMaxBlockSize = false;
+
+    void resolveLogicalProperties() {
+        if (writingMode == WritingMode::HorizontalTb) {
+            if (hasInlineSize) width = inlineSize;
+            if (hasBlockSize) height = blockSize;
+            if (hasMinInlineSize) minWidth = minInlineSize;
+            if (hasMinBlockSize) minHeight = minBlockSize;
+            if (hasMaxInlineSize) maxWidth = maxInlineSize;
+            if (hasMaxBlockSize) maxHeight = maxBlockSize;
+
+            if (hasMarginBlockStart) margin.top = marginBlockStart;
+            if (hasMarginBlockEnd) margin.bottom = marginBlockEnd;
+            if (hasPaddingBlockStart) padding.top = paddingBlockStart;
+            if (hasPaddingBlockEnd) padding.bottom = paddingBlockEnd;
+            if (hasInsetBlockStart) top = insetBlockStart;
+            if (hasInsetBlockEnd) bottom = insetBlockEnd;
+            if (hasBorderBlockStart) { borderTop = borderBlockStart; hasBorderTop = true; }
+            if (hasBorderBlockEnd) { borderBottom = borderBlockEnd; hasBorderBottom = true; }
+
+            if (direction == Direction::Ltr) {
+                if (hasMarginInlineStart) margin.left = marginInlineStart;
+                if (hasMarginInlineEnd) margin.right = marginInlineEnd;
+                if (hasPaddingInlineStart) padding.left = paddingInlineStart;
+                if (hasPaddingInlineEnd) padding.right = paddingInlineEnd;
+                if (hasInsetInlineStart) left = insetInlineStart;
+                if (hasInsetInlineEnd) right = insetInlineEnd;
+                if (hasBorderInlineStart) { borderLeft = borderInlineStart; hasBorderLeft = true; }
+                if (hasBorderInlineEnd) { borderRight = borderInlineEnd; hasBorderRight = true; }
+            } else {
+                if (hasMarginInlineStart) margin.right = marginInlineStart;
+                if (hasMarginInlineEnd) margin.left = marginInlineEnd;
+                if (hasPaddingInlineStart) padding.right = paddingInlineStart;
+                if (hasPaddingInlineEnd) padding.left = paddingInlineEnd;
+                if (hasInsetInlineStart) right = insetInlineStart;
+                if (hasInsetInlineEnd) left = insetInlineEnd;
+                if (hasBorderInlineStart) { borderRight = borderInlineStart; hasBorderRight = true; }
+                if (hasBorderInlineEnd) { borderLeft = borderInlineEnd; hasBorderLeft = true; }
+            }
+        } else {
+            if (hasInlineSize) height = inlineSize;
+            if (hasBlockSize) width = blockSize;
+            if (hasMinInlineSize) minHeight = minInlineSize;
+            if (hasMinBlockSize) minWidth = minBlockSize;
+            if (hasMaxInlineSize) maxHeight = maxInlineSize;
+            if (hasMaxBlockSize) maxWidth = maxBlockSize;
+
+            if (hasMarginInlineStart) margin.top = marginInlineStart;
+            if (hasMarginInlineEnd) margin.bottom = marginInlineEnd;
+            if (hasPaddingInlineStart) padding.top = paddingInlineStart;
+            if (hasPaddingInlineEnd) padding.bottom = paddingInlineEnd;
+            if (hasInsetInlineStart) top = insetInlineStart;
+            if (hasInsetInlineEnd) bottom = insetInlineEnd;
+            if (hasBorderInlineStart) { borderTop = borderInlineStart; hasBorderTop = true; }
+            if (hasBorderInlineEnd) { borderBottom = borderInlineEnd; hasBorderBottom = true; }
+
+            bool isStartRight = (writingMode == WritingMode::VerticalRl);
+            if (direction == Direction::Rtl) isStartRight = !isStartRight;
+
+            if (isStartRight) {
+                if (hasMarginBlockStart) margin.right = marginBlockStart;
+                if (hasMarginBlockEnd) margin.left = marginBlockEnd;
+                if (hasPaddingBlockStart) padding.right = paddingBlockStart;
+                if (hasPaddingBlockEnd) padding.left = paddingBlockEnd;
+                if (hasInsetBlockStart) right = insetBlockStart;
+                if (hasInsetBlockEnd) left = insetBlockEnd;
+                if (hasBorderBlockStart) { borderRight = borderBlockStart; hasBorderRight = true; }
+                if (hasBorderBlockEnd) { borderLeft = borderBlockEnd; hasBorderLeft = true; }
+            } else {
+                if (hasMarginBlockStart) margin.left = marginBlockStart;
+                if (hasMarginBlockEnd) margin.right = marginBlockEnd;
+                if (hasPaddingBlockStart) padding.left = paddingBlockStart;
+                if (hasPaddingBlockEnd) padding.right = paddingBlockEnd;
+                if (hasInsetBlockStart) left = insetBlockStart;
+                if (hasInsetBlockEnd) right = insetBlockEnd;
+                if (hasBorderBlockStart) { borderLeft = borderBlockStart; hasBorderLeft = true; }
+                if (hasBorderBlockEnd) { borderRight = borderBlockEnd; hasBorderRight = true; }
+            }
+        }
+    }
 
     // Position offsets
     CSSValue top, right, bottom, left;
