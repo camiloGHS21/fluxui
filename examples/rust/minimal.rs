@@ -143,6 +143,12 @@ fn main() -> Result<(), fluxui::Error> {
     select.add_option("Balanced", "balanced", "")?;
     select.add_option("Strict", "strict", "")?;
     select.add_option("Audit only", "audit", "")?;
+    form.add_label("Policy health", "form-label")?;
+    form.add_meter(0.82, 0.0, 1.0, "")?;
+    form.add_progress_element(0.58, 1.0, "")?;
+    let details = form.add_details("")?.ok_or(fluxui::Error::InitFailed)?;
+    details.add_summary("Advanced browser elements", "form-label")?;
+    details.add_text("Details toggles with mouse, Enter, or Space.", "body")?;
 
     // Close button
     let close = root.add_button("Close Application", "button")?.ok_or(fluxui::Error::InitFailed)?;

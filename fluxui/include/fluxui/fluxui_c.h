@@ -203,6 +203,30 @@ FLUXUI_API FluxUIWidget* fluxui_widget_add_option(FluxUIWidget* parent,
                                                   const char* label,
                                                   const char* value,
                                                   const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_anchor(FluxUIWidget* parent,
+                                                  const char* text,
+                                                  const char* href,
+                                                  const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_details(FluxUIWidget* parent,
+                                                   const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_summary(FluxUIWidget* parent,
+                                                   const char* text,
+                                                   const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_dialog(FluxUIWidget* parent,
+                                                  const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_meter(FluxUIWidget* parent,
+                                                 float value,
+                                                 float min,
+                                                 float max,
+                                                 const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_progress_element(FluxUIWidget* parent,
+                                                           float value,
+                                                           float max,
+                                                           const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_hr(FluxUIWidget* parent,
+                                              const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_br(FluxUIWidget* parent,
+                                              const char* class_name);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_icon(FluxUIWidget* parent,
                                                 const char* glyph,
                                                 const char* class_name);
@@ -258,6 +282,16 @@ FLUXUI_API void fluxui_range_set_value(FluxUIWidget* widget, float value);
 FLUXUI_API float fluxui_range_get_value(FluxUIWidget* widget);
 FLUXUI_API void fluxui_select_set_selected_index(FluxUIWidget* widget, uint32_t index);
 FLUXUI_API uint32_t fluxui_select_get_selected_index(FluxUIWidget* widget);
+FLUXUI_API void fluxui_details_set_open(FluxUIWidget* widget, int open);
+FLUXUI_API int fluxui_details_get_open(FluxUIWidget* widget);
+FLUXUI_API void fluxui_dialog_show(FluxUIWidget* widget);
+FLUXUI_API void fluxui_dialog_show_modal(FluxUIWidget* widget);
+FLUXUI_API void fluxui_dialog_close(FluxUIWidget* widget);
+FLUXUI_API int fluxui_dialog_get_open(FluxUIWidget* widget);
+FLUXUI_API void fluxui_meter_set_value(FluxUIWidget* widget, float value);
+FLUXUI_API float fluxui_meter_get_value(FluxUIWidget* widget);
+FLUXUI_API void fluxui_progress_element_set_value(FluxUIWidget* widget, float value);
+FLUXUI_API float fluxui_progress_element_get_value(FluxUIWidget* widget);
 FLUXUI_API void fluxui_icon_set_glyph(FluxUIWidget* widget, const char* glyph);
 FLUXUI_API void fluxui_progress_bar_set_value(FluxUIWidget* widget, float progress);
 FLUXUI_API void fluxui_progress_bar_set_color(FluxUIWidget* widget, FluxUIColor color);

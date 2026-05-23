@@ -166,7 +166,7 @@ Run Rust, Zig, and Java examples from a directory where `fluxui_shared.dll`,
 - Widget handles are owned by the app tree. They become invalid after clearing or rebuilding their parent children.
 - Strings passed into FluxUI are copied unless the function explicitly returns `const char*`.
 - The pointer from `fluxui_text_input_get_value` is owned by FluxUI and remains valid only until that widget value changes or the widget is destroyed.
-- Browser-style controls can be created with typed text inputs plus `fluxui_widget_add_checkbox`, `fluxui_widget_add_radio`, `fluxui_widget_add_range`, `fluxui_widget_add_select`, and `fluxui_widget_add_option`.
+- Browser-style controls can be created with typed text inputs plus `fluxui_widget_add_checkbox`, `fluxui_widget_add_radio`, `fluxui_widget_add_range`, `fluxui_widget_add_select`, `fluxui_widget_add_option`, `fluxui_widget_add_details`, `fluxui_widget_add_summary`, `fluxui_widget_add_dialog`, `fluxui_widget_add_meter`, and `fluxui_widget_add_progress_element`.
 - Prefer CSS classes for production layouts. Inline style helpers are meant for small apps and FFI examples.
 - Route callbacks receive a container for the active page. Widget handles from a
   previous render become invalid after the route container is rebuilt.

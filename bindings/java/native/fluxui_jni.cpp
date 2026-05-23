@@ -598,6 +598,93 @@ extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddOption(
         cls.c_str()));
 }
 
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddAnchor(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring text,
+    jstring href,
+    jstring className) {
+    UtfChars textChars(env, text);
+    UtfChars hrefChars(env, href);
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_anchor(
+        as_widget(parent),
+        textChars.c_str(),
+        hrefChars.c_str(),
+        cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddDetails(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_details(as_widget(parent), cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddSummary(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring text,
+    jstring className) {
+    UtfChars textChars(env, text);
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_summary(as_widget(parent), textChars.c_str(), cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddDialog(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_dialog(as_widget(parent), cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddMeter(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jfloat value,
+    jfloat min,
+    jfloat max,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_meter(as_widget(parent), value, min, max, cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddProgressElement(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jfloat value,
+    jfloat max,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_progress_element(as_widget(parent), value, max, cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddHr(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_hr(as_widget(parent), cls.c_str()));
+}
+
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddBr(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_br(as_widget(parent), cls.c_str()));
+}
+
 extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddIcon(
     JNIEnv* env,
     jclass,
@@ -807,6 +894,79 @@ extern "C" JNIEXPORT jint JNICALL Java_io_fluxui_Native_selectGetSelectedIndex(
     jclass,
     jlong widget) {
     return static_cast<jint>(fluxui_select_get_selected_index(as_widget(widget)));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_detailsSetOpen(
+    JNIEnv*,
+    jclass,
+    jlong widget,
+    jboolean open) {
+    fluxui_details_set_open(as_widget(widget), open == JNI_TRUE ? 1 : 0);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_detailsGetOpen(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    return fluxui_details_get_open(as_widget(widget)) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_dialogShow(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    fluxui_dialog_show(as_widget(widget));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_dialogShowModal(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    fluxui_dialog_show_modal(as_widget(widget));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_dialogClose(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    fluxui_dialog_close(as_widget(widget));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_dialogGetOpen(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    return fluxui_dialog_get_open(as_widget(widget)) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_meterSetValue(
+    JNIEnv*,
+    jclass,
+    jlong widget,
+    jfloat value) {
+    fluxui_meter_set_value(as_widget(widget), value);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL Java_io_fluxui_Native_meterGetValue(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    return fluxui_meter_get_value(as_widget(widget));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_progressElementSetValue(
+    JNIEnv*,
+    jclass,
+    jlong widget,
+    jfloat value) {
+    fluxui_progress_element_set_value(as_widget(widget), value);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL Java_io_fluxui_Native_progressElementGetValue(
+    JNIEnv*,
+    jclass,
+    jlong widget) {
+    return fluxui_progress_element_get_value(as_widget(widget));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_progressBarSetValue(

@@ -600,10 +600,10 @@ static void buildBlinkParity(Application& app, Widget* content) {
     cardProgress->text("Progress Bars (<progress>)", "blink-section-title");
     
     cardProgress->text("Determinate (65%):", "page-subtitle");
-    cardProgress->progress(0.65f, 1.0f, "progress");
+    cardProgress->progressElement(0.65f, 1.0f, "progress");
 
     cardProgress->text("Indeterminate (Animated):", "page-subtitle");
-    cardProgress->progress(-1.0f, 1.0f, "progress");
+    cardProgress->progressElement(-1.0f, 1.0f, "progress");
 
     auto* col2 = grid->panel("blink-showcase-column", 3);
     

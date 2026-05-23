@@ -490,6 +490,70 @@ FluxUIWidget* fluxui_widget_add_option(FluxUIWidget* parent,
     return as_c_widget(p->option(safe_cstr(label), safe_cstr(value), safe_cstr(class_name)));
 }
 
+FluxUIWidget* fluxui_widget_add_anchor(FluxUIWidget* parent,
+                                       const char* text,
+                                       const char* href,
+                                       const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->anchor(safe_cstr(text), safe_cstr(href), safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_details(FluxUIWidget* parent,
+                                        const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->details(safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_summary(FluxUIWidget* parent,
+                                        const char* text,
+                                        const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->summary(safe_cstr(text), safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_dialog(FluxUIWidget* parent,
+                                       const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->dialog(safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_meter(FluxUIWidget* parent,
+                                      float value,
+                                      float min,
+                                      float max,
+                                      const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->meter(value, min, max, safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_progress_element(FluxUIWidget* parent,
+                                                 float value,
+                                                 float max,
+                                                 const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->progressElement(value, max, safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_hr(FluxUIWidget* parent,
+                                   const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->hr(safe_cstr(class_name)));
+}
+
+FluxUIWidget* fluxui_widget_add_br(FluxUIWidget* parent,
+                                   const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->br(safe_cstr(class_name)));
+}
+
 FluxUIWidget* fluxui_widget_add_icon(FluxUIWidget* parent,
                                      const char* glyph,
                                      const char* class_name) {
@@ -747,6 +811,72 @@ uint32_t fluxui_select_get_selected_index(FluxUIWidget* widget) {
             std::min<size_t>(w->selectedIndex, std::numeric_limits<uint32_t>::max()));
     }
     return 0;
+}
+
+void fluxui_details_set_open(FluxUIWidget* widget, int open) {
+    if (auto* w = as<Details>(widget)) {
+        w->open = open != 0;
+        w->markLayoutDirty();
+        w->markStyleDirty();
+    }
+}
+
+int fluxui_details_get_open(FluxUIWidget* widget) {
+    if (auto* w = as<Details>(widget)) {
+        return w->open ? 1 : 0;
+    }
+    return 0;
+}
+
+void fluxui_dialog_show(FluxUIWidget* widget) {
+    if (auto* w = as<Dialog>(widget)) {
+        w->show();
+    }
+}
+
+void fluxui_dialog_show_modal(FluxUIWidget* widget) {
+    if (auto* w = as<Dialog>(widget)) {
+        w->showModal();
+    }
+}
+
+void fluxui_dialog_close(FluxUIWidget* widget) {
+    if (auto* w = as<Dialog>(widget)) {
+        w->close();
+    }
+}
+
+int fluxui_dialog_get_open(FluxUIWidget* widget) {
+    if (auto* w = as<Dialog>(widget)) {
+        return w->open ? 1 : 0;
+    }
+    return 0;
+}
+
+void fluxui_meter_set_value(FluxUIWidget* widget, float value) {
+    if (auto* w = as<Meter>(widget)) {
+        w->value = value;
+    }
+}
+
+float fluxui_meter_get_value(FluxUIWidget* widget) {
+    if (auto* w = as<Meter>(widget)) {
+        return w->value;
+    }
+    return 0.0f;
+}
+
+void fluxui_progress_element_set_value(FluxUIWidget* widget, float value) {
+    if (auto* w = as<Progress>(widget)) {
+        w->value = value;
+    }
+}
+
+float fluxui_progress_element_get_value(FluxUIWidget* widget) {
+    if (auto* w = as<Progress>(widget)) {
+        return w->value;
+    }
+    return 0.0f;
 }
 
 void fluxui_icon_set_glyph(FluxUIWidget* widget, const char* glyph) {

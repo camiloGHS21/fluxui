@@ -432,6 +432,8 @@ static bool isKeyboardFocusableWidget(const Widget* widget) {
            widget->type == "radio" ||
            widget->type == "range" ||
            widget->type == "select" ||
+           widget->type == "summary" ||
+           widget->type == "a" ||
            widget->onClick ||
            widget->computedStyle.cursor == CursorType::Pointer;
 }
@@ -3959,9 +3961,12 @@ void LazyPanel::update(const InputState& input) {
     Widget::update(input);
 }
 void Anchor::update(const InputState& input) {
+    int keyCode = normalizeTextEditingKey(input.keyCode);
+    bool keyboardActivate = focused && keyCode == 0x0D &&
+        (input.modifiers & (MOD_CTRL | MOD_ALT | MOD_GUI)) == 0;
     bool clicked = hovered && input.mouseClicked[0];
     Text::update(input);
-    if (clicked && !href.empty()) {
+    if ((clicked || keyboardActivate) && !href.empty()) {
         Platform::openSystemURL(href);
     }
 }
@@ -3977,8 +3982,11 @@ void Details::layout(const Rect& parentBounds) {
 
 void Summary::update(const InputState& input) {
     bool clicked = hovered && input.mouseClicked[0];
+    int keyCode = normalizeTextEditingKey(input.keyCode);
+    bool keyboardToggle = focused && (keyCode == 0x0D || keyCode == 0x20) &&
+        (input.modifiers & (MOD_CTRL | MOD_ALT | MOD_GUI)) == 0;
     Text::update(input);
-    if (clicked && parent && parent->type == "details") {
+    if ((clicked || keyboardToggle) && parent && parent->type == "details") {
         if (auto* details = dynamic_cast<Details*>(parent)) {
             details->open = !details->open;
             details->markLayoutDirty();
@@ -4006,6 +4014,7 @@ void Summary::render(Renderer& renderer) {
 
 void Dialog::show() {
     open = true;
+    modal = false;
     style.display = Display::Block;
     markStyleDirty();
     if (auto* app = Application::instance()) app->requestRedraw();
@@ -4013,6 +4022,7 @@ void Dialog::show() {
 
 void Dialog::showModal() {
     open = true;
+    modal = true;
     style.display = Display::Block;
     markStyleDirty();
     if (auto* app = Application::instance()) app->requestRedraw();
@@ -4020,6 +4030,7 @@ void Dialog::showModal() {
 
 void Dialog::close() {
     open = false;
+    modal = false;
     style.display = Display::None;
     markStyleDirty();
     if (auto* app = Application::instance()) app->requestRedraw();
@@ -4035,17 +4046,29 @@ void Dialog::resolveStyles(const StyleSheet& sheet) {
     }
 }
 
+void Dialog::update(const InputState& input) {
+    if (!open) return;
+    Widget::update(input);
+    int keyCode = normalizeTextEditingKey(input.keyCode);
+    if (keyCode == 0x1B) {
+        close();
+    }
+}
+
 void Dialog::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-    if (open && computedStyle.position == Position::Fixed) {
+    if (open && modal) {
         Vec2 winSize = renderer.getWindowSize();
-        renderer.drawRoundedRect({0.0f, 0.0f, winSize.x, winSize.y}, Color(0.0f, 0.0f, 0.0f, 0.55f), 0.0f, 1.0f);
+        renderer.drawRoundedRect({0.0f, 0.0f, winSize.x, winSize.y},
+                                 Color(0.0f, 0.0f, 0.0f, 0.55f),
+                                 BorderRadius(0.0f),
+                                 1.0f);
     }
     Widget::render(renderer);
 }
 
 void Meter::render(Renderer& renderer) {
-    if (!visible) return;
+    if (!canPaintWidget(this)) return;
     renderBackground(renderer);
     float rangeVal = max - min;
     float fraction = 0.0f;
@@ -4074,7 +4097,7 @@ void Meter::render(Renderer& renderer) {
 }
 
 void Progress::render(Renderer& renderer) {
-    if (!visible) return;
+    if (!canPaintWidget(this)) return;
     renderBackground(renderer);
     
     Rect fillRect = bounds;

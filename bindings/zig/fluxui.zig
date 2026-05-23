@@ -199,6 +199,38 @@ pub const Widget = struct {
         return fromRaw(c.fluxui_widget_add_option(self.raw, label, value, class_name));
     }
 
+    pub fn addAnchor(self: Widget, text: [*:0]const u8, href: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_anchor(self.raw, text, href, class_name));
+    }
+
+    pub fn addDetails(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_details(self.raw, class_name));
+    }
+
+    pub fn addSummary(self: Widget, text: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_summary(self.raw, text, class_name));
+    }
+
+    pub fn addDialog(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_dialog(self.raw, class_name));
+    }
+
+    pub fn addMeter(self: Widget, value: f32, min: f32, max: f32, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_meter(self.raw, value, min, max, class_name));
+    }
+
+    pub fn addProgressElement(self: Widget, value: f32, max: f32, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_progress_element(self.raw, value, max, class_name));
+    }
+
+    pub fn addHr(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_hr(self.raw, class_name));
+    }
+
+    pub fn addBr(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_br(self.raw, class_name));
+    }
+
     pub fn addIcon(self: Widget, glyph: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
         return fromRaw(c.fluxui_widget_add_icon(self.raw, glyph, class_name));
     }
@@ -285,6 +317,46 @@ pub const Widget = struct {
 
     pub fn selectedIndex(self: Widget) u32 {
         return c.fluxui_select_get_selected_index(self.raw);
+    }
+
+    pub fn setDetailsOpen(self: Widget, open: bool) void {
+        c.fluxui_details_set_open(self.raw, if (open) 1 else 0);
+    }
+
+    pub fn detailsOpen(self: Widget) bool {
+        return c.fluxui_details_get_open(self.raw) != 0;
+    }
+
+    pub fn showDialog(self: Widget) void {
+        c.fluxui_dialog_show(self.raw);
+    }
+
+    pub fn showModalDialog(self: Widget) void {
+        c.fluxui_dialog_show_modal(self.raw);
+    }
+
+    pub fn closeDialog(self: Widget) void {
+        c.fluxui_dialog_close(self.raw);
+    }
+
+    pub fn dialogOpen(self: Widget) bool {
+        return c.fluxui_dialog_get_open(self.raw) != 0;
+    }
+
+    pub fn setMeterValue(self: Widget, value: f32) void {
+        c.fluxui_meter_set_value(self.raw, value);
+    }
+
+    pub fn meterValue(self: Widget) f32 {
+        return c.fluxui_meter_get_value(self.raw);
+    }
+
+    pub fn setProgressElementValue(self: Widget, value: f32) void {
+        c.fluxui_progress_element_set_value(self.raw, value);
+    }
+
+    pub fn progressElementValue(self: Widget) f32 {
+        return c.fluxui_progress_element_get_value(self.raw);
     }
 
     fn fromRaw(raw: ?*c.FluxUIWidget) Error!Widget {

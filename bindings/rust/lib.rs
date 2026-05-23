@@ -197,6 +197,46 @@ pub mod sys {
             value: *const c_char,
             class_name: *const c_char,
         ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_anchor(
+            parent: *mut FluxUIWidget,
+            text: *const c_char,
+            href: *const c_char,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_details(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_summary(
+            parent: *mut FluxUIWidget,
+            text: *const c_char,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_dialog(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_meter(
+            parent: *mut FluxUIWidget,
+            value: f32,
+            min: f32,
+            max: f32,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_progress_element(
+            parent: *mut FluxUIWidget,
+            value: f32,
+            max: f32,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_hr(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_br(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
         pub fn fluxui_widget_add_icon(
             parent: *mut FluxUIWidget,
             glyph: *const c_char,
@@ -282,6 +322,16 @@ pub mod sys {
         pub fn fluxui_range_get_value(widget: *mut FluxUIWidget) -> f32;
         pub fn fluxui_select_set_selected_index(widget: *mut FluxUIWidget, index: u32);
         pub fn fluxui_select_get_selected_index(widget: *mut FluxUIWidget) -> u32;
+        pub fn fluxui_details_set_open(widget: *mut FluxUIWidget, open: i32);
+        pub fn fluxui_details_get_open(widget: *mut FluxUIWidget) -> i32;
+        pub fn fluxui_dialog_show(widget: *mut FluxUIWidget);
+        pub fn fluxui_dialog_show_modal(widget: *mut FluxUIWidget);
+        pub fn fluxui_dialog_close(widget: *mut FluxUIWidget);
+        pub fn fluxui_dialog_get_open(widget: *mut FluxUIWidget) -> i32;
+        pub fn fluxui_meter_set_value(widget: *mut FluxUIWidget, value: f32);
+        pub fn fluxui_meter_get_value(widget: *mut FluxUIWidget) -> f32;
+        pub fn fluxui_progress_element_set_value(widget: *mut FluxUIWidget, value: f32);
+        pub fn fluxui_progress_element_get_value(widget: *mut FluxUIWidget) -> f32;
         pub fn fluxui_icon_set_glyph(widget: *mut FluxUIWidget, glyph: *const c_char);
         pub fn fluxui_progress_bar_set_value(widget: *mut FluxUIWidget, progress: f32);
         pub fn fluxui_progress_bar_set_color(widget: *mut FluxUIWidget, color: FluxUIColor);
@@ -698,6 +748,96 @@ impl Widget {
         }))
     }
 
+    pub fn add_anchor(self, text: &str, href: &str, class_name: &str) -> Result<Option<Widget>> {
+        let text = cstring(text)?;
+        let href = cstring(href)?;
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_anchor(
+                self.raw.as_ptr(),
+                text.as_ptr(),
+                href.as_ptr(),
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
+    pub fn add_details(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_details(self.raw.as_ptr(), class_name.as_ptr())
+        }))
+    }
+
+    pub fn add_summary(self, text: &str, class_name: &str) -> Result<Option<Widget>> {
+        let text = cstring(text)?;
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_summary(
+                self.raw.as_ptr(),
+                text.as_ptr(),
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
+    pub fn add_dialog(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_dialog(self.raw.as_ptr(), class_name.as_ptr())
+        }))
+    }
+
+    pub fn add_meter(
+        self,
+        value: f32,
+        min: f32,
+        max: f32,
+        class_name: &str,
+    ) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_meter(
+                self.raw.as_ptr(),
+                value,
+                min,
+                max,
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
+    pub fn add_progress_element(
+        self,
+        value: f32,
+        max: f32,
+        class_name: &str,
+    ) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_progress_element(
+                self.raw.as_ptr(),
+                value,
+                max,
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
+    pub fn add_hr(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_hr(self.raw.as_ptr(), class_name.as_ptr())
+        }))
+    }
+
+    pub fn add_br(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_br(self.raw.as_ptr(), class_name.as_ptr())
+        }))
+    }
+
     pub fn add_canvas(self, class_name: &str) -> Result<Option<Widget>> {
         let class_name = cstring(class_name)?;
         Ok(widget_from_ptr(unsafe {
@@ -808,6 +948,46 @@ impl Widget {
 
     pub fn selected_index(self) -> u32 {
         unsafe { sys::fluxui_select_get_selected_index(self.raw.as_ptr()) }
+    }
+
+    pub fn set_details_open(self, open: bool) {
+        unsafe { sys::fluxui_details_set_open(self.raw.as_ptr(), if open { 1 } else { 0 }) }
+    }
+
+    pub fn details_open(self) -> bool {
+        unsafe { sys::fluxui_details_get_open(self.raw.as_ptr()) != 0 }
+    }
+
+    pub fn show_dialog(self) {
+        unsafe { sys::fluxui_dialog_show(self.raw.as_ptr()) }
+    }
+
+    pub fn show_modal_dialog(self) {
+        unsafe { sys::fluxui_dialog_show_modal(self.raw.as_ptr()) }
+    }
+
+    pub fn close_dialog(self) {
+        unsafe { sys::fluxui_dialog_close(self.raw.as_ptr()) }
+    }
+
+    pub fn dialog_open(self) -> bool {
+        unsafe { sys::fluxui_dialog_get_open(self.raw.as_ptr()) != 0 }
+    }
+
+    pub fn set_meter_value(self, value: f32) {
+        unsafe { sys::fluxui_meter_set_value(self.raw.as_ptr(), value) }
+    }
+
+    pub fn meter_value(self) -> f32 {
+        unsafe { sys::fluxui_meter_get_value(self.raw.as_ptr()) }
+    }
+
+    pub fn set_progress_element_value(self, value: f32) {
+        unsafe { sys::fluxui_progress_element_set_value(self.raw.as_ptr(), value) }
+    }
+
+    pub fn progress_element_value(self) -> f32 {
+        unsafe { sys::fluxui_progress_element_get_value(self.raw.as_ptr()) }
     }
 
     pub fn set_on_click_raw(

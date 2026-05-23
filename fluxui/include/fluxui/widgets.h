@@ -226,7 +226,8 @@ public:
     Summary* summary(const std::string& content = "", const std::string& cls = "");
     Dialog* dialog(const std::string& cls = "");
     Meter* meter(float value = 0.0f, float min = 0.0f, float max = 1.0f, const std::string& cls = "");
-    Progress* progress(float value = -1.0f, float max = 1.0f, const std::string& cls = "");
+    Progress* progressElement(float value = -1.0f, float max = 1.0f, const std::string& cls = "");
+    Progress* htmlProgress(float value = -1.0f, float max = 1.0f, const std::string& cls = "");
     Widget* hr(const std::string& cls = "");
     Widget* br(const std::string& cls = "");
     Widget* setId(const std::string& value);
@@ -548,12 +549,14 @@ public:
 class Dialog : public Widget {
 public:
     bool open = false;
+    bool modal = false;
     Dialog() { type = "dialog"; }
     Dialog(const std::string& cls) { type = "dialog"; className = cls; }
     void show();
     void showModal();
     void close();
     void resolveStyles(const StyleSheet& sheet) override;
+    void update(const InputState& input) override;
     void render(Renderer& renderer) override;
 };
 class Meter : public Widget {
@@ -883,8 +886,11 @@ inline Dialog* Widget::dialog(const std::string& cls) {
 inline Meter* Widget::meter(float value, float min, float max, const std::string& cls) {
     return add<Meter>(value, min, max, cls);
 }
-inline Progress* Widget::progress(float value, float max, const std::string& cls) {
+inline Progress* Widget::progressElement(float value, float max, const std::string& cls) {
     return add<Progress>(value, max, cls);
+}
+inline Progress* Widget::htmlProgress(float value, float max, const std::string& cls) {
+    return progressElement(value, max, cls);
 }
 inline Widget* Widget::hr(const std::string& cls) {
     return add<Hr>(cls);

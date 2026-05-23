@@ -90,6 +90,38 @@ public final class Widget {
         return child(Native.widgetAddOption(handle, label, value, className));
     }
 
+    public Widget addAnchor(String text, String href, String className) {
+        return child(Native.widgetAddAnchor(handle, text, href, className));
+    }
+
+    public Widget addDetails(String className) {
+        return child(Native.widgetAddDetails(handle, className));
+    }
+
+    public Widget addSummary(String text, String className) {
+        return child(Native.widgetAddSummary(handle, text, className));
+    }
+
+    public Widget addDialog(String className) {
+        return child(Native.widgetAddDialog(handle, className));
+    }
+
+    public Widget addMeter(float value, float min, float max, String className) {
+        return child(Native.widgetAddMeter(handle, value, min, max, className));
+    }
+
+    public Widget addProgressElement(float value, float max, String className) {
+        return child(Native.widgetAddProgressElement(handle, value, max, className));
+    }
+
+    public Widget addHr(String className) {
+        return child(Native.widgetAddHr(handle, className));
+    }
+
+    public Widget addBr(String className) {
+        return child(Native.widgetAddBr(handle, className));
+    }
+
     public Widget addIcon(String glyph, String className) {
         return child(Native.widgetAddIcon(handle, glyph, className));
     }
@@ -154,6 +186,52 @@ public final class Widget {
 
     public int selectedIndex() {
         return Native.selectGetSelectedIndex(handle);
+    }
+
+    public Widget setDetailsOpen(boolean open) {
+        Native.detailsSetOpen(handle, open);
+        return this;
+    }
+
+    public boolean detailsOpen() {
+        return Native.detailsGetOpen(handle);
+    }
+
+    public Widget showDialog() {
+        Native.dialogShow(handle);
+        return this;
+    }
+
+    public Widget showModalDialog() {
+        Native.dialogShowModal(handle);
+        return this;
+    }
+
+    public Widget closeDialog() {
+        Native.dialogClose(handle);
+        return this;
+    }
+
+    public boolean dialogOpen() {
+        return Native.dialogGetOpen(handle);
+    }
+
+    public Widget setMeterValue(float value) {
+        Native.meterSetValue(handle, value);
+        return this;
+    }
+
+    public float meterValue() {
+        return Native.meterGetValue(handle);
+    }
+
+    public Widget setProgressElementValue(float value) {
+        Native.progressElementSetValue(handle, value);
+        return this;
+    }
+
+    public float progressElementValue() {
+        return Native.progressElementGetValue(handle);
     }
 
     public Widget scrollVirtualListToIndex(int index) {
