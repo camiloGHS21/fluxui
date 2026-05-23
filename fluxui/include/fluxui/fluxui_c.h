@@ -158,6 +158,7 @@ FLUXUI_API int fluxui_app_render_route(FluxUIApp* app, FluxUIWidget* container);
 FLUXUI_API void fluxui_widget_clear_children(FluxUIWidget* widget);
 FLUXUI_API void fluxui_widget_reserve_children(FluxUIWidget* widget, uint32_t count);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_panel(FluxUIWidget* parent, const char* class_name);
+FLUXUI_API FluxUIWidget* fluxui_widget_add_form(FluxUIWidget* parent, const char* class_name);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_fieldset(FluxUIWidget* parent, const char* class_name);
 FLUXUI_API FluxUIWidget* fluxui_widget_add_text(FluxUIWidget* parent,
                                                 const char* text,

@@ -126,27 +126,30 @@ fn main() -> Result<(), fluxui::Error> {
     card2.add_text("Zero Overhead", "card-value")?;
 
     // Browser-style form controls using FluxUI's UA defaults.
-    let form = root.add_fieldset("form-demo")?.ok_or(fluxui::Error::InitFailed)?;
-    form.add_legend("Browser controls", "card-title")?;
-    form.add_label("Search", "form-label")?;
-    form.add_input("search", "Search...", "")?;
-    form.add_label("Password", "form-label")?;
-    form.add_password_input("Password", "")?;
-    form.add_label("Notes", "form-label")?;
-    form.add_textarea("Write notes", "")?;
-    form.add_label("Remember device", "form-label")?;
-    form.add_checkbox(true, "")?;
-    form.add_label("Sensitivity", "form-label")?;
-    form.add_range(0.65, 0.0, 1.0, 0.05, "")?;
-    form.add_label("Mode", "form-label")?;
-    let select = form.add_select("")?.ok_or(fluxui::Error::InitFailed)?;
+    let form = root.add_form("form-demo")?.ok_or(fluxui::Error::InitFailed)?;
+    let fieldset = form.add_fieldset("")?.ok_or(fluxui::Error::InitFailed)?;
+    fieldset.add_legend("Browser controls", "card-title")?;
+    fieldset.add_label("Search", "form-label")?;
+    fieldset.add_input("search", "Search...", "")?;
+    fieldset.add_label("Password", "form-label")?;
+    fieldset.add_password_input("Password", "")?;
+    fieldset.add_label("Notes", "form-label")?;
+    fieldset.add_textarea("Write notes", "")?;
+    fieldset.add_label("Remember device", "form-label")?;
+    fieldset.add_checkbox(true, "")?;
+    fieldset.add_label("Sensitivity", "form-label")?;
+    fieldset.add_range(0.65, 0.0, 1.0, 0.05, "")?;
+    fieldset.add_label("Mode", "form-label")?;
+    let select = fieldset.add_select("")?.ok_or(fluxui::Error::InitFailed)?;
     select.add_option("Balanced", "balanced", "")?;
     select.add_option("Strict", "strict", "")?;
     select.add_option("Audit only", "audit", "")?;
-    form.add_label("Policy health", "form-label")?;
-    form.add_meter(0.82, 0.0, 1.0, "")?;
-    form.add_progress_element(0.58, 1.0, "")?;
-    let details = form.add_details("")?.ok_or(fluxui::Error::InitFailed)?;
+    fieldset.add_label("Policy health", "form-label")?;
+    fieldset.add_meter(0.82, 0.0, 1.0, "")?;
+    fieldset.add_progress_element(0.58, 1.0, "")?;
+    fieldset.add_input("submit", "", "")?;
+    fieldset.add_input("reset", "", "")?;
+    let details = fieldset.add_details("")?.ok_or(fluxui::Error::InitFailed)?;
     details.add_summary("Advanced browser elements", "form-label")?;
     details.add_text("Details toggles with mouse, Enter, or Space.", "body")?;
 

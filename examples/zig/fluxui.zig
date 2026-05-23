@@ -143,8 +143,24 @@ pub const Widget = struct {
         return fromRaw(c.fluxui_widget_add_panel(self.raw, class_name));
     }
 
+    pub fn addForm(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_form(self.raw, class_name));
+    }
+
+    pub fn addFieldset(self: Widget, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_fieldset(self.raw, class_name));
+    }
+
     pub fn addText(self: Widget, text: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
         return fromRaw(c.fluxui_widget_add_text(self.raw, text, class_name));
+    }
+
+    pub fn addLabel(self: Widget, text: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_label(self.raw, text, class_name));
+    }
+
+    pub fn addLegend(self: Widget, text: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_legend(self.raw, text, class_name));
     }
 
     pub fn addButton(self: Widget, label: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {

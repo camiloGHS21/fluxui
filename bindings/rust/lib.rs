@@ -123,6 +123,10 @@ pub mod sys {
             parent: *mut FluxUIWidget,
             class_name: *const c_char,
         ) -> *mut FluxUIWidget;
+        pub fn fluxui_widget_add_form(
+            parent: *mut FluxUIWidget,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
         pub fn fluxui_widget_add_fieldset(
             parent: *mut FluxUIWidget,
             class_name: *const c_char,
@@ -585,6 +589,13 @@ impl Widget {
         let class_name = cstring(class_name)?;
         Ok(widget_from_ptr(unsafe {
             sys::fluxui_widget_add_panel(self.raw.as_ptr(), class_name.as_ptr())
+        }))
+    }
+
+    pub fn add_form(self, class_name: &str) -> Result<Option<Widget>> {
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_form(self.raw.as_ptr(), class_name.as_ptr())
         }))
     }
 

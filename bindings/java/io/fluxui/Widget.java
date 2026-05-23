@@ -34,6 +34,10 @@ public final class Widget {
         return child(Native.widgetAddPanel(handle, className));
     }
 
+    public Widget addForm(String className) {
+        return child(Native.widgetAddForm(handle, className));
+    }
+
     public Widget addFieldset(String className) {
         return child(Native.widgetAddFieldset(handle, className));
     }

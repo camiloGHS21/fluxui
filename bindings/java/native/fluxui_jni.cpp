@@ -415,6 +415,15 @@ extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddPanel(
     return as_jlong(fluxui_widget_add_panel(as_widget(parent), cls.c_str()));
 }
 
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddForm(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring className) {
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_form(as_widget(parent), cls.c_str()));
+}
+
 extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddFieldset(
     JNIEnv* env,
     jclass,

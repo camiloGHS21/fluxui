@@ -375,6 +375,12 @@ FluxUIWidget* fluxui_widget_add_panel(FluxUIWidget* parent, const char* class_na
     return as_c_widget(p->add<Panel>(safe_cstr(class_name)));
 }
 
+FluxUIWidget* fluxui_widget_add_form(FluxUIWidget* parent, const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->form(safe_cstr(class_name)));
+}
+
 FluxUIWidget* fluxui_widget_add_fieldset(FluxUIWidget* parent, const char* class_name) {
     Widget* p = as_widget(parent);
     if (!p) return nullptr;
