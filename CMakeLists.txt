@@ -42,12 +42,12 @@ function(enable_release_lto target_name)
     if(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS)
         if(MSVC)
             target_compile_options(${target_name} PRIVATE
-                $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /Gw /Gy /Gs>
-                $<$<CONFIG:RelWithDebInfo>:/O2 /Oi /Ot /GL /Gw /Gy /Gs>
+                $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /Gw /Gy /Gs /Zi>
+                $<$<CONFIG:RelWithDebInfo>:/O2 /Oi /Ot /GL /Gw /Gy /Gs /Zi>
             )
             target_link_options(${target_name} PRIVATE
-                $<$<CONFIG:Release>:/OPT:REF /OPT:ICF /LTCG>
-                $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /LTCG>
+                $<$<CONFIG:Release>:/OPT:REF /OPT:ICF /LTCG /DEBUG>
+                $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /LTCG /DEBUG>
             )
         else()
             target_compile_options(${target_name} PRIVATE

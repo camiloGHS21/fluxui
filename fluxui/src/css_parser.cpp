@@ -12,7 +12,7 @@ StyleSheet::StyleSheet() {
 #if FLUXUI_FAST_STARTUP
     rules.reserve(FLUXUI_STYLE_CACHE_SIZE / 4);
     variables_.reserve(64);
-    resolvedCache_.reserve(FLUXUI_STYLE_CACHE_SIZE);
+    resolvedCache_.resize(FLUXUI_STYLE_CACHE_SIZE);
     idRuleIndex_.reserve(64);
     classRuleIndex_.reserve(256);
     typeRuleIndex_.reserve(64);
@@ -120,11 +120,41 @@ static std::string trimLocal(const std::string& s) {
     return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
 }
 
+static std::string_view trimLocal(std::string_view s) {
+    size_t start = s.find_first_not_of(" \t\n\r");
+    size_t end = s.find_last_not_of(" \t\n\r");
+    return (start == std::string_view::npos) ? std::string_view{} : s.substr(start, end - start + 1);
+}
+
 static std::string lowerAscii(std::string s) {
     for (char& c : s) {
         c = (char)std::tolower((unsigned char)c);
     }
     return s;
+}
+
+static std::string lowerAscii(std::string_view s) {
+    std::string res(s);
+    for (char& c : res) {
+        c = (char)std::tolower((unsigned char)c);
+    }
+    return res;
+}
+
+static void splitWhitespace(std::string_view val, std::string_view tokens[], int maxTokens, int& count) {
+    count = 0;
+    size_t i = 0;
+    while (i < val.size() && count < maxTokens) {
+        while (i < val.size() && (val[i] == ' ' || val[i] == '\t' || val[i] == '\r' || val[i] == '\n')) {
+            i++;
+        }
+        if (i == val.size()) break;
+        size_t start = i;
+        while (i < val.size() && val[i] != ' ' && val[i] != '\t' && val[i] != '\r' && val[i] != '\n') {
+            i++;
+        }
+        tokens[count++] = val.substr(start, i - start);
+    }
 }
 
 static std::string functionInner(const std::string& value) {
@@ -237,7 +267,7 @@ static bool selectorAttributeMatches(const std::string& selector,
     return false;
 }
 
-static bool selectorPseudoMatches(const std::string& pseudoName,
+static bool selectorPseudoMatches(std::string_view pseudoName,
                                   std::string_view actualType) {
     if (pseudoName == "checked") return selectorHasFlag(actualType, "checked");
     if (pseudoName == "open") return selectorHasFlag(actualType, "open");
@@ -264,31 +294,32 @@ static bool matchCompoundSelector(const std::string& compound,
                                   std::string_view className,
                                   std::string_view id,
                                   std::string_view type) {
-    std::string s = trimLocal(compound);
+    std::string_view s = trimLocal(compound);
     if (s.empty() || s == "*") return s == "*";
 
-    std::string requiredType;
-    std::string requiredId;
-    std::vector<std::string> requiredClasses;
-    bool matchedStatefulSelector = false;
+    bool hasAnySelector = false;
 
     size_t i = 0;
     while (i < s.size()) {
         if (s[i] == '.') {
             size_t start = ++i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
-            requiredClasses.push_back(s.substr(start, i - start));
+            std::string_view cls = s.substr(start, i - start);
+            if (cls.empty() || !hasClassName(className, cls)) return false;
+            hasAnySelector = true;
         } else if (s[i] == '#') {
             size_t start = ++i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
-            requiredId = s.substr(start, i - start);
+            std::string_view reqId = s.substr(start, i - start);
+            if (reqId != id) return false;
+            hasAnySelector = true;
         } else if (s[i] == ':') {
             size_t nameStart = ++i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
             std::string pseudoName = lowerAscii(s.substr(nameStart, i - nameStart));
             if (i >= s.size() || s[i] != '(') {
                 if (!selectorPseudoMatches(pseudoName, type)) return false;
-                matchedStatefulSelector = true;
+                hasAnySelector = true;
                 continue;
             }
 
@@ -300,7 +331,7 @@ static bool matchCompoundSelector(const std::string& compound,
                 if (depth > 0) i++;
             }
             if (i >= s.size()) return false;
-            std::string inner = s.substr(innerStart, i - innerStart);
+            std::string inner = std::string(s.substr(innerStart, i - innerStart));
             ++i;
 
             if (pseudoName != "is" && pseudoName != "where" &&
@@ -325,6 +356,7 @@ static bool matchCompoundSelector(const std::string& compound,
             } else if (!matchedAny) {
                 return false;
             }
+            hasAnySelector = true;
         } else if (s[i] == '[') {
             size_t innerStart = ++i;
             int depth = 1;
@@ -334,10 +366,10 @@ static bool matchCompoundSelector(const std::string& compound,
                 if (depth > 0) i++;
             }
             if (i >= s.size()) return false;
-            std::string inner = s.substr(innerStart, i - innerStart);
+            std::string inner = std::string(s.substr(innerStart, i - innerStart));
             ++i;
             if (!selectorAttributeMatches(inner, type)) return false;
-            matchedStatefulSelector = true;
+            hasAnySelector = true;
         } else if (s[i] == '+' || s[i] == '~') {
             return false;
         } else {
@@ -346,17 +378,16 @@ static bool matchCompoundSelector(const std::string& compound,
                    s[i] != '[' && s[i] != '+' && s[i] != '~') {
                 i++;
             }
-            requiredType = lowerAscii(trimLocal(s.substr(start, i - start)));
+            std::string_view reqType = s.substr(start, i - start);
+            while (!reqType.empty() && std::isspace((unsigned char)reqType.front())) reqType.remove_prefix(1);
+            while (!reqType.empty() && std::isspace((unsigned char)reqType.back())) reqType.remove_suffix(1);
+            std::string lowerType = lowerAscii(reqType);
+            if (!selectorTypeMatches(lowerType, type)) return false;
+            hasAnySelector = true;
         }
     }
 
-    if (!requiredType.empty() && !selectorTypeMatches(requiredType, type)) return false;
-    if (!requiredId.empty() && requiredId != id) return false;
-    for (const auto& cls : requiredClasses) {
-        if (cls.empty() || !hasClassName(className, cls)) return false;
-    }
-    return !requiredType.empty() || !requiredId.empty() ||
-           !requiredClasses.empty() || matchedStatefulSelector || s == "*";
+    return hasAnySelector || s == "*";
 }
 
 static void splitSelectorChain(const std::string& selector,
@@ -552,29 +583,48 @@ static float parseHslPercent(const std::string& token) {
     return std::clamp(value, 0.0f, 1.0f);
 }
 
-void StyleSheet::buildCacheKey(std::string& key,
-                               std::string_view className,
-                               std::string_view id,
-                               std::string_view type,
-                               const std::vector<CSSSelectorNode>& ancestors) {
-    key.clear();
-    size_t needed = className.size() + id.size() + type.size() + ancestors.size() * 24 + 4;
-    if (key.capacity() < needed) {
-        key.reserve(needed * 2);
+StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
+                                         std::string_view id,
+                                         std::string_view type,
+                                         const std::vector<CSSSelectorNode>& ancestors,
+                                         const Style* parentStyle) {
+    uint64_t h1 = 14695981039346656037ULL;
+    uint64_t h2 = 5381ULL;
+
+    auto hashStr = [&](std::string_view sv) {
+        for (char c : sv) {
+            h1 ^= static_cast<uint64_t>(c);
+            h1 *= 1099511628211ULL;
+        }
+        for (char c : sv) {
+            h2 = ((h2 << 5) + h2) + static_cast<uint64_t>(c);
+        }
+    };
+
+    // Hash ancestors first (root-first)
+    for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
+        const auto& ancestor = *it;
+        h1 ^= 0xDDULL; h2 ^= 0xDDULL;
+        hashStr(ancestor.className);
+        h1 ^= 0xCCULL; h2 ^= 0xCCULL;
+        hashStr(ancestor.id);
+        h1 ^= 0xBBULL; h2 ^= 0xBBULL;
+        hashStr(ancestor.type);
     }
-    key += className;
-    key.push_back('\x1f');
-    key += id;
-    key.push_back('\x1f');
-    key += type;
-    for (const auto& ancestor : ancestors) {
-        key.push_back('\x1e');
-        key += ancestor.className;
-        key.push_back('\x1f');
-        key += ancestor.id;
-        key.push_back('\x1f');
-        key += ancestor.type;
+
+    // Hash target widget last
+    hashStr(className);
+    h1 ^= 0xFFULL; h2 ^= 0xFFULL;
+    hashStr(id);
+    h1 ^= 0xEEULL; h2 ^= 0xEEULL;
+    hashStr(type);
+
+    if (parentStyle) {
+        h1 ^= parentStyle->inheritedHash;
+        h2 ^= ~parentStyle->inheritedHash;
     }
+
+    return {h1, h2};
 }
 
 bool StyleSheet::selectorMatches(const CSSRule& rule,
@@ -852,12 +902,12 @@ bool StyleSheet::setViewportSize(float width, float height) {
     }
     viewportWidth_ = width;
     viewportHeight_ = height;
-    resolvedCache_.clear();
+    currentEpoch_++;
     return true;
 }
 
 void StyleSheet::parse(const std::string& css) {
-    resolvedCache_.clear();
+    currentEpoch_++;
 
     std::string cleaned;
     cleaned.reserve(css.size());
@@ -1097,31 +1147,66 @@ Style StyleSheet::resolve(std::string_view className,
     return resolve(className, id, type, ancestors, nullptr);
 }
 
-static void appendInt(std::string& s, int value) {
-    if (value == 0) {
-        s.push_back('0');
-        return;
-    }
-    char buf[32];
-    char* p = buf + 31;
-    *p = '\0';
-    bool neg = value < 0;
-    unsigned int uval = neg ? -(unsigned int)value : (unsigned int)value;
-    while (uval > 0) {
-        *--p = '0' + (uval % 10);
-        uval /= 10;
-    }
-    if (neg) {
-        *--p = '-';
-    }
-    s.append(p);
-}
-
 struct CascadedProperty {
     const CSSProperty* property = nullptr;
     int specificity = 0;
     bool important = false;
 };
+
+static uint64_t computeInheritedHash(const Style& style) {
+    uint64_t hash = 14695981039346656037ULL;
+
+    auto hashBytes = [&hash](const void* data, size_t size) {
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        for (size_t i = 0; i < size; ++i) {
+            hash ^= bytes[i];
+            hash *= 1099511628211ULL;
+        }
+    };
+
+    hashBytes(&style.color, sizeof(style.color));
+    hashBytes(&style.fontSize, sizeof(style.fontSize));
+    hashBytes(&style.fontWeight, sizeof(style.fontWeight));
+    hashBytes(&style.fontStyle, sizeof(style.fontStyle));
+    hashBytes(&style.textAlign, sizeof(style.textAlign));
+    hashBytes(&style.lineHeight, sizeof(style.lineHeight));
+    hashBytes(&style.visibility, sizeof(style.visibility));
+    hashBytes(&style.cursor, sizeof(style.cursor));
+    hashBytes(&style.letterSpacing, sizeof(style.letterSpacing));
+    hashBytes(&style.wordSpacing, sizeof(style.wordSpacing));
+    hashBytes(&style.textDecoration, sizeof(style.textDecoration));
+    hashBytes(&style.textTransform, sizeof(style.textTransform));
+    hashBytes(&style.whiteSpace, sizeof(style.whiteSpace));
+    hashBytes(&style.textOverflow, sizeof(style.textOverflow));
+    hashBytes(&style.wordBreak, sizeof(style.wordBreak));
+    hashBytes(&style.pointerEvents, sizeof(style.pointerEvents));
+
+    for (char c : style.fontFamily) {
+        hash ^= static_cast<uint64_t>(c);
+        hash *= 1099511628211ULL;
+    }
+
+    if (!style.customProperties.empty()) {
+        uint64_t customHash = 0;
+        for (const auto& entry : style.customProperties) {
+            uint64_t pairHash = 14695981039346656037ULL;
+            for (char c : entry.first) {
+                pairHash ^= static_cast<uint64_t>(c);
+                pairHash *= 1099511628211ULL;
+            }
+            pairHash ^= 0x123456789ABCDEF0ULL;
+            for (char c : entry.second) {
+                pairHash ^= static_cast<uint64_t>(c);
+                pairHash *= 1099511628211ULL;
+            }
+            customHash += pairHash;
+        }
+        hash ^= customHash;
+        hash *= 1099511628211ULL;
+    }
+
+    return hash;
+}
 
 Style StyleSheet::resolve(std::string_view className,
                           std::string_view id,
@@ -1129,62 +1214,14 @@ Style StyleSheet::resolve(std::string_view className,
                           const std::vector<CSSSelectorNode>& ancestors,
                           const Style* parentStyle) const {
     const auto* inheritedCustomProperties = parentStyle ? &parentStyle->customProperties : nullptr;
-    thread_local std::string tlsKey;
-    std::string& key = tlsKey;
-    buildCacheKey(key, className, id, type, ancestors);
-    if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
-        thread_local std::vector<std::pair<std::string_view, std::string_view>> t_inherited;
-        t_inherited.clear();
-        t_inherited.reserve(inheritedCustomProperties->size());
-        for (const auto& entry : *inheritedCustomProperties) {
-            t_inherited.push_back({entry.first, entry.second});
-        }
-        std::sort(t_inherited.begin(), t_inherited.end(), [](const auto& a, const auto& b) {
-            return a.first < b.first;
-        });
-        for (const auto& entry : t_inherited) {
-            key.push_back('\x1d');
-            key.append(entry.first);
-            key.push_back('=');
-            key.append(entry.second);
-        }
-    }
-    if (parentStyle) {
-        key.push_back('\x1c');
-        auto appendFloat = [&key](float value) {
-            appendInt(key, (int)std::round(value * 1000.0f));
-            key.push_back(',');
-        };
-        auto appendColor = [&](const Color& color) {
-            appendFloat(color.r);
-            appendFloat(color.g);
-            appendFloat(color.b);
-            appendFloat(color.a);
-        };
-        appendColor(parentStyle->color);
-        appendFloat(parentStyle->fontSize);
-        appendInt(key, (int)parentStyle->fontWeight);
-        key.push_back(',');
-        appendInt(key, (int)parentStyle->fontStyle);
-        key.push_back(',');
-        appendInt(key, (int)parentStyle->textAlign);
-        key.push_back(',');
-        appendFloat(parentStyle->lineHeight);
-        key += parentStyle->fontFamily;
-        key.push_back(',');
-        appendFloat(parentStyle->margin.top);
-        appendFloat(parentStyle->margin.right);
-        appendFloat(parentStyle->margin.bottom);
-        appendFloat(parentStyle->margin.left);
-        appendFloat(parentStyle->padding.top);
-        appendFloat(parentStyle->padding.right);
-        appendFloat(parentStyle->padding.bottom);
-        appendFloat(parentStyle->padding.left);
-    }
+    StyleCacheKey key = buildCacheKey(className, id, type, ancestors, parentStyle);
+
 #if FLUXUI_STYLE_CACHE_SIZE > 0
-    auto cached = resolvedCache_.find(key);
-    if (cached != resolvedCache_.end()) {
-        return cached->second;
+    {
+        size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
+        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key) {
+            return resolvedCache_[cacheIdx].style;
+        }
     }
 #endif
 
@@ -1250,12 +1287,12 @@ Style StyleSheet::resolve(std::string_view className,
     }
 
     auto applyCustomProperties = [&](std::vector<CascadedProperty>& properties,
-                                     std::unordered_map<std::string, std::string>& customProperties) {
+                                     FastCustomProperties& customProperties) {
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
         for (const auto& item : properties) {
             if (item.property->name.rfind("--", 0) != 0) continue;
             bool valid = true;
-            std::string value = resolveValueInternal(item.property->value, &customProperties, &valid);
+            std::string value = resolveValueInternal(item.property->value, customProperties.getMapPointer(), &valid);
             if (!valid) continue;
             stripImportant(value);
             customProperties[item.property->name] = value;
@@ -1265,12 +1302,12 @@ Style StyleSheet::resolve(std::string_view className,
     Style initialStyle;
     auto applyProperties = [&](std::vector<CascadedProperty>& properties,
                                auto mergeFn,
-                               const std::unordered_map<std::string, std::string>& customProperties) {
+                               const FastCustomProperties& customProperties) {
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
         for (const auto& item : properties) {
             if (item.property->name.rfind("--", 0) == 0) continue;
             bool valid = true;
-            std::string value = resolveValueInternal(item.property->value, &customProperties, &valid);
+            std::string value = resolveValueInternal(item.property->value, customProperties.getMapPointer(), &valid);
             if (!valid) continue;
             stripImportant(value);
             if (applyCSSWideProperty(style,
@@ -1306,14 +1343,18 @@ Style StyleSheet::resolve(std::string_view className,
         StyleSheet::mergeActiveProperty(target, name, value);
     }, activeCustomProperties);
 
+    style.inheritedHash = computeInheritedHash(style);
 #if FLUXUI_STYLE_CACHE_SIZE > 0
-    if (resolvedCache_.size() >= FLUXUI_STYLE_CACHE_SIZE) {
-        resolvedCache_.clear();
+    {
+        size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
+        resolvedCache_[cacheIdx].key = key;
+        resolvedCache_[cacheIdx].style = style;
+        resolvedCache_[cacheIdx].epoch = currentEpoch_;
     }
-    resolvedCache_[key] = style;
 #endif
     return style;
 }
+
 
 void StyleSheet::collectCandidateRules(std::string_view className,
                                        std::string_view id,
@@ -2333,17 +2374,17 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "padding-left") {
         style.padding.left = parseLengthPixels(value);
     } else if (name == "padding-block") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.padding.top = parseLengthPixels(first);
-        style.padding.bottom = second.empty() ? style.padding.top : parseLengthPixels(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.padding.top = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.padding.bottom = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.padding.top;
     } else if (name == "padding-inline") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.padding.left = parseLengthPixels(first);
-        style.padding.right = second.empty() ? style.padding.left : parseLengthPixels(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.padding.left = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.padding.right = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.padding.left;
     } else if (name == "padding-block-start") {
         style.padding.top = parseLengthPixels(value);
     } else if (name == "padding-block-end") {
@@ -2363,17 +2404,17 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "margin-left") {
         style.margin.left = parseLengthPixels(value);
     } else if (name == "margin-block") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.margin.top = parseLengthPixels(first);
-        style.margin.bottom = second.empty() ? style.margin.top : parseLengthPixels(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.margin.top = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.margin.bottom = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.margin.top;
     } else if (name == "margin-inline") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.margin.left = parseLengthPixels(first);
-        style.margin.right = second.empty() ? style.margin.left : parseLengthPixels(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.margin.left = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        style.margin.right = count > 1 ? parseLengthPixels(std::string(tokens[1])) : style.margin.left;
     } else if (name == "margin-block-start") {
         style.margin.top = parseLengthPixels(value);
     } else if (name == "margin-block-end") {
@@ -2389,17 +2430,17 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.bottom = CSSValue::px(inset.bottom);
         style.left = CSSValue::px(inset.left);
     } else if (name == "inset-block") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.top = parseCSSValue(first);
-        style.bottom = second.empty() ? style.top : parseCSSValue(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.top = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
+        style.bottom = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.top;
     } else if (name == "inset-inline") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.left = parseCSSValue(first);
-        style.right = second.empty() ? style.left : parseCSSValue(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.left = count > 0 ? parseCSSValue(std::string(tokens[0])) : CSSValue();
+        style.right = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.left;
     } else if (name == "inset-block-start") {
         style.top = parseCSSValue(value);
     } else if (name == "inset-block-end") {
@@ -2435,13 +2476,14 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
             style.hasFontWeight = true;
             style.hasFontStyle = true;
         } else {
-            std::istringstream ss(value);
-            std::string token;
-            while (ss >> token) {
-                std::string part = token;
-                std::string linePart;
+            std::string_view tokens[8];
+            int count = 0;
+            splitWhitespace(value, tokens, 8, count);
+            for (int idx = 0; idx < count; idx++) {
+                std::string_view part = tokens[idx];
+                std::string_view linePart;
                 auto slash = part.find('/');
-                if (slash != std::string::npos) {
+                if (slash != std::string_view::npos) {
                     linePart = part.substr(slash + 1);
                     part = part.substr(0, slash);
                 }
@@ -2474,7 +2516,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
                     style.hasFontSize = true;
                 }
                 if (!linePart.empty()) {
-                    style.lineHeight = parseLineHeight(linePart, style.fontSize);
+                    style.lineHeight = parseLineHeight(std::string(linePart), style.fontSize);
                     style.hasLineHeight = true;
                 }
             }
@@ -2533,11 +2575,11 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
             style.justifyContent = JustifyContent::Center;
         }
     } else if (name == "gap") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        float row = parseLengthPixels(first);
-        float column = second.empty() ? row : parseLengthPixels(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        float row = count > 0 ? parseLengthPixels(std::string(tokens[0])) : 0.0f;
+        float column = count > 1 ? parseLengthPixels(std::string(tokens[1])) : row;
         style.gap = row;
         style.rowGap = row;
         style.columnGap = column;
@@ -2556,14 +2598,13 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
             style.flexShrink = 1.0f;
             style.flexBasis = CSSValue::autoVal();
         } else {
-            std::istringstream ss(v);
-            std::vector<std::string> tokens;
-            std::string token;
-            while (ss >> token) tokens.push_back(token);
-            if (!tokens.empty()) style.flexGrow = parseFloat(tokens[0]);
-            style.flexShrink = tokens.size() > 1 ? parseFloat(tokens[1]) : 1.0f;
-            if (tokens.size() > 2) style.flexBasis = parseCSSValue(tokens[2]);
-            else if (tokens.size() == 1) style.flexBasis = CSSValue::pct(0.0f);
+            std::string_view tokens[4];
+            int count = 0;
+            splitWhitespace(v, tokens, 4, count);
+            if (count > 0) style.flexGrow = parseFloat(std::string(tokens[0]));
+            style.flexShrink = count > 1 ? parseFloat(std::string(tokens[1])) : 1.0f;
+            if (count > 2) style.flexBasis = parseCSSValue(std::string(tokens[2]));
+            else if (count == 1) style.flexBasis = CSSValue::pct(0.0f);
         }
     } else if (name == "flex-grow") {
         style.flexGrow = parseFloat(value);
@@ -2572,11 +2613,11 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     } else if (name == "flex-basis") {
         style.flexBasis = parseCSSValue(value);
     } else if (name == "overflow") {
-        std::istringstream ss(value);
-        std::string first, second;
-        ss >> first >> second;
-        style.overflowX = parseOverflowKeyword(first);
-        style.overflowY = second.empty() ? style.overflowX : parseOverflowKeyword(second);
+        std::string_view tokens[4];
+        int count = 0;
+        splitWhitespace(value, tokens, 4, count);
+        style.overflowX = count > 0 ? parseOverflowKeyword(std::string(tokens[0])) : Overflow::Visible;
+        style.overflowY = count > 1 ? parseOverflowKeyword(std::string(tokens[1])) : style.overflowX;
         normalizeOverflowAxes(style);
     } else if (name == "overflow-x") {
         style.overflowX = parseOverflowKeyword(value);
@@ -2591,18 +2632,20 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else if (value == "text") style.cursor = CursorType::Text;
         else if (value == "grab") style.cursor = CursorType::Grab;
         else if (value == "grabbing") style.cursor = CursorType::Grabbing;
-        else if (value == "not-allowed") style.cursor = CursorType::NotAllowed;
+        else if (name == "not-allowed") style.cursor = CursorType::NotAllowed;
         else if (value == "crosshair") style.cursor = CursorType::Crosshair;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {
         for (const auto& part : splitTopLevel(value, ',')) {
-            std::istringstream ss(part);
-            std::string token;
-            while (ss >> token) {
+            std::string_view tokens[4];
+            int count = 0;
+            splitWhitespace(part, tokens, 4, count);
+            for (int idx = 0; idx < count; idx++) {
+                std::string_view token = tokens[idx];
                 bool isMs = token.size() > 2 && token.substr(token.size() - 2) == "ms";
                 bool isSec = token.size() > 1 && token.back() == 's' && !isMs;
                 if (isMs || isSec) {
-                    style.transitionDuration = parseDuration(token);
+                    style.transitionDuration = parseDuration(std::string(token));
                     return;
                 }
             }
@@ -3186,36 +3229,54 @@ float StyleSheet::parseLineHeight(const std::string& val, float fontSize) {
 }
 
 EdgeInsets StyleSheet::parseEdgeInsets(const std::string& val) {
-    std::istringstream ss(val);
-    std::vector<float> values;
-    std::string token;
-    while (ss >> token) {
-        values.push_back(parseLengthPixels(token));
+    float values[4] = {0, 0, 0, 0};
+    int count = 0;
+    size_t i = 0;
+    while (i < val.size() && count < 4) {
+        while (i < val.size() && (val[i] == ' ' || val[i] == '\t' || val[i] == '\r' || val[i] == '\n')) {
+            i++;
+        }
+        if (i == val.size()) break;
+        size_t start = i;
+        while (i < val.size() && val[i] != ' ' && val[i] != '\t' && val[i] != '\r' && val[i] != '\n') {
+            i++;
+        }
+        std::string token(val.data() + start, i - start);
+        values[count++] = parseLengthPixels(token);
     }
 
-    if (values.size() == 1) return EdgeInsets(values[0]);
-    if (values.size() == 2) return EdgeInsets(values[0], values[1]);
-    if (values.size() == 3) return EdgeInsets(values[0], values[1], values[2], values[1]);
-    if (values.size() >= 4) return EdgeInsets(values[0], values[1], values[2], values[3]);
+    if (count == 1) return EdgeInsets(values[0]);
+    if (count == 2) return EdgeInsets(values[0], values[1]);
+    if (count == 3) return EdgeInsets(values[0], values[1], values[2], values[1]);
+    if (count >= 4) return EdgeInsets(values[0], values[1], values[2], values[3]);
     return EdgeInsets();
 }
 
 BorderRadius StyleSheet::parseBorderRadius(const std::string& val) {
-    std::istringstream ss(val);
-    std::vector<float> values;
-    std::string token;
-    while (ss >> token) {
-        values.push_back(parseFloat(token));
+    float values[4] = {0, 0, 0, 0};
+    int count = 0;
+    size_t i = 0;
+    while (i < val.size() && count < 4) {
+        while (i < val.size() && (val[i] == ' ' || val[i] == '\t' || val[i] == '\r' || val[i] == '\n')) {
+            i++;
+        }
+        if (i == val.size()) break;
+        size_t start = i;
+        while (i < val.size() && val[i] != ' ' && val[i] != '\t' && val[i] != '\r' && val[i] != '\n') {
+            i++;
+        }
+        std::string token(val.data() + start, i - start);
+        values[count++] = parseFloat(token);
     }
 
-    if (values.size() == 1) return BorderRadius(values[0]);
-    if (values.size() == 2) {
+    if (count == 1) return BorderRadius(values[0]);
+    if (count == 2) {
         BorderRadius br;
         br.tl = br.br = values[0];
         br.tr = br.bl = values[1];
         return br;
     }
-    if (values.size() >= 4) {
+    if (count >= 4) {
         BorderRadius br;
         br.tl = values[0]; br.tr = values[1];
         br.br = values[2]; br.bl = values[3];

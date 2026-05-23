@@ -343,7 +343,15 @@ struct FastCustomProperties {
         return *this;
     }
 
-    operator std::unordered_map<std::string, std::string>&() {
+    const std::unordered_map<std::string, std::string>* getMapPointer() const {
+        return map.get();
+    }
+
+    std::unordered_map<std::string, std::string>* getMapPointer() {
+        return map.get();
+    }
+
+    std::unordered_map<std::string, std::string>& getOrCreateMap() {
         if (!map) {
             map = std::make_unique<std::unordered_map<std::string, std::string>>();
         }
@@ -542,6 +550,7 @@ struct Style {
     bool hasActiveOutline = false;
     float activeOpacity = -1;
     float activeScale = -1;
+    uint64_t inheritedHash = 0;
 };
 
 // ============================================================

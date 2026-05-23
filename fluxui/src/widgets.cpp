@@ -571,40 +571,41 @@ static const char* textInputTypeSelector(TextInputType type) {
     default: return "text";
     }
 }
-static std::string widgetSelectorType(const Widget* widget) {
-    if (!widget) return "";
+static const std::string& widgetSelectorType(const Widget* widget) {
+    if (!widget) {
+        static const std::string empty;
+        return empty;
+    }
+    if (!widget->cachedSelectorType.empty()) {
+        return widget->cachedSelectorType;
+    }
+    std::string type;
     if (auto* input = dynamic_cast<const TextInput*>(widget)) {
-        if (widget->type == "textarea") return "textarea";
-        return std::string("input|type=") + textInputTypeSelector(input->inputType);
-    }
-    if (auto* checkbox = dynamic_cast<const Checkbox*>(widget)) {
-        return std::string("input|type=checkbox") + (checkbox->checked ? "|checked" : "");
-    }
-    if (auto* radio = dynamic_cast<const Radio*>(widget)) {
-        return std::string("input|type=radio") + (radio->checked ? "|checked" : "");
-    }
-    if (dynamic_cast<const RangeInput*>(widget)) {
-        return "input|type=range";
-    }
-    if (auto* select = dynamic_cast<const Select*>(widget)) {
-        return std::string("select") + (select->expanded ? "|open" : "");
-    }
-    if (auto* details = dynamic_cast<const Details*>(widget)) {
-        return std::string("details") + (details->open ? "|open" : "");
-    }
-    if (auto* dialog = dynamic_cast<const Dialog*>(widget)) {
-        std::string type = "dialog";
+        if (widget->type == "textarea") type = "textarea";
+        else type = std::string("input|type=") + textInputTypeSelector(input->inputType);
+    } else if (auto* checkbox = dynamic_cast<const Checkbox*>(widget)) {
+        type = std::string("input|type=checkbox") + (checkbox->checked ? "|checked" : "");
+    } else if (auto* radio = dynamic_cast<const Radio*>(widget)) {
+        type = std::string("input|type=radio") + (radio->checked ? "|checked" : "");
+    } else if (dynamic_cast<const RangeInput*>(widget)) {
+        type = "input|type=range";
+    } else if (auto* select = dynamic_cast<const Select*>(widget)) {
+        type = std::string("select") + (select->expanded ? "|open" : "");
+    } else if (auto* details = dynamic_cast<const Details*>(widget)) {
+        type = std::string("details") + (details->open ? "|open" : "");
+    } else if (auto* dialog = dynamic_cast<const Dialog*>(widget)) {
+        type = "dialog";
         if (dialog->open) type += "|open";
         if (dialog->modal) type += "|modal";
-        return type;
-    }
-    if (auto* progress = dynamic_cast<const Progress*>(widget)) {
-        std::string type = "progress";
+    } else if (auto* progress = dynamic_cast<const Progress*>(widget)) {
+        type = "progress";
         if (progress->value < 0.0f) type += "|indeterminate";
         else type += "|value";
-        return type;
+    } else {
+        type = widget->type;
     }
-    return widget->type;
+    widget->cachedSelectorType = std::move(type);
+    return widget->cachedSelectorType;
 }
 static bool clipsOverflow(Overflow overflow) {
     return overflow == Overflow::Hidden || overflow == Overflow::Scroll ||
@@ -837,23 +838,52 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         return;
     }
     if (styleDirty) {
-        thread_local std::vector<CSSSelectorNode> t_ancestors;
-        thread_local std::vector<std::string> t_ancestorTypes;
-        t_ancestors.clear();
-        t_ancestorTypes.clear();
-        size_t ancestorCount = 0;
-        for (Widget* node = parent; node; node = node->parent) {
-            ++ancestorCount;
+        cachedSelectorType.clear();
+        if (parent) {
+            uint64_t h1 = parent->ancestorH1;
+            uint64_t h2 = parent->ancestorH2;
+
+            auto hashStr = [&](std::string_view sv) {
+                for (char c : sv) {
+                    h1 ^= static_cast<uint64_t>(c);
+                    h1 *= 1099511628211ULL;
+                }
+                for (char c : sv) {
+                    h2 = ((h2 << 5) + h2) + static_cast<uint64_t>(c);
+                }
+            };
+
+            h1 ^= 0xDDULL; h2 ^= 0xDDULL;
+            hashStr(parent->className);
+            h1 ^= 0xCCULL; h2 ^= 0xCCULL;
+            hashStr(parent->id);
+            h1 ^= 0xBBULL; h2 ^= 0xBBULL;
+            hashStr(widgetSelectorType(parent));
+
+            ancestorH1 = h1;
+            ancestorH2 = h2;
+        } else {
+            ancestorH1 = 14695981039346656037ULL;
+            ancestorH2 = 5381ULL;
         }
-        t_ancestors.reserve(ancestorCount);
-        t_ancestorTypes.reserve(ancestorCount);
-        for (Widget* node = parent; node; node = node->parent) {
-            t_ancestorTypes.push_back(widgetSelectorType(node));
-            t_ancestors.push_back({node->className, node->id, t_ancestorTypes.back()});
-        }
+
+        auto getAncestors = [this]() -> const std::vector<CSSSelectorNode>& {
+            thread_local std::vector<CSSSelectorNode> t_ancestors;
+            t_ancestors.clear();
+            size_t ancestorCount = 0;
+            for (Widget* node = parent; node; node = node->parent) {
+                ++ancestorCount;
+            }
+            t_ancestors.reserve(ancestorCount);
+            for (Widget* node = parent; node; node = node->parent) {
+                t_ancestors.push_back({node->className, node->id, widgetSelectorType(node)});
+            }
+            return t_ancestors;
+        };
+
         const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
-        std::string selectorType = widgetSelectorType(this);
-        computedStyle = sheet.resolve(className, id, selectorType, t_ancestors, parentStyle);
+        std::string_view selectorType = widgetSelectorType(this);
+        computedStyle = sheet.resolveLazy(className, id, selectorType, ancestorH1, ancestorH2, parentStyle, getAncestors);
         if (parent) {
             const Style& inherited = parent->computedStyle;
             if (!computedStyle.hasColor) computedStyle.color = inherited.color;

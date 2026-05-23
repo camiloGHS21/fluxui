@@ -23,6 +23,27 @@ static bool g_tracking_allocations = false;
 static size_t g_allocation_sizes[100];
 static std::atomic<size_t> g_recorded_allocs{0};
 
+#include <dbghelp.h>
+#pragma comment(lib, "dbghelp.lib")
+
+static void printSymbol(void* address) {
+    static bool init = false;
+    if (!init) {
+        SymInitialize(GetCurrentProcess(), NULL, TRUE);
+        init = true;
+    }
+    char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+    PSYMBOL_INFO pSymbol = (PSYMBOL_INFO)buffer;
+    pSymbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+    pSymbol->MaxNameLen = MAX_SYM_NAME;
+    DWORD64 displacement = 0;
+    if (SymFromAddr(GetCurrentProcess(), (DWORD64)address, &displacement, pSymbol)) {
+        printf("    %s + 0x%llx\n", pSymbol->Name, displacement);
+    } else {
+        printf("    %p (unknown)\n", address);
+    }
+}
+
 void* operator new(size_t size) {
     if (g_tracking_allocations) {
         size_t idx = g_recorded_allocs.fetch_add(1, std::memory_order_relaxed);
@@ -31,6 +52,15 @@ void* operator new(size_t size) {
         }
         g_allocation_count.fetch_add(1, std::memory_order_relaxed);
         g_allocated_bytes.fetch_add(size, std::memory_order_relaxed);
+
+        if (idx < 20) {
+            void* stack[5];
+            unsigned short frames = CaptureStackBackTrace(1, 5, stack, NULL);
+            printf("Allocation %zu: %zu bytes, caller stack:\n", idx, size);
+            for (unsigned short i = 0; i < frames; ++i) {
+                printSymbol(stack[i]);
+            }
+        }
     }
     void* p = malloc(size);
     if (!p) throw std::bad_alloc();

@@ -107,6 +107,9 @@ public:
     bool subtreeStyleDirty = true;
     Rect lastLayoutParentBounds;
     size_t layoutSignature = 0;
+    mutable std::string cachedSelectorType;
+    uint64_t ancestorH1 = 14695981039346656037ULL;
+    uint64_t ancestorH2 = 5381ULL;
     bool scrollbarHovered = false;
     bool scrollbarDragging = false;
     float scrollbarDragOffset = 0;

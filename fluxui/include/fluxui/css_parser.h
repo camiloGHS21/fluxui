@@ -52,6 +52,21 @@ struct CSSRuleIndexKey {
     std::string key;
 };
 
+struct StyleCacheKey {
+    uint64_t h1 = 0;
+    uint64_t h2 = 0;
+
+    bool operator==(const StyleCacheKey& other) const {
+        return h1 == other.h1 && h2 == other.h2;
+    }
+};
+
+struct StyleCacheKeyHash {
+    size_t operator()(const StyleCacheKey& k) const {
+        return static_cast<size_t>(k.h1 ^ k.h2);
+    }
+};
+
 // ============================================================
 //  CSS Stylesheet
 // ============================================================
@@ -82,6 +97,50 @@ public:
                   std::string_view type,
                   const std::vector<CSSSelectorNode>& ancestors,
                   const Style* parentStyle) const;
+    template <typename F>
+    Style resolveLazy(std::string_view className,
+                      std::string_view id,
+                      std::string_view type,
+                      uint64_t ancestorH1,
+                      uint64_t ancestorH2,
+                      const Style* parentStyle,
+                      F&& getAncestors) const {
+        uint64_t h1 = ancestorH1;
+        uint64_t h2 = ancestorH2;
+
+        auto hashStr = [&](std::string_view sv) {
+            for (char c : sv) {
+                h1 ^= static_cast<uint64_t>(c);
+                h1 *= 1099511628211ULL;
+            }
+            for (char c : sv) {
+                h2 = ((h2 << 5) + h2) + static_cast<uint64_t>(c);
+            }
+        };
+
+        hashStr(className);
+        h1 ^= 0xFFULL; h2 ^= 0xFFULL;
+        hashStr(id);
+        h1 ^= 0xEEULL; h2 ^= 0xEEULL;
+        hashStr(type);
+
+        if (parentStyle) {
+            h1 ^= parentStyle->inheritedHash;
+            h2 ^= ~parentStyle->inheritedHash;
+        }
+
+        StyleCacheKey key{h1, h2};
+
+#if FLUXUI_STYLE_CACHE_SIZE > 0
+        size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
+        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key) {
+            return resolvedCache_[cacheIdx].style;
+        }
+#endif
+
+        const auto& ancestors = getAncestors();
+        return resolve(className, id, type, ancestors, parentStyle);
+    }
     std::string resolveValue(const std::string& value,
                              const std::unordered_map<std::string, std::string>& customProperties,
                              bool* valid = nullptr) const;
@@ -91,7 +150,13 @@ public:
 
 private:
     std::unordered_map<std::string, std::string> variables_;
-    mutable std::unordered_map<std::string, Style> resolvedCache_;
+    struct StyleCacheEntry {
+        StyleCacheKey key;
+        Style style;
+        uint32_t epoch = 0;
+    };
+    mutable std::vector<StyleCacheEntry> resolvedCache_;
+    mutable uint32_t currentEpoch_ = 1;
     std::unordered_map<std::string, std::vector<size_t>> idRuleIndex_;
     std::unordered_map<std::string, std::vector<size_t>> classRuleIndex_;
     std::unordered_map<std::string, std::vector<size_t>> typeRuleIndex_;
@@ -107,11 +172,11 @@ private:
                                      const std::unordered_map<std::string, std::string>* customProperties,
                                      bool* valid = nullptr,
                                      int depth = 0) const;
-    static void buildCacheKey(std::string& key,
-                              std::string_view className,
-                              std::string_view id,
-                              std::string_view type,
-                              const std::vector<CSSSelectorNode>& ancestors = {});
+    static StyleCacheKey buildCacheKey(std::string_view className,
+                                       std::string_view id,
+                                       std::string_view type,
+                                       const std::vector<CSSSelectorNode>& ancestors,
+                                       const Style* parentStyle);
     static std::string trim(const std::string& s);
     static std::vector<std::string> splitTopLevel(const std::string& value, char delimiter);
     static bool selectorMatches(const CSSRule& rule,
