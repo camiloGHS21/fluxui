@@ -193,7 +193,24 @@ struct Gradient {
 //  CSS Enums
 // ============================================================
 
-enum class Display { Block, Flex, InlineBlock, Inline, None };
+enum class Display {
+    Block,
+    Flex,
+    InlineBlock,
+    Inline,
+    None,
+    ListItem,
+    Table,
+    TableRowGroup,
+    TableHeaderGroup,
+    TableFooterGroup,
+    TableRow,
+    TableCell,
+    TableColumn,
+    TableColumnGroup,
+    TableCaption,
+    Contents
+};
 enum class FlexDirection { Row, Column, RowReverse, ColumnReverse };
 enum class FlexWrap { NoWrap, Wrap, WrapReverse };
 enum class JustifyContent { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAround, SpaceEvenly };

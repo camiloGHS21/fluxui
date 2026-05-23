@@ -369,6 +369,17 @@ void fluxui_widget_reserve_children(FluxUIWidget* widget, uint32_t count) {
     w->reserveChildren(static_cast<size_t>(count));
 }
 
+FluxUIWidget* fluxui_widget_add_element(FluxUIWidget* parent,
+                                        const char* tag_name,
+                                        const char* text,
+                                        const char* class_name) {
+    Widget* p = as_widget(parent);
+    if (!p) return nullptr;
+    return as_c_widget(p->element(safe_cstr(tag_name),
+                                  safe_cstr(text),
+                                  safe_cstr(class_name)));
+}
+
 FluxUIWidget* fluxui_widget_add_panel(FluxUIWidget* parent, const char* class_name) {
     Widget* p = as_widget(parent);
     if (!p) return nullptr;

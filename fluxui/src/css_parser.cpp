@@ -1787,6 +1787,9 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     auto inlineBox = [&]() {
         style.display = Display::InlineBlock;
     };
+    auto inlineElement = [&]() {
+        style.display = Display::Inline;
+    };
     auto heading = [&](float size, float marginEm, bool setFontSize = true) {
         block();
         if (setFontSize) {
@@ -1835,7 +1838,8 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     };
 
     if (t == "head" || t == "meta" || t == "title" || t == "link" ||
-        t == "style" || t == "script" || t == "param" || t == "datalist") {
+        t == "style" || t == "script" || t == "param" || t == "datalist" ||
+        t == "template" || t == "base" || t == "source" || t == "track") {
         style.display = Display::None;
     } else if (t == "h1") {
         int sectionDepth = 0;
@@ -1870,7 +1874,9 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     } else if (t == "figure") {
         block();
         style.margin = EdgeInsets(medium, 40.0f, medium, 40.0f);
-    } else if (t == "figcaption" || t == "dt" || t == "form") {
+    } else if (t == "figcaption" || t == "dt" || t == "form" ||
+               t == "layer" || t == "hgroup" || t == "search" ||
+               t == "frameset" || t == "frame") {
         block();
     } else if (t == "address") {
         block();
@@ -1898,9 +1904,46 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.margin = EdgeInsets(medium, 0.0f, medium, 0.0f);
         style.padding.left = 40.0f;
     } else if (t == "li") {
-        block();
+        style.display = Display::ListItem;
+    } else if (t == "table") {
+        style.display = Display::Table;
+        style.border = Border(0.0f, Color(0.5f, 0.5f, 0.5f, 1.0f));
+    } else if (t == "thead") {
+        style.display = Display::TableHeaderGroup;
+        style.verticalAlign = VerticalAlign::Middle;
+        style.hasVerticalAlign = true;
+    } else if (t == "tbody") {
+        style.display = Display::TableRowGroup;
+        style.verticalAlign = VerticalAlign::Middle;
+        style.hasVerticalAlign = true;
+    } else if (t == "tfoot") {
+        style.display = Display::TableFooterGroup;
+        style.verticalAlign = VerticalAlign::Middle;
+        style.hasVerticalAlign = true;
+    } else if (t == "tr") {
+        style.display = Display::TableRow;
+        style.verticalAlign = VerticalAlign::Middle;
+        style.hasVerticalAlign = true;
+    } else if (t == "td" || t == "th") {
+        style.display = Display::TableCell;
+        style.verticalAlign = VerticalAlign::Middle;
+        style.hasVerticalAlign = true;
+        if (t == "th") {
+            style.fontWeight = FontWeight::Bold;
+            style.hasFontWeight = true;
+            style.textAlign = TextAlign::Center;
+            style.hasTextAlign = true;
+        }
+    } else if (t == "caption") {
+        style.display = Display::TableCaption;
+        style.textAlign = TextAlign::Center;
+        style.hasTextAlign = true;
+    } else if (t == "col") {
+        style.display = Display::TableColumn;
+    } else if (t == "colgroup") {
+        style.display = Display::TableColumnGroup;
     } else if (t == "strong" || t == "b") {
-        style.display = Display::InlineBlock;
+        inlineBox();
         style.fontWeight = FontWeight::Bold;
         style.hasFontWeight = true;
     } else if (t == "a") {
@@ -1976,10 +2019,23 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     } else if (t == "div" || t == "article" || t == "aside" || t == "footer" ||
                t == "header" || t == "main" || t == "nav" || t == "section") {
         block();
-    } else if (t == "span") {
-        inlineBox();
+    } else if (t == "span" || t == "q" || t == "map" || t == "area" ||
+               t == "abbr" || t == "acronym" || t == "bdi" || t == "bdo" ||
+               t == "data" || t == "time" || t == "output" || t == "rb" ||
+               t == "rtc" || t == "ruby" || t == "audio" || t == "embed" ||
+               t == "iframe" || t == "object") {
+        inlineElement();
+        if (t == "iframe") {
+            style.border = Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
+        }
+    } else if (t == "slot") {
+        style.display = Display::Contents;
+    } else if (t == "rt") {
+        block();
+        style.fontSize = 8.0f;
+        style.hasFontSize = true;
     } else if (t == "label") {
-        inlineBox();
+        inlineElement();
         style.cursor = CursorType::Default;
     } else if (t == "fieldset") {
         block();
@@ -1992,6 +2048,7 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.padding = EdgeInsets(0.0f, 2.0f, 0.0f, 2.0f);
     } else if (t == "button") {
         pushButtonControl();
+        style.appearance = Appearance::Button;
     } else if (t == "input" && inputKind == "hidden") {
         smallControl();
         style.display = Display::None;
@@ -2551,6 +2608,17 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else if (value == "none") style.display = Display::None;
         else if (value == "inline-block") style.display = Display::InlineBlock;
         else if (value == "inline") style.display = Display::Inline;
+        else if (value == "list-item") style.display = Display::ListItem;
+        else if (value == "table") style.display = Display::Table;
+        else if (value == "table-row-group") style.display = Display::TableRowGroup;
+        else if (value == "table-header-group") style.display = Display::TableHeaderGroup;
+        else if (value == "table-footer-group") style.display = Display::TableFooterGroup;
+        else if (value == "table-row") style.display = Display::TableRow;
+        else if (value == "table-cell") style.display = Display::TableCell;
+        else if (value == "table-column") style.display = Display::TableColumn;
+        else if (value == "table-column-group") style.display = Display::TableColumnGroup;
+        else if (value == "table-caption") style.display = Display::TableCaption;
+        else if (value == "contents") style.display = Display::Contents;
         else style.display = Display::Block;
     } else if (name == "flex-direction") {
         if (value == "row") style.flexDirection = FlexDirection::Row;
@@ -2632,7 +2700,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         else if (value == "text") style.cursor = CursorType::Text;
         else if (value == "grab") style.cursor = CursorType::Grab;
         else if (value == "grabbing") style.cursor = CursorType::Grabbing;
-        else if (name == "not-allowed") style.cursor = CursorType::NotAllowed;
+        else if (value == "not-allowed") style.cursor = CursorType::NotAllowed;
         else if (value == "crosshair") style.cursor = CursorType::Crosshair;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {

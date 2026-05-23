@@ -145,6 +145,10 @@ public:
         return static_cast<T*>(children.back().get());
     }
     Panel* panel(const std::string& cls = "", size_t reserve = 0);
+    Widget* element(const std::string& tag,
+                    const std::string& content = "",
+                    const std::string& cls = "",
+                    size_t reserve = 0);
     Text* text(const std::string& content, const std::string& cls = "");
     Button* button(const std::string& label = "",
                    const std::string& cls = "",
@@ -627,6 +631,45 @@ inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     if (reserve > 0) {
         widget->reserveChildren(reserve);
     }
+    return widget;
+}
+inline Widget* Widget::element(const std::string& tag,
+                               const std::string& content,
+                               const std::string& cls,
+                               size_t reserve) {
+    std::string lower = tag;
+    for (char& c : lower) {
+        c = (char)std::tolower((unsigned char)c);
+    }
+    if (lower.empty()) lower = "div";
+
+    if (lower == "button") return button(content, cls);
+    if (lower == "input") return input(content, cls);
+    if (lower == "textarea") return textarea(content, cls);
+    if (lower == "select") return select(cls);
+    if (lower == "option") return option(content, "", cls);
+    if (lower == "a") return anchor(content, "", cls);
+    if (lower == "img" || lower == "image") return image(content, cls);
+    if (lower == "canvas") return canvas(cls);
+    if (lower == "details") return details(cls);
+    if (lower == "summary") return summary(content, cls);
+    if (lower == "dialog") return dialog(cls);
+    if (lower == "meter") return meter(0.0f, 0.0f, 1.0f, cls);
+    if (lower == "progress") return progressElement(-1.0f, 1.0f, cls);
+    if (lower == "hr") return hr(cls);
+    if (lower == "br" || lower == "wbr") return br(cls);
+    if (lower == "checkbox") return checkbox(false, cls);
+    if (lower == "radio") return radio(false, "", cls);
+    if (lower == "range") return range(0.5f, 0.0f, 1.0f, 0.01f, cls);
+
+    if (!content.empty()) {
+        auto* widget = text(content, cls);
+        widget->type = lower;
+        return widget;
+    }
+
+    auto* widget = panel(cls, reserve);
+    widget->type = lower;
     return widget;
 }
 inline Text* Widget::text(const std::string& content, const std::string& cls) {

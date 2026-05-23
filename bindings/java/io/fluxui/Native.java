@@ -38,6 +38,7 @@ final class Native {
 
     static native void widgetClearChildren(long widget);
     static native void widgetReserveChildren(long widget, int count);
+    static native long widgetAddElement(long parent, String tagName, String text, String className);
     static native long widgetAddPanel(long parent, String className);
     static native long widgetAddForm(long parent, String className);
     static native long widgetAddFieldset(long parent, String className);

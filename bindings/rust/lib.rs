@@ -119,6 +119,12 @@ pub mod sys {
 
         pub fn fluxui_widget_clear_children(widget: *mut FluxUIWidget);
         pub fn fluxui_widget_reserve_children(widget: *mut FluxUIWidget, count: u32);
+        pub fn fluxui_widget_add_element(
+            parent: *mut FluxUIWidget,
+            tag_name: *const c_char,
+            text: *const c_char,
+            class_name: *const c_char,
+        ) -> *mut FluxUIWidget;
         pub fn fluxui_widget_add_panel(
             parent: *mut FluxUIWidget,
             class_name: *const c_char,
@@ -585,6 +591,20 @@ impl Drop for App {
 }
 
 impl Widget {
+    pub fn add_element(self, tag_name: &str, text: &str, class_name: &str) -> Result<Option<Widget>> {
+        let tag_name = cstring(tag_name)?;
+        let text = cstring(text)?;
+        let class_name = cstring(class_name)?;
+        Ok(widget_from_ptr(unsafe {
+            sys::fluxui_widget_add_element(
+                self.raw.as_ptr(),
+                tag_name.as_ptr(),
+                text.as_ptr(),
+                class_name.as_ptr(),
+            )
+        }))
+    }
+
     pub fn add_panel(self, class_name: &str) -> Result<Option<Widget>> {
         let class_name = cstring(class_name)?;
         Ok(widget_from_ptr(unsafe {

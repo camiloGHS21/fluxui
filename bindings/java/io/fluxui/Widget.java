@@ -30,6 +30,14 @@ public final class Widget {
         return this;
     }
 
+    public Widget addElement(String tagName, String text, String className) {
+        return child(Native.widgetAddElement(handle, tagName, text, className));
+    }
+
+    public Widget addElement(String tagName, String className) {
+        return addElement(tagName, "", className);
+    }
+
     public Widget addPanel(String className) {
         return child(Native.widgetAddPanel(handle, className));
     }

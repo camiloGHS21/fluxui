@@ -406,6 +406,22 @@ extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetReserveChildren(
     fluxui_widget_reserve_children(as_widget(widget), static_cast<uint32_t>(count));
 }
 
+extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddElement(
+    JNIEnv* env,
+    jclass,
+    jlong parent,
+    jstring tagName,
+    jstring text,
+    jstring className) {
+    UtfChars tag(env, tagName);
+    UtfChars textChars(env, text);
+    UtfChars cls(env, className);
+    return as_jlong(fluxui_widget_add_element(as_widget(parent),
+                                              tag.c_str(),
+                                              textChars.c_str(),
+                                              cls.c_str()));
+}
+
 extern "C" JNIEXPORT jlong JNICALL Java_io_fluxui_Native_widgetAddPanel(
     JNIEnv* env,
     jclass,

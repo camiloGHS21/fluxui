@@ -139,6 +139,10 @@ pub const Widget = struct {
         c.fluxui_widget_reserve_children(self.raw, count);
     }
 
+    pub fn addElement(self: Widget, tag_name: [*:0]const u8, text: [*:0]const u8, class_name: [*:0]const u8) Error!Widget {
+        return fromRaw(c.fluxui_widget_add_element(self.raw, tag_name, text, class_name));
+    }
+
     pub fn addPanel(self: Widget, class_name: [*:0]const u8) Error!Widget {
         return fromRaw(c.fluxui_widget_add_panel(self.raw, class_name));
     }
