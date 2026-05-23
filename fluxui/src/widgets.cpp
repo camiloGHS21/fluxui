@@ -497,6 +497,7 @@ static void clearRadioGroup(Widget* widget, Radio* active, const std::string& gr
         bool sameGroup = group.empty() ? (radio->parent == active->parent) : (radio->group == group);
         if (radio != active && sameGroup) {
             radio->checked = false;
+            radio->markStyleDirty();
         }
     }
     for (auto& child : widget->children) {
@@ -513,6 +514,53 @@ static std::vector<Option*> selectOptions(Select* select) {
         }
     }
     return options;
+}
+static const char* textInputTypeSelector(TextInputType type) {
+    switch (type) {
+    case TextInputType::Password: return "password";
+    case TextInputType::Search: return "search";
+    case TextInputType::Email: return "email";
+    case TextInputType::Url: return "url";
+    case TextInputType::Tel: return "tel";
+    case TextInputType::Number: return "number";
+    case TextInputType::Text:
+    default: return "text";
+    }
+}
+static std::string widgetSelectorType(const Widget* widget) {
+    if (!widget) return "";
+    if (auto* input = dynamic_cast<const TextInput*>(widget)) {
+        if (widget->type == "textarea") return "textarea";
+        return std::string("input|type=") + textInputTypeSelector(input->inputType);
+    }
+    if (auto* checkbox = dynamic_cast<const Checkbox*>(widget)) {
+        return std::string("input|type=checkbox") + (checkbox->checked ? "|checked" : "");
+    }
+    if (auto* radio = dynamic_cast<const Radio*>(widget)) {
+        return std::string("input|type=radio") + (radio->checked ? "|checked" : "");
+    }
+    if (dynamic_cast<const RangeInput*>(widget)) {
+        return "input|type=range";
+    }
+    if (auto* select = dynamic_cast<const Select*>(widget)) {
+        return std::string("select") + (select->expanded ? "|open" : "");
+    }
+    if (auto* details = dynamic_cast<const Details*>(widget)) {
+        return std::string("details") + (details->open ? "|open" : "");
+    }
+    if (auto* dialog = dynamic_cast<const Dialog*>(widget)) {
+        std::string type = "dialog";
+        if (dialog->open) type += "|open";
+        if (dialog->modal) type += "|modal";
+        return type;
+    }
+    if (auto* progress = dynamic_cast<const Progress*>(widget)) {
+        std::string type = "progress";
+        if (progress->value < 0.0f) type += "|indeterminate";
+        else type += "|value";
+        return type;
+    }
+    return widget->type;
 }
 static bool clipsOverflow(Overflow overflow) {
     return overflow == Overflow::Hidden || overflow == Overflow::Scroll ||
@@ -746,12 +794,22 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     }
     if (styleDirty) {
         thread_local std::vector<CSSSelectorNode> t_ancestors;
+        thread_local std::vector<std::string> t_ancestorTypes;
         t_ancestors.clear();
+        t_ancestorTypes.clear();
+        size_t ancestorCount = 0;
         for (Widget* node = parent; node; node = node->parent) {
-            t_ancestors.push_back({node->className, node->id, node->type});
+            ++ancestorCount;
+        }
+        t_ancestors.reserve(ancestorCount);
+        t_ancestorTypes.reserve(ancestorCount);
+        for (Widget* node = parent; node; node = node->parent) {
+            t_ancestorTypes.push_back(widgetSelectorType(node));
+            t_ancestors.push_back({node->className, node->id, t_ancestorTypes.back()});
         }
         const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
-        computedStyle = sheet.resolve(className, id, type, t_ancestors, parentStyle);
+        std::string selectorType = widgetSelectorType(this);
+        computedStyle = sheet.resolve(className, id, selectorType, t_ancestors, parentStyle);
         if (parent) {
             const Style& inherited = parent->computedStyle;
             if (!computedStyle.hasColor) computedStyle.color = inherited.color;
@@ -2281,6 +2339,7 @@ void TextInput::render(Renderer& renderer) {
 void Checkbox::setChecked(bool value) {
     if (checked == value) return;
     checked = value;
+    markStyleDirty();
     if (onChange) onChange(checked);
 }
 void Checkbox::layout(const Rect& parentBounds) {
@@ -2332,6 +2391,7 @@ void Radio::setChecked(bool value) {
     if (checked) {
         clearRadioGroup(rootOfWidget(this), this, group);
     }
+    markStyleDirty();
     if (onChange) onChange(checked);
 }
 void Radio::layout(const Rect& parentBounds) {
@@ -2518,14 +2578,17 @@ void Select::update(const InputState& input) {
         if (hovered) {
             focused = true;
             expanded = !expanded;
+            markStyleDirty();
         } else if (listHovered) {
             size_t index = std::min(options.size() - 1,
                 static_cast<size_t>((input.mousePos.y - listRect.y) / rowH));
             selectIndex(index);
             focused = true;
             expanded = false;
+            markStyleDirty();
         } else if (expanded) {
             expanded = false;
+            markStyleDirty();
         }
     }
     if (!focused) return;
@@ -3990,6 +4053,7 @@ void Summary::update(const InputState& input) {
         if (auto* details = dynamic_cast<Details*>(parent)) {
             details->open = !details->open;
             details->markLayoutDirty();
+            details->markStyleDirtyRecursive();
             if (auto* app = Application::instance()) {
                 app->requestRedraw();
             }

@@ -139,6 +139,114 @@ static void splitSelectorChain(const std::string& selector,
                                std::vector<char>& combinators);
 static std::vector<std::string> splitSelectorListLocal(const std::string& selectorList);
 
+static std::string_view selectorBaseType(std::string_view type) {
+    size_t sep = type.find('|');
+    return sep == std::string_view::npos ? type : type.substr(0, sep);
+}
+
+static bool selectorHasFlag(std::string_view type, std::string_view flag) {
+    size_t pos = 0;
+    while (pos <= type.size()) {
+        size_t next = type.find('|', pos);
+        std::string_view token = next == std::string_view::npos
+            ? type.substr(pos)
+            : type.substr(pos, next - pos);
+        if (token == flag) return true;
+        if (next == std::string_view::npos) break;
+        pos = next + 1;
+    }
+    return false;
+}
+
+static std::string_view selectorAttributeValue(std::string_view type, std::string_view name) {
+    size_t pos = 0;
+    while (pos <= type.size()) {
+        size_t next = type.find('|', pos);
+        std::string_view token = next == std::string_view::npos
+            ? type.substr(pos)
+            : type.substr(pos, next - pos);
+        size_t eq = token.find('=');
+        if (eq != std::string_view::npos && token.substr(0, eq) == name) {
+            return token.substr(eq + 1);
+        }
+        if (next == std::string_view::npos) break;
+        pos = next + 1;
+    }
+    return {};
+}
+
+static std::string normalizeAttributeValue(std::string value) {
+    value = trimLocal(value);
+    if (value.size() >= 2 &&
+        ((value.front() == '"' && value.back() == '"') ||
+         (value.front() == '\'' && value.back() == '\''))) {
+        value = value.substr(1, value.size() - 2);
+    }
+    return lowerAscii(trimLocal(value));
+}
+
+static bool selectorTypeMatches(std::string_view requiredType, std::string_view actualType) {
+    if (requiredType.empty()) return true;
+    std::string_view actualBase = selectorBaseType(actualType);
+    if (equalIgnoreCase(requiredType, actualBase)) return true;
+
+    if (equalIgnoreCase(requiredType, "input")) {
+        return equalIgnoreCase(actualBase, "checkbox") ||
+               equalIgnoreCase(actualBase, "radio") ||
+               equalIgnoreCase(actualBase, "range");
+    }
+    if (equalIgnoreCase(actualBase, "input")) {
+        std::string_view inputType = selectorAttributeValue(actualType, "type");
+        return !inputType.empty() && equalIgnoreCase(requiredType, inputType);
+    }
+    return false;
+}
+
+static bool selectorAttributeMatches(const std::string& selector,
+                                     std::string_view actualType) {
+    std::string body = trimLocal(selector);
+    if (body.empty()) return false;
+    if (body.size() >= 2 && body.substr(body.size() - 2) == " i") {
+        body = trimLocal(body.substr(0, body.size() - 2));
+    }
+
+    size_t eq = body.find('=');
+    std::string name = lowerAscii(trimLocal(eq == std::string::npos ? body : body.substr(0, eq)));
+    if (name.empty()) return false;
+
+    std::string value;
+    if (eq != std::string::npos) {
+        value = normalizeAttributeValue(body.substr(eq + 1));
+    }
+
+    if (name == "type") {
+        std::string_view attr = selectorAttributeValue(actualType, "type");
+        if (attr.empty() && selectorBaseType(actualType) == "input") attr = "text";
+        if (eq == std::string::npos) return !attr.empty();
+        return equalIgnoreCase(value, attr);
+    }
+    if (name == "open") {
+        return eq == std::string::npos && selectorHasFlag(actualType, "open");
+    }
+    if (name == "checked") {
+        return eq == std::string::npos && selectorHasFlag(actualType, "checked");
+    }
+    if (name == "value") {
+        return eq == std::string::npos && selectorHasFlag(actualType, "value");
+    }
+    return false;
+}
+
+static bool selectorPseudoMatches(const std::string& pseudoName,
+                                  std::string_view actualType) {
+    if (pseudoName == "checked") return selectorHasFlag(actualType, "checked");
+    if (pseudoName == "open") return selectorHasFlag(actualType, "open");
+    if (pseudoName == "indeterminate") return selectorHasFlag(actualType, "indeterminate");
+    if (pseudoName == "enabled") return true;
+    if (pseudoName == "disabled") return false;
+    return false;
+}
+
 static bool matchCompoundSelector(const std::string& compound,
                                   std::string_view className,
                                   std::string_view id,
@@ -149,6 +257,7 @@ static bool matchCompoundSelector(const std::string& compound,
     std::string requiredType;
     std::string requiredId;
     std::vector<std::string> requiredClasses;
+    bool matchedStatefulSelector = false;
 
     size_t i = 0;
     while (i < s.size()) {
@@ -164,7 +273,11 @@ static bool matchCompoundSelector(const std::string& compound,
             size_t nameStart = ++i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
             std::string pseudoName = lowerAscii(s.substr(nameStart, i - nameStart));
-            if (i >= s.size() || s[i] != '(') return false;
+            if (i >= s.size() || s[i] != '(') {
+                if (!selectorPseudoMatches(pseudoName, type)) return false;
+                matchedStatefulSelector = true;
+                continue;
+            }
 
             size_t innerStart = ++i;
             int depth = 1;
@@ -198,7 +311,20 @@ static bool matchCompoundSelector(const std::string& compound,
             } else if (!matchedAny) {
                 return false;
             }
-        } else if (s[i] == '[' || s[i] == '+' || s[i] == '~') {
+        } else if (s[i] == '[') {
+            size_t innerStart = ++i;
+            int depth = 1;
+            while (i < s.size() && depth > 0) {
+                if (s[i] == '[') depth++;
+                else if (s[i] == ']') depth--;
+                if (depth > 0) i++;
+            }
+            if (i >= s.size()) return false;
+            std::string inner = s.substr(innerStart, i - innerStart);
+            ++i;
+            if (!selectorAttributeMatches(inner, type)) return false;
+            matchedStatefulSelector = true;
+        } else if (s[i] == '+' || s[i] == '~') {
             return false;
         } else {
             size_t start = i;
@@ -210,12 +336,13 @@ static bool matchCompoundSelector(const std::string& compound,
         }
     }
 
-    if (!requiredType.empty() && !equalIgnoreCase(requiredType, type)) return false;
+    if (!requiredType.empty() && !selectorTypeMatches(requiredType, type)) return false;
     if (!requiredId.empty() && requiredId != id) return false;
     for (const auto& cls : requiredClasses) {
         if (cls.empty() || !hasClassName(className, cls)) return false;
     }
-    return !requiredType.empty() || !requiredId.empty() || !requiredClasses.empty() || s == "*";
+    return !requiredType.empty() || !requiredId.empty() ||
+           !requiredClasses.empty() || matchedStatefulSelector || s == "*";
 }
 
 static void splitSelectorChain(const std::string& selector,
@@ -1206,12 +1333,22 @@ void StyleSheet::collectCandidateRules(std::string_view className,
 
     if (!type.empty()) {
         thread_local std::string typeKey;
-        typeKey.resize(type.size());
-        for (size_t i = 0; i < type.size(); ++i) {
-            typeKey[i] = (char)std::tolower((unsigned char)type[i]);
+        std::string_view baseType = selectorBaseType(type);
+        typeKey.resize(baseType.size());
+        for (size_t i = 0; i < baseType.size(); ++i) {
+            typeKey[i] = (char)std::tolower((unsigned char)baseType[i]);
         }
         auto it = typeRuleIndex_.find(typeKey);
         if (it != typeRuleIndex_.end()) append(it->second);
+        std::string_view inputType = selectorAttributeValue(type, "type");
+        if (baseType == "input" && !inputType.empty()) {
+            typeKey.resize(inputType.size());
+            for (size_t i = 0; i < inputType.size(); ++i) {
+                typeKey[i] = (char)std::tolower((unsigned char)inputType[i]);
+            }
+            auto typedIt = typeRuleIndex_.find(typeKey);
+            if (typedIt != typeRuleIndex_.end()) append(typedIt->second);
+        }
     }
 
     std::sort(out.begin(), out.end());
@@ -1582,7 +1719,8 @@ static bool applyCSSWideProperty(Style& target,
 void StyleSheet::applyUserAgentDefaults(Style& style,
                                         std::string_view type,
                                         const std::vector<CSSSelectorNode>& ancestors) {
-    std::string t = lowerAscii(std::string(type));
+    std::string t = lowerAscii(std::string(selectorBaseType(type)));
+    std::string inputKind = lowerAscii(std::string(selectorAttributeValue(type, "type")));
     constexpr float medium = 16.0f;
     auto isSectioning = [](std::string_view nodeType) {
         return equalIgnoreCase(nodeType, "article") || equalIgnoreCase(nodeType, "aside") ||
@@ -1794,7 +1932,8 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.backgroundColor = Color(0.94f, 0.94f, 0.94f, 1.0f);
         style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
         style.hasColor = true;
-    } else if (t == "input") {
+    } else if (t == "input" && inputKind != "checkbox" &&
+               inputKind != "radio" && inputKind != "range") {
         smallControl();
         style.appearance = Appearance::Auto;
         style.hasAppearance = true;
@@ -1839,7 +1978,7 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.hasWhiteSpace = true;
         style.color = Color(0.0f, 0.0f, 0.0f, 1.0f);
         style.hasColor = true;
-    } else if (t == "checkbox") {
+    } else if (t == "checkbox" || (t == "input" && inputKind == "checkbox")) {
         smallControl();
         style.appearance = Appearance::Checkbox;
         style.hasAppearance = true;
@@ -1850,7 +1989,7 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.height = CSSValue::px(13.0f);
         style.border = Border(1.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
         style.backgroundColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
-    } else if (t == "radio") {
+    } else if (t == "radio" || (t == "input" && inputKind == "radio")) {
         smallControl();
         style.appearance = Appearance::Radio;
         style.hasAppearance = true;
@@ -1861,7 +2000,7 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.height = CSSValue::px(13.0f);
         style.border = Border(1.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
         style.backgroundColor = Color(1.0f, 1.0f, 1.0f, 1.0f);
-    } else if (t == "range") {
+    } else if (t == "range" || (t == "input" && inputKind == "range")) {
         smallControl();
         style.appearance = Appearance::SliderHorizontal;
         style.hasAppearance = true;

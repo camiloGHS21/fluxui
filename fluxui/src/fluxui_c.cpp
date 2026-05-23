@@ -817,7 +817,7 @@ void fluxui_details_set_open(FluxUIWidget* widget, int open) {
     if (auto* w = as<Details>(widget)) {
         w->open = open != 0;
         w->markLayoutDirty();
-        w->markStyleDirty();
+        w->markStyleDirtyRecursive();
     }
 }
 
@@ -856,6 +856,7 @@ int fluxui_dialog_get_open(FluxUIWidget* widget) {
 void fluxui_meter_set_value(FluxUIWidget* widget, float value) {
     if (auto* w = as<Meter>(widget)) {
         w->value = value;
+        w->markStyleDirty();
     }
 }
 
@@ -869,6 +870,7 @@ float fluxui_meter_get_value(FluxUIWidget* widget) {
 void fluxui_progress_element_set_value(FluxUIWidget* widget, float value) {
     if (auto* w = as<Progress>(widget)) {
         w->value = value;
+        w->markStyleDirty();
     }
 }
 
