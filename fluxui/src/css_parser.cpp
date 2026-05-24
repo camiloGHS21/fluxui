@@ -1363,6 +1363,7 @@ static uint64_t computeInheritedHash(const Style& style) {
     hashBytes(&style.textOverflow, sizeof(style.textOverflow));
     hashBytes(&style.wordBreak, sizeof(style.wordBreak));
     hashBytes(&style.pointerEvents, sizeof(style.pointerEvents));
+    hashBytes(&style.listStyleType, sizeof(style.listStyleType));
 
     for (char c : style.fontFamily) {
         hash ^= static_cast<uint64_t>(c);
@@ -2128,6 +2129,12 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.hasMarginBlockStart = true;
         style.hasMarginBlockEnd = true;
         style.hasPaddingInlineStart = true;
+        if (t == "ol") {
+            style.listStyleType = ListStyleType::Decimal;
+        } else {
+            style.listStyleType = ListStyleType::Disc;
+        }
+        style.hasListStyleType = true;
     } else if (t == "li") {
         style.display = Display::ListItem;
     } else if (t == "table") {
@@ -3014,6 +3021,19 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "right") style.cssClear = CSSClear::Right;
         else if (value == "both") style.cssClear = CSSClear::Both;
         else style.cssClear = CSSClear::None;
+    } else if (name == "list-style-type") {
+        if (value == "none") style.listStyleType = ListStyleType::None;
+        else if (value == "disc") style.listStyleType = ListStyleType::Disc;
+        else if (value == "circle") style.listStyleType = ListStyleType::Circle;
+        else if (value == "square") style.listStyleType = ListStyleType::Square;
+        else if (value == "decimal") style.listStyleType = ListStyleType::Decimal;
+        else if (value == "decimal-leading-zero") style.listStyleType = ListStyleType::DecimalLeadingZero;
+        else if (value == "lower-roman") style.listStyleType = ListStyleType::LowerRoman;
+        else if (value == "upper-roman") style.listStyleType = ListStyleType::UpperRoman;
+        else if (value == "lower-alpha" || value == "lower-latin") style.listStyleType = ListStyleType::LowerAlpha;
+        else if (value == "upper-alpha" || value == "upper-latin") style.listStyleType = ListStyleType::UpperAlpha;
+        else style.listStyleType = ListStyleType::Disc;
+        style.hasListStyleType = true;
     } else if (name == "display") {
         if (value == "flex") style.display = Display::Flex;
         else if (value == "grid") style.display = Display::Grid;

@@ -264,6 +264,7 @@ protected:
     void layoutFlexChildren();
     void layoutPositionedChildren();
     void renderBackground(Renderer& renderer);
+    void renderListMarker(Renderer& renderer);
     void renderChildren(Renderer& renderer);
     float maxScrollY() const;
     bool getScrollBarRects(Rect& track, Rect& thumb) const;

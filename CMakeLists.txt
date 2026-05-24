@@ -431,4 +431,20 @@ target_include_directories(game_3d PRIVATE
 )
 enable_release_lto(game_3d)
 
+# ============================================================
+#  Minimal C++ Example
+# ============================================================
+add_executable(minimal_example
+    examples/cpp/minimal.cpp
+)
+
+target_link_libraries(minimal_example PRIVATE
+    fluxui
+)
+
+target_include_directories(minimal_example PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(minimal_example)
+
 

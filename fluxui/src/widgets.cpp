@@ -906,6 +906,10 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.hasFontFamily) computedStyle.fontFamily = inherited.fontFamily;
             if (!computedStyle.hasDirection) computedStyle.direction = inherited.direction;
             if (!computedStyle.hasWritingMode) computedStyle.writingMode = inherited.writingMode;
+            if (!computedStyle.hasListStyleType) {
+                computedStyle.listStyleType = inherited.listStyleType;
+                computedStyle.hasListStyleType = inherited.hasListStyleType;
+            }
         }
         if (style.width.isSet()) computedStyle.width = style.width;
         if (style.height.isSet()) computedStyle.height = style.height;
@@ -2048,6 +2052,119 @@ Widget* Widget::hitTest(Vec2 point, bool interactiveOnly) {
     }
     return nullptr;
 }
+static int getListItemIndex(const Widget* widget) {
+    if (!widget || !widget->parent) return 1;
+    int index = 1;
+    for (const auto& child : widget->parent->children) {
+        if (child.get() == widget) {
+            break;
+        }
+        if (child->computedStyle.display == Display::ListItem) {
+            index++;
+        }
+    }
+    return index;
+}
+
+static std::string toRoman(int val, bool upper) {
+    if (val <= 0) return std::to_string(val);
+    struct RomanMapping { int value; const char* symbol; };
+    const RomanMapping mapping[] = {
+        {1000, upper ? "M" : "m"}, {900, upper ? "CM" : "cm"},
+        {500, upper ? "D" : "d"}, {400, upper ? "CD" : "cd"},
+        {100, upper ? "C" : "c"}, {90, upper ? "XC" : "xc"},
+        {50, upper ? "L" : "l"}, {40, upper ? "XL" : "xl"},
+        {10, upper ? "X" : "x"}, {9, upper ? "IX" : "ix"},
+        {5, upper ? "V" : "v"}, {4, upper ? "IV" : "iv"},
+        {1, upper ? "I" : "i"}
+    };
+    std::string result;
+    for (const auto& m : mapping) {
+        while (val >= m.value) {
+            result += m.symbol;
+            val -= m.value;
+        }
+    }
+    return result;
+}
+
+static std::string toAlpha(int val, bool upper) {
+    if (val <= 0) return std::to_string(val);
+    std::string result;
+    int temp = val;
+    while (temp > 0) {
+        int rem = (temp - 1) % 26;
+        char c = static_cast<char>((upper ? 'A' : 'a') + rem);
+        result = c + result;
+        temp = (temp - 1) / 26;
+    }
+    return result;
+}
+
+void Widget::renderListMarker(Renderer& renderer) {
+    if (computedStyle.display != Display::ListItem) return;
+    if (computedStyle.listStyleType == ListStyleType::None) return;
+
+    std::string markerText;
+    int index = getListItemIndex(this);
+    switch (computedStyle.listStyleType) {
+        case ListStyleType::Decimal:
+            markerText = std::to_string(index) + ".";
+            break;
+        case ListStyleType::DecimalLeadingZero:
+            markerText = (index < 10 ? "0" : "") + std::to_string(index) + ".";
+            break;
+        case ListStyleType::LowerRoman:
+            markerText = toRoman(index, false) + ".";
+            break;
+        case ListStyleType::UpperRoman:
+            markerText = toRoman(index, true) + ".";
+            break;
+        case ListStyleType::LowerAlpha:
+            markerText = toAlpha(index, false) + ".";
+            break;
+        case ListStyleType::UpperAlpha:
+            markerText = toAlpha(index, true) + ".";
+            break;
+        default:
+            break;
+    }
+
+    Color textColor = computedStyle.color;
+    const std::string& fontName = renderFontName(computedStyle);
+    if (!markerText.empty()) {
+        Vec2 textSize = renderer.measureText(markerText, computedStyle.fontSize, fontName);
+        float x = 0.0f;
+        float y = bounds.y + computedStyle.padding.top;
+        if (computedStyle.direction == Direction::Ltr) {
+            x = bounds.x - 8.0f - textSize.x;
+        } else {
+            x = bounds.x + bounds.w + 8.0f;
+        }
+        renderer.drawText(markerText, Vec2(x, y), textColor, computedStyle.fontSize,
+                          computedStyle.fontWeight, fontName, computedStyle.fontStyle,
+                          computedStyle.direction, computedStyle.unicodeBidi);
+    } else {
+        // Bullet shapes: Disc, Circle, Square
+        float bulletRadius = computedStyle.fontSize * 0.2f;
+        float d = bulletRadius * 2.0f;
+        float x = 0.0f;
+        float y = bounds.y + computedStyle.padding.top + computedStyle.fontSize * 0.5f - bulletRadius;
+        if (computedStyle.direction == Direction::Ltr) {
+            x = bounds.x - 15.0f - bulletRadius;
+        } else {
+            x = bounds.x + bounds.w + 15.0f - bulletRadius;
+        }
+        if (computedStyle.listStyleType == ListStyleType::Disc) {
+            renderer.drawRoundedRect(Rect(x, y, d, d), textColor, BorderRadius(bulletRadius));
+        } else if (computedStyle.listStyleType == ListStyleType::Circle) {
+            renderer.drawBorder(Rect(x, y, d, d), Border(1.2f, textColor), BorderRadius(bulletRadius));
+        } else if (computedStyle.listStyleType == ListStyleType::Square) {
+            renderer.drawRoundedRect(Rect(x, y, d, d), textColor, BorderRadius(0.0f));
+        }
+    }
+}
+
 void Widget::renderBackground(Renderer& renderer) {
     auto& s = computedStyle;
     if (s.boxShadow.blur > 0 || s.boxShadow.spread > 0) {
@@ -2196,6 +2313,7 @@ void Widget::render(Renderer& renderer) {
         renderer.pushScale(renderScale, bounds.center());
     }
     renderBackground(renderer);
+    renderListMarker(renderer);
     renderChildren(renderer);
     if (hasScale) {
         renderer.popScale();

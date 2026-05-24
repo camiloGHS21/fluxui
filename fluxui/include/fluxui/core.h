@@ -238,6 +238,18 @@ enum class TextTransform { None, Uppercase, Lowercase, Capitalize };
 enum class PointerEvents { Auto, None };
 enum class WordBreak { Normal, BreakAll, KeepAll, BreakWord };
 enum class ObjectFit { Fill, Contain, Cover, None, ScaleDown };
+enum class ListStyleType {
+    None,
+    Disc,
+    Circle,
+    Square,
+    Decimal,
+    DecimalLeadingZero,
+    LowerRoman,
+    UpperRoman,
+    LowerAlpha,
+    UpperAlpha
+};
 enum class VerticalAlign { Baseline, Sub, Super, Middle, Top, Bottom, TextTop, TextBottom };
 enum class Appearance {
     Auto,
@@ -635,6 +647,7 @@ struct Style {
     TextTransform textTransform = TextTransform::None;
     WordBreak wordBreak = WordBreak::Normal;
     VerticalAlign verticalAlign = VerticalAlign::Baseline;
+    ListStyleType listStyleType = ListStyleType::Disc;
     float letterSpacing = 0;     // Blink: letter-spacing
     float wordSpacing = 0;       // Blink: word-spacing
     Color textDecorationColor;   // defaults to currentColor
@@ -654,6 +667,7 @@ struct Style {
     bool hasTextTransform = false;
     bool hasWordBreak = false;
     bool hasVerticalAlign = false;
+    bool hasListStyleType = false;
     FastCustomProperties customProperties;
 
     // Interaction
