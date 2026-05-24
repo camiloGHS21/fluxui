@@ -600,6 +600,11 @@ const std::string& Widget::selectorType() const {
     } else {
         type = this->type;
     }
+    // Append dir attribute for CSS [dir="rtl"] / [dir="ltr"] matching
+    if (!dir.empty()) {
+        type += "|dir=";
+        type += dir;
+    }
     cachedSelectorType = std::move(type);
     return cachedSelectorType;
 }
@@ -810,6 +815,8 @@ static size_t layoutStyleSignature(const Style& s) {
     hashCombine(seed, std::hash<int>{}((int)s.fontStyle));
     hashCombine(seed, std::hash<int>{}((int)s.textAlign));
     hashCombine(seed, std::hash<int>{}((int)s.verticalAlign));
+    hashCombine(seed, std::hash<int>{}((int)s.direction));
+    hashCombine(seed, std::hash<int>{}((int)s.unicodeBidi));
     return seed;
 }
 void Widget::markLayoutDirty() {
@@ -1533,7 +1540,14 @@ void Widget::layoutFlexChildren() {
                 break;
         }
     }
-    float cursor = (isRow ? contentX : contentY) + startOffset;
+    // RTL row layout: start from right edge
+    bool rtlRow = isRow && s.direction == Direction::Rtl;
+    float cursor;
+    if (rtlRow) {
+        cursor = contentX + contentW - startOffset;
+    } else {
+        cursor = (isRow ? contentX : contentY) + startOffset;
+    }
     float maxCross = 0;
     float contentEnd = cursor;
     int laidOut = 0;
@@ -1579,21 +1593,34 @@ void Widget::layoutFlexChildren() {
             } else if (effectiveAlign == AlignItems::FlexEnd && contentH > childH) {
                 cy = contentY + contentH - childH;
             }
-            Rect childArea = {cursor + cs.margin.left, cy + cs.margin.top,
-                              std::max(0.0f, childW), std::max(0.0f, childH)};
+            Rect childArea;
+            if (rtlRow) {
+                childArea = {cursor - childW - cs.margin.right, cy + cs.margin.top,
+                             std::max(0.0f, childW), std::max(0.0f, childH)};
+            } else {
+                childArea = {cursor + cs.margin.left, cy + cs.margin.top,
+                             std::max(0.0f, childW), std::max(0.0f, childH)};
+            }
             if (parallelLayout) {
                 tasks.push_back({child.get(), childArea});
-                cursor += childW + cs.margin.horizontal() + nextGap;
+                if (rtlRow)
+                    cursor -= childW + cs.margin.horizontal() + nextGap;
+                else
+                    cursor += childW + cs.margin.horizontal() + nextGap;
             } else {
                 child->layout(childArea);
                 if (!cs.height.isSet() && !clipsOverflow(cs) &&
                     child->contentHeight > child->bounds.h) {
                     child->bounds.h = child->contentHeight;
                 }
-                cursor += child->bounds.w + cs.margin.horizontal() + nextGap;
+                if (rtlRow)
+                    cursor -= child->bounds.w + cs.margin.horizontal() + nextGap;
+                else
+                    cursor += child->bounds.w + cs.margin.horizontal() + nextGap;
                 maxCross = std::max(maxCross, child->bounds.h + cs.margin.vertical());
             }
-            contentEnd = std::max(contentEnd, cursor - nextGap);
+            contentEnd = rtlRow ? std::min(contentEnd, cursor + nextGap)
+                                : std::max(contentEnd, cursor - nextGap);
         } else {
             childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
             if (cs.flexGrow > 0 && totalFlexGrow > 0) {
@@ -2245,7 +2272,9 @@ void Text::render(Renderer& renderer) {
             renderer.drawTextInRect(ellipsizedText, lineRect, textColor,
                                     computedStyle.fontSize, computedStyle.textAlign,
                                     computedStyle.fontWeight, fontName,
-                                    computedStyle.fontStyle);
+                                    computedStyle.fontStyle,
+                                    computedStyle.direction,
+                                    computedStyle.unicodeBidi);
             renderTextDecoration(renderer, ellipsizedText, lineRect, textColor, computedStyle);
         }
     } else {
@@ -2258,7 +2287,9 @@ void Text::render(Renderer& renderer) {
         renderer.drawTextInRect(*displayTextPtr, textRect, textColor,
                                 computedStyle.fontSize, computedStyle.textAlign,
                                 computedStyle.fontWeight, fontName,
-                                computedStyle.fontStyle);
+                                computedStyle.fontStyle,
+                                computedStyle.direction,
+                                computedStyle.unicodeBidi);
         renderTextDecoration(renderer, *displayTextPtr, textRect, textColor, computedStyle);
     }
     renderChildren(renderer);
@@ -2357,7 +2388,8 @@ void Button::render(Renderer& renderer) {
         displayLabelPtr = &ellipsizedLabel;
     }
     renderer.drawTextInRect(*displayLabelPtr, textRect, textColor,
-                            s.fontSize, s.textAlign, s.fontWeight, fontName);
+                            s.fontSize, s.textAlign, s.fontWeight, fontName,
+                            s.fontStyle, s.direction, s.unicodeBidi);
     renderTextDecoration(renderer, *displayLabelPtr, textRect, textColor, s);
     renderChildren(renderer);
     if (hasScale) {
@@ -2709,7 +2741,8 @@ void TextInput::render(Renderer& renderer) {
                                 Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f)),
                                 BorderRadius(2.0f));
             renderer.drawTextInRect(chooseText, buttonRect, Color(0, 0, 0, 1),
-                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName);
+                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName,
+                                    s.fontStyle, s.direction, s.unicodeBidi);
             Rect labelRect = {
                 buttonRect.x + buttonRect.w + 6.0f,
                 bounds.y,
@@ -2717,7 +2750,8 @@ void TextInput::render(Renderer& renderer) {
                 bounds.h
             };
             renderer.drawTextInRect(fileText, labelRect, textColor,
-                                    s.fontSize, TextAlign::Left, s.fontWeight, fontName);
+                                    s.fontSize, TextAlign::Left, s.fontWeight, fontName,
+                                    s.fontStyle, s.direction, s.unicodeBidi);
         } else {
             std::string label = value.empty() ? placeholder : value;
             if (label.empty()) {
@@ -2731,7 +2765,8 @@ void TextInput::render(Renderer& renderer) {
                 std::max(0.0f, bounds.h - s.padding.vertical())
             };
             renderer.drawTextInRect(label, textRect, textColor,
-                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName);
+                                    s.fontSize, TextAlign::Center, s.fontWeight, fontName,
+                                    s.fontStyle, s.direction, s.unicodeBidi);
         }
         renderChildren(renderer);
         return;
@@ -2800,7 +2835,8 @@ void TextInput::render(Renderer& renderer) {
         bounds.h
     };
     renderer.drawTextInRect(*displayTextPtr, textRect, textColor,
-                            s.fontSize, TextAlign::Left, s.fontWeight, fontName);
+                            s.fontSize, TextAlign::Left, s.fontWeight, fontName,
+                            s.fontStyle, s.direction, s.unicodeBidi);
     renderTextDecoration(renderer, *displayTextPtr, textRect, textColor, s);
     if (focused) {
         float caretX = clipRect.x + renderer.measureText(visiblePrefix(caretIndex_), s.fontSize, fontName).x - scrollX_;
@@ -3024,7 +3060,9 @@ void Option::render(Renderer& renderer) {
     };
     renderer.drawTextInRect(label, textRect, computedStyle.color,
                             computedStyle.fontSize, TextAlign::Left,
-                            computedStyle.fontWeight, renderFontName(computedStyle));
+                            computedStyle.fontWeight, renderFontName(computedStyle),
+                            computedStyle.fontStyle, computedStyle.direction,
+                            computedStyle.unicodeBidi);
 }
 void Select::selectIndex(size_t index, bool notify) {
     auto options = selectOptions(this);
@@ -3111,11 +3149,13 @@ void Select::render(Renderer& renderer) {
                      std::max(0.0f, bounds.w - s.padding.horizontal() - 18.0f),
                      std::max(0.0f, bounds.h - s.padding.vertical())};
     renderer.drawTextInRect(selectedLabel(), textRect, s.color,
-                            s.fontSize, TextAlign::Left, s.fontWeight, renderFontName(s));
+                            s.fontSize, TextAlign::Left, s.fontWeight, renderFontName(s),
+                            s.fontStyle, s.direction, s.unicodeBidi);
     Rect arrowRect = {bounds.x + bounds.w - 20.0f, bounds.y, 16.0f, bounds.h};
     renderer.drawTextInRect("v", arrowRect, s.color,
                             std::max(9.0f, s.fontSize - 1.0f),
-                            TextAlign::Center, FontWeight::Bold, renderFontName(s));
+                            TextAlign::Center, FontWeight::Bold, renderFontName(s),
+                            FontStyle::Normal, Direction::Ltr, UnicodeBidi::Normal);
     if (focused) {
         renderer.drawBorder({bounds.x - 2.0f, bounds.y - 2.0f, bounds.w + 4.0f, bounds.h + 4.0f},
                             Border(1.0f, Color(0.54f, 0.70f, 0.98f, 0.95f)),
@@ -3137,7 +3177,8 @@ void Select::render(Renderer& renderer) {
             Rect optionText = {row.x + s.padding.left, row.y, row.w - s.padding.horizontal(), row.h};
             renderer.drawTextInRect(options[i]->label, optionText, s.color,
                                     s.fontSize, TextAlign::Left, s.fontWeight,
-                                    renderFontName(s));
+                                    renderFontName(s), s.fontStyle, s.direction,
+                                    s.unicodeBidi);
         }
     }
 }
@@ -3430,7 +3471,8 @@ void Image::render(Renderer& renderer) {
         std::string fontName = computedStyle.fontFamily.empty() ? "sans-serif" : computedStyle.fontFamily;
         altDraw.y += (content.h - fontSize) * 0.5f;
         altDraw.x += 4.0f;
-        renderer.drawText(alt, {altDraw.x, altDraw.y}, Color(0.5f, 0.5f, 0.5f, 1.0f), fontSize, FontWeight::Normal, fontName);
+        renderer.drawText(alt, {altDraw.x, altDraw.y}, Color(0.5f, 0.5f, 0.5f, 1.0f), fontSize, FontWeight::Normal, fontName,
+                          computedStyle.fontStyle, computedStyle.direction, computedStyle.unicodeBidi);
         renderer.popScissor();
         renderChildren(renderer);
         return;

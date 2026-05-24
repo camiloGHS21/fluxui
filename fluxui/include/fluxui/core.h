@@ -213,6 +213,7 @@ enum class Display {
     Contents
 };
 enum class Direction { Ltr, Rtl };
+enum class UnicodeBidi { Normal, Embed, BidiOverride, Isolate, IsolateOverride, Plaintext };
 enum class WritingMode { HorizontalTb, VerticalRl, VerticalLr };
 enum class FlexDirection { Row, Column, RowReverse, ColumnReverse };
 enum class FlexWrap { NoWrap, Wrap, WrapReverse };
@@ -491,6 +492,8 @@ struct Style {
     // Direction & Writing Mode
     Direction direction = Direction::Ltr;
     bool hasDirection = false;
+    UnicodeBidi unicodeBidi = UnicodeBidi::Normal;
+    bool hasUnicodeBidi = false;
     WritingMode writingMode = WritingMode::HorizontalTb;
     bool hasWritingMode = false;
 

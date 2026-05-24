@@ -198,12 +198,16 @@ public:
     void drawText(const std::string& text, const Vec2& pos, const Color& color,
                   float fontSize = 14.0f, FontWeight weight = FontWeight::Normal,
                   const std::string& fontName = "default",
-                  FontStyle style = FontStyle::Normal);
+                  FontStyle style = FontStyle::Normal,
+                  Direction direction = Direction::Ltr,
+                  UnicodeBidi unicodeBidi = UnicodeBidi::Normal);
     void drawTextInRect(const std::string& text, const Rect& rect, const Color& color,
                         float fontSize = 14.0f, TextAlign align = TextAlign::Left,
                         FontWeight weight = FontWeight::Normal,
                         const std::string& fontName = "default",
-                        FontStyle style = FontStyle::Normal);
+                        FontStyle style = FontStyle::Normal,
+                        Direction direction = Direction::Ltr,
+                        UnicodeBidi unicodeBidi = UnicodeBidi::Normal);
     void drawImage(const std::string& nameOrPath, const Rect& rect,
                    float opacity = 1.0f,
                    const Color& tint = Color(1, 1, 1, 1));

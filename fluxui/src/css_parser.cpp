@@ -267,6 +267,11 @@ static bool selectorAttributeMatches(const std::string& selector,
     if (name == "value") {
         return eq == std::string::npos && selectorHasFlag(actualType, "value");
     }
+    if (name == "dir") {
+        std::string_view attr = selectorAttributeValue(actualType, "dir");
+        if (eq == std::string::npos) return !attr.empty();
+        return equalIgnoreCase(value, attr);
+    }
     return false;
 }
 
@@ -2251,6 +2256,16 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         if (t == "iframe") {
             style.border = Border(2.0f, Color(0.46f, 0.46f, 0.46f, 1.0f));
         }
+        // Blink UA: bdi, output { unicode-bidi: isolate; }
+        if (t == "bdi" || t == "output") {
+            style.unicodeBidi = UnicodeBidi::Isolate;
+            style.hasUnicodeBidi = true;
+        }
+        // Blink UA: bdo { unicode-bidi: bidi-override; }
+        if (t == "bdo") {
+            style.unicodeBidi = UnicodeBidi::BidiOverride;
+            style.hasUnicodeBidi = true;
+        }
     } else if (t == "slot") {
         style.display = Display::Contents;
     } else if (t == "rt") {
@@ -2428,6 +2443,22 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.display = Display::Block;
         style.width = CSSValue::pct(100.0f);
         style.height = CSSValue::px(0.0f);
+    }
+
+    // Blink UA: [dir="rtl"] { direction: rtl; unicode-bidi: isolate; }
+    std::string_view dirAttr = selectorAttributeValue(type, "dir");
+    if (!dirAttr.empty()) {
+        if (equalIgnoreCase(dirAttr, "rtl")) {
+            style.direction = Direction::Rtl;
+            style.hasDirection = true;
+            style.unicodeBidi = UnicodeBidi::Isolate;
+            style.hasUnicodeBidi = true;
+        } else if (equalIgnoreCase(dirAttr, "ltr")) {
+            style.direction = Direction::Ltr;
+            style.hasDirection = true;
+            style.unicodeBidi = UnicodeBidi::Isolate;
+            style.hasUnicodeBidi = true;
+        }
     }
 }
 
@@ -2946,6 +2977,21 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             style.direction = Direction::Ltr;
             style.hasDirection = true;
         }
+    } else if (name == "unicode-bidi") {
+        if (value == "embed") {
+            style.unicodeBidi = UnicodeBidi::Embed;
+        } else if (value == "bidi-override") {
+            style.unicodeBidi = UnicodeBidi::BidiOverride;
+        } else if (value == "isolate") {
+            style.unicodeBidi = UnicodeBidi::Isolate;
+        } else if (value == "isolate-override") {
+            style.unicodeBidi = UnicodeBidi::IsolateOverride;
+        } else if (value == "plaintext") {
+            style.unicodeBidi = UnicodeBidi::Plaintext;
+        } else {
+            style.unicodeBidi = UnicodeBidi::Normal;
+        }
+        style.hasUnicodeBidi = true;
     } else if (name == "writing-mode") {
         if (value == "vertical-rl") {
             style.writingMode = WritingMode::VerticalRl;

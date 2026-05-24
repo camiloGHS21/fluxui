@@ -6097,20 +6097,170 @@ void Renderer::drawBoxShadow(const Rect& rect, const BoxShadow& shadow,
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-// ============================================================
-//  Drawing: Text
-// ============================================================
+static bool isRtlCodepoint(uint32_t cp) {
+    return (cp >= 0x0590 && cp <= 0x08FF) || 
+           (cp >= 0xFB50 && cp <= 0xFDFF) || 
+           (cp >= 0xFE70 && cp <= 0xFEFF);
+}
+
+static bool isLtrCodepoint(uint32_t cp) {
+    if (isRtlCodepoint(cp)) return false;
+    return (cp >= 0x0041 && cp <= 0x005A) || // A-Z
+           (cp >= 0x0061 && cp <= 0x007A) || // a-z
+           (cp >= 0x0030 && cp <= 0x0039) || // 0-9
+           (cp >= 0x00C0 && cp <= 0x024F) || // Latin Extended
+           (cp >= 0x0370 && cp <= 0x03FF) || // Greek
+           (cp >= 0x0400 && cp <= 0x04FF);   // Cyrillic
+}
+
+static uint32_t mirrorCodepoint(uint32_t cp) {
+    switch (cp) {
+        case '(': return ')';
+        case ')': return '(';
+        case '[': return ']';
+        case ']': return '[';
+        case '{': return '}';
+        case '}': return '{';
+        case '<': return '>';
+        case '>': return '<';
+        default: return cp;
+    }
+}
+
+static std::string reorderBidiText(const std::string& text, Direction direction, UnicodeBidi bidi) {
+    if (text.empty()) return text;
+
+    std::vector<uint32_t> codepoints;
+    codepoints.reserve(text.size());
+    size_t idx = 0;
+    while (idx < text.size()) {
+        unsigned char c = (unsigned char)text[idx];
+        uint32_t cp = c;
+        if (c < 0x80) {
+            cp = text[idx++];
+        } else if ((c & 0xE0) == 0xC0 && idx + 1 < text.size()) {
+            cp = ((text[idx] & 0x1F) << 6) | (text[idx + 1] & 0x3F);
+            idx += 2;
+        } else if ((c & 0xF0) == 0xE0 && idx + 2 < text.size()) {
+            cp = ((text[idx] & 0x0F) << 12) | ((text[idx + 1] & 0x3F) << 6) | (text[idx + 2] & 0x3F);
+            idx += 3;
+        } else if ((c & 0xF8) == 0xF0 && idx + 3 < text.size()) {
+            cp = ((text[idx] & 0x07) << 18) | ((text[idx + 1] & 0x3F) << 12) | ((text[idx + 2] & 0x3F) << 6) | (text[idx + 3] & 0x3F);
+            idx += 4;
+        } else {
+            cp = text[idx++];
+        }
+        codepoints.push_back(cp);
+    }
+
+    std::vector<int> resolvedDirs(codepoints.size(), 0);
+    int baseDir = (direction == Direction::Rtl) ? 1 : 0;
+
+    if (bidi == UnicodeBidi::BidiOverride || bidi == UnicodeBidi::IsolateOverride) {
+        for (size_t i = 0; i < codepoints.size(); ++i) {
+            resolvedDirs[i] = baseDir;
+        }
+    } else {
+        std::vector<int> types(codepoints.size(), -1);
+        bool hasRtl = false;
+        for (size_t i = 0; i < codepoints.size(); ++i) {
+            if (isRtlCodepoint(codepoints[i])) {
+                types[i] = 1;
+                hasRtl = true;
+            } else if (isLtrCodepoint(codepoints[i])) {
+                types[i] = 0;
+            }
+        }
+
+        if (baseDir == 0 && !hasRtl) {
+            return text;
+        }
+
+        int lastStrong = baseDir;
+        for (size_t i = 0; i < codepoints.size(); ++i) {
+            if (types[i] != -1) {
+                lastStrong = types[i];
+            }
+            resolvedDirs[i] = lastStrong;
+        }
+    }
+
+    struct Run {
+        int dir;
+        size_t start;
+        size_t length;
+    };
+    std::vector<Run> runs;
+    if (!resolvedDirs.empty()) {
+        int currentDir = resolvedDirs[0];
+        size_t start = 0;
+        for (size_t i = 1; i < resolvedDirs.size(); ++i) {
+            if (resolvedDirs[i] != currentDir) {
+                runs.push_back({currentDir, start, i - start});
+                currentDir = resolvedDirs[i];
+                start = i;
+            }
+        }
+        runs.push_back({currentDir, start, resolvedDirs.size() - start});
+    }
+
+    if (baseDir == 1) {
+        std::reverse(runs.begin(), runs.end());
+    }
+
+    std::vector<uint32_t> visualCodepoints;
+    visualCodepoints.reserve(codepoints.size());
+
+    for (const auto& run : runs) {
+        if (run.dir == 1) {
+            for (size_t i = 0; i < run.length; ++i) {
+                size_t srcIdx = run.start + run.length - 1 - i;
+                visualCodepoints.push_back(mirrorCodepoint(codepoints[srcIdx]));
+            }
+        } else {
+            for (size_t i = 0; i < run.length; ++i) {
+                visualCodepoints.push_back(codepoints[run.start + i]);
+            }
+        }
+    }
+
+    std::string result;
+    result.reserve(text.size());
+    for (uint32_t cp : visualCodepoints) {
+        if (cp < 0x80) {
+            result.push_back((char)cp);
+        } else if (cp < 0x800) {
+            result.push_back((char)(0xC0 | (cp >> 6)));
+            result.push_back((char)(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x10000) {
+            result.push_back((char)(0xE0 | (cp >> 12)));
+            result.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+            result.push_back((char)(0x80 | (cp & 0x3F)));
+        } else if (cp < 0x110000) {
+            result.push_back((char)(0xF0 | (cp >> 18)));
+            result.push_back((char)(0x80 | ((cp >> 12) & 0x3F)));
+            result.push_back((char)(0x80 | ((cp >> 6) & 0x3F)));
+            result.push_back((char)(0x80 | (cp & 0x3F)));
+        }
+    }
+
+    return result;
+}
 
 void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& color,
                          float fontSize, FontWeight weight, const std::string& fontName,
-                         FontStyle style) {
+                         FontStyle style,
+                         Direction direction,
+                         UnicodeBidi unicodeBidi) {
+    std::string processedText = reorderBidiText(text, direction, unicodeBidi);
+
     if (activeBackend_ == RenderBackendType::Vulkan) {
-        drawVulkanText(text, pos, color, fontSize, weight, fontName, style);
+        drawVulkanText(processedText, pos, color, fontSize, weight, fontName, style);
         return;
     }
 
     if (activeBackend_ == RenderBackendType::Compatibility) {
-        drawSoftwareText(text, pos, color, fontSize, weight, fontName, style);
+        drawSoftwareText(processedText, pos, color, fontSize, weight, fontName, style);
         return;
     }
 
@@ -6307,15 +6457,22 @@ void Renderer::drawImage(const std::string& nameOrPath, const Rect& rect,
 void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const Color& color,
                                float fontSize, TextAlign align, FontWeight weight,
                                const std::string& fontName,
-                               FontStyle style) {
+                               FontStyle style,
+                               Direction direction,
+                               UnicodeBidi unicodeBidi) {
     const std::string& resolvedFontName = resolveFontName(fontName, weight);
     FontData* fontForRect = getFontForSize(resolvedFontName, fontSize);
 
+    TextAlign effectiveAlign = align;
+    if (direction == Direction::Rtl && align == TextAlign::Left) {
+        effectiveAlign = TextAlign::Right;
+    }
+
     float x = rect.x;
-    if (align != TextAlign::Left) {
+    if (effectiveAlign != TextAlign::Left) {
         Vec2 textSize = measureText(text, fontSize, resolvedFontName);
-        if (align == TextAlign::Center) x = rect.x + (rect.w - textSize.x) / 2;
-        else if (align == TextAlign::Right) x = rect.x + rect.w - textSize.x;
+        if (effectiveAlign == TextAlign::Center) x = rect.x + (rect.w - textSize.x) / 2;
+        else if (effectiveAlign == TextAlign::Right) x = rect.x + rect.w - textSize.x;
     }
 
     // Vertically center: position so that the text midpoint aligns with rect midpoint
@@ -6329,7 +6486,7 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
         textH = asc + desc;
     }
     float y = rect.y + (rect.h - textH) / 2;
-    drawText(text, {x, y}, color, fontSize, weight, fontName, style);
+    drawText(text, {x, y}, color, fontSize, weight, fontName, style, direction, unicodeBidi);
 }
 
 Vec2 Renderer::measureText(const std::string& text, float fontSize,

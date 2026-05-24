@@ -87,6 +87,7 @@ public:
     std::string id;
     std::string className;
     std::string type = "widget";
+    std::string dir;
     Style style;
     Style computedStyle;
     std::vector<CSSProperty> inlineProperties;
