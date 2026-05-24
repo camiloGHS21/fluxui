@@ -1206,14 +1206,53 @@ void StyleSheet::parse(const std::string& css) {
     buildInvalidationSets();
 }
 
-void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuery) {
+void StyleSheet::registerLayer(const std::string& name) {
+    if (name.empty()) return;
+    if (std::find(layersOrder.begin(), layersOrder.end(), name) == layersOrder.end()) {
+        layersOrder.push_back(name);
+    }
+}
+
+int StyleSheet::getLayerPriority(const std::string& layerName) const {
+    if (layerName.empty()) {
+        return (int)layersOrder.size(); // Unlayered has highest priority
+    }
+    for (size_t i = 0; i < layersOrder.size(); ++i) {
+        if (layersOrder[i] == layerName) {
+            return (int)i;
+        }
+    }
+    return -1; // Unknown layer
+}
+
+void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuery, const std::string& currentLayer) {
     // Parse rules
     size_t pos = 0;
     while (pos < css.size()) {
-        // Find selector
-        size_t braceOpen = css.find('{', pos);
-        if (braceOpen == std::string::npos) break;
+        size_t nextChar = css.find_first_of(";{", pos);
+        if (nextChar == std::string::npos) break;
 
+        if (css[nextChar] == ';') {
+            std::string statement = trim(css.substr(pos, nextChar - pos));
+            if (statement.rfind("@layer", 0) == 0) {
+                std::string names = trim(statement.substr(6));
+                size_t start = 0;
+                while (true) {
+                    size_t comma = names.find(',', start);
+                    std::string name = trim(names.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+                    if (!name.empty()) {
+                        std::string nestedName = currentLayer.empty() ? name : currentLayer + "." + name;
+                        registerLayer(nestedName);
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+            }
+            pos = nextChar + 1;
+            continue;
+        }
+
+        size_t braceOpen = nextChar;
         std::string selector = trim(css.substr(pos, braceOpen - pos));
 
         // Find matching close brace (handles nested)
@@ -1233,18 +1272,30 @@ void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuer
                 std::string combinedQuery = mediaQuery.empty()
                     ? query
                     : mediaQuery + " and " + query;
-                parseRules(body, combinedQuery);
+                parseRules(body, combinedQuery, currentLayer);
             } else if (lowerSelector.rfind("@supports", 0) == 0) {
                 std::string condition = trim(selector.substr(9));
                 if (supportsConditionMatches(condition)) {
-                    parseRules(body, mediaQuery);
+                    parseRules(body, mediaQuery, currentLayer);
                 }
+            } else if (lowerSelector.rfind("@container", 0) == 0) {
+                parseRules(body, mediaQuery, currentLayer);
             } else if (lowerSelector.rfind("@font-face", 0) == 0) {
                 parseFontFace(body);
             } else if (lowerSelector.rfind("@layer", 0) == 0) {
-                parseRules(body, mediaQuery);
+                std::string layerName = trim(selector.substr(6));
+                std::string nestedLayerName;
+                if (!layerName.empty()) {
+                    nestedLayerName = currentLayer.empty() ? layerName : currentLayer + "." + layerName;
+                    registerLayer(nestedLayerName);
+                } else {
+                    static int anonCount = 0;
+                    nestedLayerName = "::anon_layer_" + std::to_string(++anonCount);
+                    registerLayer(nestedLayerName);
+                }
+                parseRules(body, mediaQuery, nestedLayerName);
             } else if (!selector.empty() && selector[0] != '@') {
-                parseRule(selector, body, mediaQuery);
+                parseRule(selector, body, mediaQuery, currentLayer);
             }
         }
 
@@ -1252,7 +1303,7 @@ void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuer
     }
 }
 
-void StyleSheet::parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery) {
+void StyleSheet::parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery, const std::string& currentLayer) {
     std::vector<CSSProperty> properties;
 
     // Parse properties
@@ -1285,6 +1336,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         CSSRule rule;
         rule.selector = cleanSelector;
         rule.mediaQuery = mediaQuery;
+        rule.layer = currentLayer;
         rule.specificity = selectorSpecificity(cleanSelector);
 
         rule.selectorWithoutPseudo = cleanSelector;
@@ -1435,6 +1487,7 @@ struct CascadedProperty {
     const CSSProperty* property = nullptr;
     int specificity = 0;
     bool important = false;
+    int layerPriority = 0;
 };
 
 uint64_t StyleSheet::computeInheritedHash(const Style& style) {
@@ -1534,6 +1587,13 @@ Style StyleSheet::resolve(std::string_view className,
 
     auto lessCascadePriority = [](const CascadedProperty& a, const CascadedProperty& b) {
         if (a.important != b.important) return !a.important && b.important;
+        if (a.layerPriority != b.layerPriority) {
+            if (a.important) {
+                return a.layerPriority > b.layerPriority;
+            } else {
+                return a.layerPriority < b.layerPriority;
+            }
+        }
         if (a.specificity != b.specificity) return a.specificity < b.specificity;
         return a.property->sourceOrder < b.property->sourceOrder;
     };
@@ -1568,7 +1628,9 @@ Style StyleSheet::resolve(std::string_view className,
 
             for (const auto& prop : rule.properties) {
                 std::string value = prop.value;
-                CascadedProperty cascaded{&prop, rule.specificity, stripImportant(value)};
+                bool isImp = stripImportant(value);
+                int layerPri = getLayerPriority(rule.layer);
+                CascadedProperty cascaded{&prop, rule.specificity, isImp, layerPri};
                 if (pseudo == "hover") {
                     hoverProperties.push_back(cascaded);
                 } else if (pseudo == "focus" || pseudo == "focus-visible") {

@@ -31,6 +31,7 @@ struct CSSRule {
     std::string selector; // e.g. ".sidebar", "#dashboard", "button"
     std::vector<CSSProperty> properties;
     std::string mediaQuery;
+    std::string layer;
     int specificity = 0;
 
     // Cached pre-parsed selector data for faster matching
@@ -86,6 +87,7 @@ public:
 
     std::vector<CSSRule> rules;
     std::vector<CSSFontFace> fontFaces;
+    std::vector<std::string> layersOrder;
 
     // Load and parse a CSS file
     bool loadFile(const std::string& path);
@@ -209,8 +211,10 @@ private:
     float viewportHeight_ = 1080.0f;
     uint32_t nextPropertyOrder_ = 0;
 
-    void parseRules(const std::string& css, const std::string& mediaQuery);
-    void parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery = "");
+    void registerLayer(const std::string& name);
+    int getLayerPriority(const std::string& layerName) const;
+    void parseRules(const std::string& css, const std::string& mediaQuery, const std::string& currentLayer = "");
+    void parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery = "", const std::string& currentLayer = "");
     void parseFontFace(const std::string& body);
     void indexRule(size_t ruleIndex);
     std::string resolveValueInternal(const std::string& value,
