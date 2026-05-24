@@ -1792,379 +1792,499 @@ void Widget::layoutFlexChildren() {
     auto& s = computedStyle;
     bool isRow = (s.flexDirection == FlexDirection::Row ||
                   s.flexDirection == FlexDirection::RowReverse);
-    bool isWrap = (s.flexWrap == FlexWrap::Wrap || s.flexWrap == FlexWrap::WrapReverse);
-    bool isWrapReverse = (s.flexWrap == FlexWrap::WrapReverse);
-
     float contentX = bounds.x + s.padding.left;
     float contentY = bounds.y + s.padding.top;
     float contentW = std::max(0.0f, bounds.w - s.padding.horizontal());
     float contentH = std::max(0.0f, bounds.h - s.padding.vertical());
-
     float mainGap = isRow
         ? (s.columnGap > 0.0f ? s.columnGap : s.gap)
         : (s.rowGap > 0.0f ? s.rowGap : s.gap);
-    float crossGap = isRow
-        ? (s.rowGap > 0.0f ? s.rowGap : s.gap)
-        : (s.columnGap > 0.0f ? s.columnGap : s.gap);
 
-    struct FlexItem {
-        Widget* widget;
-        float mainSize = 0.0f;
-        float crossSize = 0.0f;
-        float flexGrow = 0.0f;
-        float flexShrink = 0.0f;
-        float mainMargin = 0.0f;
-        float crossMargin = 0.0f;
-        size_t originalIndex = 0;
-    };
-    std::vector<FlexItem> items;
-    items.reserve(children.size());
-
-    if (isRow) {
-        for (size_t i = 0; i < children.size(); i++) {
-            auto& child = children[i];
-            if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-            auto& cs = child->computedStyle;
-            
-            FlexItem item;
-            item.widget = child.get();
-            item.originalIndex = i;
-            item.flexGrow = cs.flexGrow;
-            item.flexShrink = cs.flexShrink;
-            item.mainMargin = cs.margin.horizontal();
-            item.crossMargin = cs.margin.vertical();
-            
-            if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
-                item.mainSize = cs.flexBasis.resolve(contentW);
-            } else if (cs.width.isSet()) {
-                item.mainSize = cs.width.resolve(contentW);
-            } else {
-                Rect measureArea = {contentX, contentY, contentW, 0};
-                child->layout(measureArea);
-                item.mainSize = child->bounds.w;
-            }
-            
-            if (cs.height.isSet()) {
-                item.crossSize = cs.height.resolve(contentH);
-            } else {
-                Rect measureArea = {contentX, contentY, item.mainSize, 0};
-                child->layout(measureArea);
-                item.crossSize = child->bounds.h;
-                if (!cs.height.isSet() && !clipsOverflow(cs) && child->contentHeight > item.crossSize) {
-                    item.crossSize = child->contentHeight;
+    if (s.flexWrap == FlexWrap::NoWrap) {
+        int visibleCount = 0;
+        float totalFlexGrow = 0;
+        float fixedSize = 0;
+        float measuredMainStack[64];
+        std::vector<float> measuredMainHeap;
+        float* measuredMain = measuredMainStack;
+        if (children.size() > 64) {
+            measuredMainHeap.resize(children.size(), 0.0f);
+            measuredMain = measuredMainHeap.data();
+        } else {
+            std::fill(measuredMainStack, measuredMainStack + children.size(), 0.0f);
+        }
+        if (!isRow) {
+            for (size_t i = 0; i < children.size(); i++) {
+                auto& child = children[i];
+                if (!child->visible) continue;
+                if (isDisplayNone(child.get())) continue;
+                if (isOutOfFlow(child.get())) continue;
+                visibleCount++;
+                auto& cs = child->computedStyle;
+                totalFlexGrow += cs.flexGrow;
+                float childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
+                if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
+                    measuredMain[i] = cs.flexBasis.resolve(contentH);
+                    fixedSize += measuredMain[i] + cs.margin.vertical();
+                } else if (cs.height.isSet()) {
+                    measuredMain[i] = cs.height.resolve(contentH);
+                    fixedSize += measuredMain[i] + cs.margin.vertical();
+                } else if (cs.flexGrow <= 0) {
+                    Rect measureArea = {contentX, contentY, childW, 0};
+                    child->layout(measureArea);
+                    measuredMain[i] = child->bounds.h;
+                    fixedSize += measuredMain[i] + cs.margin.vertical();
                 }
             }
-            items.push_back(item);
-        }
-    } else {
-        for (size_t i = 0; i < children.size(); i++) {
-            auto& child = children[i];
-            if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-            auto& cs = child->computedStyle;
-            
-            FlexItem item;
-            item.widget = child.get();
-            item.originalIndex = i;
-            item.flexGrow = cs.flexGrow;
-            item.flexShrink = cs.flexShrink;
-            item.mainMargin = cs.margin.vertical();
-            item.crossMargin = cs.margin.horizontal();
-            
-            if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
-                item.mainSize = cs.flexBasis.resolve(contentH);
-            } else if (cs.height.isSet()) {
-                item.mainSize = cs.height.resolve(contentH);
-            } else {
-                Rect measureArea = {contentX, contentY, contentW, 0};
-                child->layout(measureArea);
-                item.mainSize = child->bounds.h;
-                if (!cs.height.isSet() && !clipsOverflow(cs) && child->contentHeight > item.mainSize) {
-                    item.mainSize = child->contentHeight;
-                }
-            }
-            
-            if (cs.width.isSet()) {
-                item.crossSize = cs.width.resolve(contentW);
-            } else {
-                Rect measureArea = {contentX, contentY, contentW, item.mainSize};
-                child->layout(measureArea);
-                item.crossSize = child->bounds.w;
-            }
-            items.push_back(item);
-        }
-    }
-
-    if (items.empty()) {
-        contentHeight = s.padding.vertical();
-        if (!s.height.isSet()) {
-            bounds.h = std::max(bounds.h, contentHeight);
-        }
-        return;
-    }
-
-    struct FlexLine {
-        std::vector<FlexItem> items;
-        float mainSize = 0.0f;
-        float crossSize = 0.0f;
-        float totalGrow = 0.0f;
-        float totalShrink = 0.0f;
-    };
-    std::vector<FlexLine> lines;
-    float maxMainLimit = isRow ? contentW : contentH;
-
-    if (!isWrap) {
-        FlexLine line;
-        for (const auto& item : items) {
-            line.items.push_back(item);
-            line.mainSize += item.mainSize + item.mainMargin;
-            line.crossSize = std::max(line.crossSize, item.crossSize + item.crossMargin);
-            line.totalGrow += item.flexGrow;
-            line.totalShrink += item.flexShrink;
-        }
-        lines.push_back(line);
-    } else {
-        FlexLine currentLine;
-        float currentLineMainSum = 0.0f;
-        for (const auto& item : items) {
-            float itemOuterMain = item.mainSize + item.mainMargin;
-            float gap = currentLine.items.empty() ? 0.0f : mainGap;
-            if (!currentLine.items.empty() && currentLineMainSum + gap + itemOuterMain > maxMainLimit) {
-                lines.push_back(currentLine);
-                currentLine = FlexLine();
-                currentLineMainSum = 0.0f;
-                gap = 0.0f;
-            }
-            currentLine.items.push_back(item);
-            currentLineMainSum += gap + itemOuterMain;
-            currentLine.mainSize += item.mainSize + item.mainMargin;
-            currentLine.crossSize = std::max(currentLine.crossSize, item.crossSize + item.crossMargin);
-            currentLine.totalGrow += item.flexGrow;
-            currentLine.totalShrink += item.flexShrink;
-        }
-        if (!currentLine.items.empty()) {
-            lines.push_back(currentLine);
-        }
-    }
-
-    for (auto& line : lines) {
-        float lineMainLimit = isRow ? contentW : contentH;
-        float lineGapsSum = mainGap * std::max<int>(0, static_cast<int>(line.items.size()) - 1);
-        float lineItemsMainSum = 0.0f;
-        for (const auto& item : line.items) {
-            lineItemsMainSum += item.mainSize + item.mainMargin;
-        }
-        float remainingSpace = lineMainLimit - lineItemsMainSum - lineGapsSum;
-        if (remainingSpace > 0.0f && line.totalGrow > 0.0f) {
-            for (auto& item : line.items) {
-                if (item.flexGrow > 0.0f) {
-                    item.mainSize += remainingSpace * (item.flexGrow / line.totalGrow);
-                }
-            }
-        } else if (remainingSpace < 0.0f && line.totalShrink > 0.0f) {
-            float totalScaledShrink = 0.0f;
-            for (const auto& item : line.items) {
-                totalScaledShrink += item.mainSize * item.flexShrink;
-            }
-            if (totalScaledShrink > 0.0f) {
-                for (auto& item : line.items) {
-                    float shrinkAmount = remainingSpace * (item.mainSize * item.flexShrink) / totalScaledShrink;
-                    item.mainSize = std::max(0.0f, item.mainSize + shrinkAmount);
+        } else {
+            for (size_t i = 0; i < children.size(); i++) {
+                auto& child = children[i];
+                if (!child->visible) continue;
+                if (isDisplayNone(child.get())) continue;
+                if (isOutOfFlow(child.get())) continue;
+                visibleCount++;
+                auto& cs = child->computedStyle;
+                totalFlexGrow += cs.flexGrow;
+                if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
+                    measuredMain[i] = cs.flexBasis.resolve(contentW);
+                    fixedSize += measuredMain[i] + cs.margin.horizontal();
+                } else if (cs.width.isSet()) {
+                    measuredMain[i] = cs.width.resolve(contentW);
+                    fixedSize += measuredMain[i] + cs.margin.horizontal();
+                } else if (cs.flexGrow <= 0) {
+                    measuredMain[i] = 100;
+                    fixedSize += measuredMain[i] + cs.margin.horizontal();
                 }
             }
         }
-        line.mainSize = 0.0f;
-        line.crossSize = 0.0f;
-        for (const auto& item : line.items) {
-            line.mainSize += item.mainSize + item.mainMargin;
-            line.crossSize = std::max(line.crossSize, item.crossSize + item.crossMargin);
-        }
-    }
-
-    float containerCross = isRow ? contentH : contentW;
-    float linesCrossSum = 0.0f;
-    for (const auto& line : lines) {
-        linesCrossSum += line.crossSize;
-    }
-    float linesGapsSum = crossGap * std::max<int>(0, static_cast<int>(lines.size()) - 1);
-    float extraCrossSpace = containerCross - linesCrossSum - linesGapsSum;
-
-    float crossStartOffset = 0.0f;
-    float crossGapOffset = crossGap;
-    if (extraCrossSpace > 0.0f) {
-        switch (s.alignContent) {
-            case AlignContent::FlexStart:
-                break;
-            case AlignContent::FlexEnd:
-                crossStartOffset = extraCrossSpace;
-                break;
-            case AlignContent::Center:
-                crossStartOffset = extraCrossSpace / 2.0f;
-                break;
-            case AlignContent::SpaceBetween:
-                if (lines.size() > 1) {
-                    crossGapOffset += extraCrossSpace / (lines.size() - 1);
-                }
-                break;
-            case AlignContent::SpaceAround:
-                if (!lines.empty()) {
-                    float space = extraCrossSpace / lines.size();
-                    crossStartOffset = space / 2.0f;
-                    crossGapOffset += space;
-                }
-                break;
-            case AlignContent::SpaceEvenly:
-                if (!lines.empty()) {
-                    float space = extraCrossSpace / (lines.size() + 1);
-                    crossStartOffset = space;
-                    crossGapOffset += space;
-                }
-                break;
-            case AlignContent::Stretch:
-                if (!lines.empty()) {
-                    float stretchAmount = extraCrossSpace / lines.size();
-                    for (auto& line : lines) {
-                        line.crossSize += stretchAmount;
-                    }
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
-    if (isWrapReverse) {
-        std::reverse(lines.begin(), lines.end());
-    }
-
-    bool rtlRow = isRow && s.direction == Direction::Rtl;
-    float cumulativeLineCrossSize = 0.0f;
-
-    for (size_t lineIdx = 0; lineIdx < lines.size(); ++lineIdx) {
-        auto& line = lines[lineIdx];
-        float lineCrossStart = (isRow ? contentY : contentX) + crossStartOffset + cumulativeLineCrossSize + lineIdx * crossGapOffset;
-        cumulativeLineCrossSize += line.crossSize;
-
-        float containerMain = isRow ? contentW : contentH;
-        float lineGapsSum = mainGap * std::max<int>(0, static_cast<int>(line.items.size()) - 1);
-        float lineMainSizeWithGaps = line.mainSize + lineGapsSum;
-        float lineRemainingMain = containerMain - lineMainSizeWithGaps;
-
-        float lineMainStartOffset = 0.0f;
-        float lineMainGapOffset = mainGap;
-        if (lineRemainingMain > 0.0f) {
+        float totalGap = mainGap * std::max(0, visibleCount - 1);
+        float availableSpace = (isRow ? contentW : contentH) - fixedSize - totalGap;
+        availableSpace = std::max(0.0f, availableSpace);
+        float mainAxisAvailable = availableSpace;
+        if (totalFlexGrow > 0) mainAxisAvailable = 0;
+        float startOffset = 0;
+        float gapOffset = mainGap;
+        if (mainAxisAvailable > 0) {
             switch (s.justifyContent) {
                 case JustifyContent::FlexStart:
                     break;
                 case JustifyContent::FlexEnd:
-                    lineMainStartOffset = lineRemainingMain;
+                    startOffset = mainAxisAvailable;
                     break;
                 case JustifyContent::Center:
-                    lineMainStartOffset = lineRemainingMain / 2.0f;
+                    startOffset = mainAxisAvailable / 2.0f;
                     break;
                 case JustifyContent::SpaceBetween:
-                    if (line.items.size() > 1) {
-                        lineMainGapOffset += lineRemainingMain / (line.items.size() - 1);
+                    if (visibleCount > 1) {
+                        gapOffset += mainAxisAvailable / (visibleCount - 1);
+                        startOffset = 0;
                     }
                     break;
                 case JustifyContent::SpaceAround:
-                    if (!line.items.empty()) {
-                        float space = lineRemainingMain / line.items.size();
-                        lineMainStartOffset = space / 2.0f;
-                        lineMainGapOffset += space;
+                    if (visibleCount > 0) {
+                        float space = mainAxisAvailable / visibleCount;
+                        startOffset = space / 2.0f;
+                        gapOffset += space;
                     }
                     break;
                 case JustifyContent::SpaceEvenly:
-                    if (!line.items.empty()) {
-                        float space = lineRemainingMain / (line.items.size() + 1);
-                        lineMainStartOffset = space;
-                        lineMainGapOffset += space;
+                    if (visibleCount > 0) {
+                        float space = mainAxisAvailable / (visibleCount + 1);
+                        startOffset = space;
+                        gapOffset += space;
                     }
                     break;
             }
         }
-
-        float cursor = rtlRow
-            ? (contentX + contentW - lineMainStartOffset)
-            : ((isRow ? contentX : contentY) + lineMainStartOffset);
-
+        bool rtlRow = isRow && s.direction == Direction::Rtl;
+        float cursor;
+        if (rtlRow) {
+            cursor = contentX + contentW - startOffset;
+        } else {
+            cursor = (isRow ? contentX : contentY) + startOffset;
+        }
+        float maxCross = 0;
+        float contentEnd = cursor;
         int laidOut = 0;
-        int lineVisibleCount = static_cast<int>(line.items.size());
-
-        for (auto& item : line.items) {
-            auto* child = item.widget;
+        const bool parallelLayout = children.size() > 32;
+        std::vector<std::future<void>> futures;
+        if (parallelLayout) futures.reserve(children.size());
+        struct ChildLayoutTask {
+            Widget* widget;
+            Rect area;
+        };
+        std::vector<ChildLayoutTask> tasks;
+        if (parallelLayout) tasks.reserve(children.size());
+        for (size_t i = 0; i < children.size(); i++) {
+            auto& child = children[i];
+            if (!child->visible) continue;
+            if (isDisplayNone(child.get())) continue;
+            if (isOutOfFlow(child.get())) continue;
             auto& cs = child->computedStyle;
-            float nextGap = (++laidOut < lineVisibleCount) ? lineMainGapOffset : 0.0f;
-
-            AlignItems effectiveAlign = s.alignItems;
-            if (cs.alignSelf != AlignSelf::Auto) {
-                switch (cs.alignSelf) {
-                    case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
-                    case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
-                    case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
-                    case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
-                    case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
-                    default: break;
-                }
-            }
-
-            float itemCrossSize = item.crossSize;
-            if (effectiveAlign == AlignItems::Stretch && !cs.height.isSet() && isRow) {
-                itemCrossSize = line.crossSize - item.crossMargin;
-            } else if (effectiveAlign == AlignItems::Stretch && !cs.width.isSet() && !isRow) {
-                itemCrossSize = line.crossSize - item.crossMargin;
-            }
-
-            float crossMarginStart = isRow ? cs.margin.top : cs.margin.left;
-            float crossMarginEnd = isRow ? cs.margin.bottom : cs.margin.right;
-            float lineInnerCross = line.crossSize - (crossMarginStart + crossMarginEnd);
-            float itemCrossPos = lineCrossStart + crossMarginStart;
-
-            if (effectiveAlign == AlignItems::Center && lineInnerCross > itemCrossSize) {
-                itemCrossPos = lineCrossStart + crossMarginStart + (lineInnerCross - itemCrossSize) / 2.0f;
-            } else if (effectiveAlign == AlignItems::FlexEnd && lineInnerCross > itemCrossSize) {
-                itemCrossPos = lineCrossStart + crossMarginStart + (lineInnerCross - itemCrossSize);
-            }
-
-            Rect childArea;
+            float nextGap = (++laidOut < visibleCount) ? gapOffset : 0.0f;
+            float childW, childH;
             if (isRow) {
-                if (rtlRow) {
-                    childArea = { cursor - item.mainSize - cs.margin.right, itemCrossPos,
-                                 std::max(0.0f, item.mainSize), std::max(0.0f, itemCrossSize) };
-                    cursor -= item.mainSize + cs.margin.horizontal() + nextGap;
+                if (cs.flexGrow > 0 && totalFlexGrow > 0) {
+                    childW = measuredMain[i] + availableSpace * (cs.flexGrow / totalFlexGrow);
                 } else {
-                    childArea = { cursor + cs.margin.left, itemCrossPos,
-                                 std::max(0.0f, item.mainSize), std::max(0.0f, itemCrossSize) };
-                    cursor += item.mainSize + cs.margin.horizontal() + nextGap;
+                    childW = measuredMain[i];
                 }
+                childH = cs.height.isSet() ? cs.height.resolve(contentH) : contentH;
+                if (childH <= 0 && !cs.height.isSet()) childH = 0;
+                AlignItems effectiveAlign = s.alignItems;
+                if (cs.alignSelf != AlignSelf::Auto) {
+                    switch (cs.alignSelf) {
+                        case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
+                        case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
+                        case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
+                        case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
+                        case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
+                        default: break;
+                    }
+                }
+                float cy = contentY;
+                if (effectiveAlign == AlignItems::Center && contentH > childH) {
+                    cy = contentY + (contentH - childH) / 2;
+                } else if (effectiveAlign == AlignItems::FlexEnd && contentH > childH) {
+                    cy = contentY + contentH - childH;
+                }
+                Rect childArea;
+                if (rtlRow) {
+                    childArea = {cursor - childW - cs.margin.right, cy + cs.margin.top,
+                                 std::max(0.0f, childW), std::max(0.0f, childH)};
+                } else {
+                    childArea = {cursor + cs.margin.left, cy + cs.margin.top,
+                                 std::max(0.0f, childW), std::max(0.0f, childH)};
+                }
+                if (parallelLayout) {
+                    tasks.push_back({child.get(), childArea});
+                    if (rtlRow)
+                        cursor -= childW + cs.margin.horizontal() + nextGap;
+                    else
+                        cursor += childW + cs.margin.horizontal() + nextGap;
+                } else {
+                    child->layout(childArea);
+                    if (!cs.height.isSet() && !clipsOverflow(cs) &&
+                        child->contentHeight > child->bounds.h) {
+                        child->bounds.h = child->contentHeight;
+                    }
+                    if (rtlRow)
+                        cursor -= child->bounds.w + cs.margin.horizontal() + nextGap;
+                    else
+                        cursor += child->bounds.w + cs.margin.horizontal() + nextGap;
+                    maxCross = std::max(maxCross, child->bounds.h + cs.margin.vertical());
+                }
+                contentEnd = rtlRow ? std::min(contentEnd, cursor + nextGap)
+                                    : std::max(contentEnd, cursor - nextGap);
             } else {
-                childArea = { itemCrossPos, cursor + cs.margin.top,
-                             std::max(0.0f, itemCrossSize), std::max(0.0f, item.mainSize) };
-                cursor += item.mainSize + cs.margin.vertical() + nextGap;
+                childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
+                if (cs.flexGrow > 0 && totalFlexGrow > 0) {
+                    childH = measuredMain[i] + availableSpace * (cs.flexGrow / totalFlexGrow);
+                } else {
+                    childH = measuredMain[i];
+                }
+                AlignItems effectiveAlign = s.alignItems;
+                if (cs.alignSelf != AlignSelf::Auto) {
+                    switch (cs.alignSelf) {
+                        case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
+                        case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
+                        case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
+                        case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
+                        case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
+                        default: break;
+                    }
+                }
+                float cx = contentX;
+                if (effectiveAlign == AlignItems::Center && contentW > childW) {
+                    cx = contentX + (contentW - childW) / 2;
+                } else if (effectiveAlign == AlignItems::FlexEnd && contentW > childW) {
+                    cx = contentX + contentW - childW;
+                }
+                Rect childArea = {cx + cs.margin.left, cursor + cs.margin.top,
+                                  std::max(0.0f, childW), std::max(0.0f, childH)};
+                if (parallelLayout) {
+                    tasks.push_back({child.get(), childArea});
+                    cursor += childH + cs.margin.vertical() + nextGap;
+                } else {
+                    child->layout(childArea);
+                    cursor += child->bounds.h + cs.margin.vertical() + nextGap;
+                    maxCross = std::max(maxCross, child->bounds.w + cs.margin.horizontal());
+                }
+                contentEnd = cursor;
             }
+        }
+        if (parallelLayout) {
+            for (auto& task : tasks) {
+                futures.push_back(getLayoutThreadPool().enqueue([task]() {
+                    task.widget->layout(task.area);
+                    if (!task.widget->computedStyle.height.isSet() &&
+                        !clipsOverflow(task.widget->computedStyle) &&
+                        task.widget->contentHeight > task.widget->bounds.h) {
+                        task.widget->bounds.h = task.widget->contentHeight;
+                    }
+                }));
+            }
+            for (auto& f : futures) f.get();
+            for (auto& child : children) {
+                if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
+                maxCross = std::max(maxCross, (isRow ? child->bounds.h : child->bounds.w) +
+                                              (isRow ? child->computedStyle.margin.vertical() : child->computedStyle.margin.horizontal()));
+            }
+        }
+        if (!s.height.isSet() && !isRow && bounds.h <= s.padding.vertical()) {
+            bounds.h = (contentEnd - contentY) + s.padding.vertical();
+        }
+        if (!s.height.isSet() && isRow && bounds.h <= s.padding.vertical() && !children.empty()) {
+            bounds.h = maxCross + s.padding.vertical();
+        }
+        contentHeight = isRow ?
+            maxCross + s.padding.vertical() :
+            std::max(0.0f, contentEnd - bounds.y + s.padding.bottom);
+        if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s)) {
+            bounds.h = std::max(bounds.h, contentHeight);
+        }
+    } else {
+        float crossGap = isRow
+            ? (s.rowGap > 0.0f ? s.rowGap : s.gap)
+            : (s.columnGap > 0.0f ? s.columnGap : s.gap);
 
-            child->layout(childArea);
-            if (isRow) {
-                if (!cs.height.isSet() && !clipsOverflow(cs) && child->contentHeight > child->bounds.h) {
-                    child->bounds.h = child->contentHeight;
+        struct FlexItem {
+            Widget* widget;
+            float mainSize = 0.0f;
+            float crossSize = 0.0f;
+            float flexGrow = 0.0f;
+            float flexShrink = 0.0f;
+            float mainMargin = 0.0f;
+            float crossMargin = 0.0f;
+        };
+        std::vector<FlexItem> items;
+        items.reserve(children.size());
+
+        if (isRow) {
+            for (auto& child : children) {
+                if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
+                auto& cs = child->computedStyle;
+                FlexItem item;
+                item.widget = child.get();
+                item.flexGrow = cs.flexGrow;
+                item.flexShrink = cs.flexShrink;
+                item.mainMargin = cs.margin.horizontal();
+                item.crossMargin = cs.margin.vertical();
+                if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
+                    item.mainSize = cs.flexBasis.resolve(contentW);
+                } else if (cs.width.isSet()) {
+                    item.mainSize = cs.width.resolve(contentW);
+                } else if (cs.flexGrow <= 0) {
+                    item.mainSize = 100.0f;
+                }
+                if (cs.height.isSet()) {
+                    item.crossSize = cs.height.resolve(contentH);
+                } else {
+                    child->layout({contentX, contentY, item.mainSize, 0});
+                    item.crossSize = child->bounds.h;
+                }
+                items.push_back(item);
+            }
+        } else {
+            for (auto& child : children) {
+                if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
+                auto& cs = child->computedStyle;
+                FlexItem item;
+                item.widget = child.get();
+                item.flexGrow = cs.flexGrow;
+                item.flexShrink = cs.flexShrink;
+                item.mainMargin = cs.margin.vertical();
+                item.crossMargin = cs.margin.horizontal();
+                float childW = cs.width.isSet() ? cs.width.resolve(contentW) : contentW;
+                if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
+                    item.mainSize = cs.flexBasis.resolve(contentH);
+                } else if (cs.height.isSet()) {
+                    item.mainSize = cs.height.resolve(contentH);
+                } else if (cs.flexGrow <= 0) {
+                    child->layout({contentX, contentY, childW, 0});
+                    item.mainSize = child->bounds.h;
+                }
+                item.crossSize = childW;
+                items.push_back(item);
+            }
+        }
+
+        struct FlexLine {
+            std::vector<FlexItem> items;
+            float mainSize = 0.0f;
+            float crossSize = 0.0f;
+            float totalFlexGrow = 0.0f;
+            float fixedSize = 0.0f;
+        };
+        std::vector<FlexLine> lines;
+        if (!items.empty()) {
+            FlexLine currentLine;
+            float currentLineMain = 0.0f;
+            float maxLineLimit = isRow ? contentW : contentH;
+
+            for (const auto& item : items) {
+                float itemMainOuter = item.mainSize + item.mainMargin;
+                float gapValue = currentLine.items.empty() ? 0.0f : mainGap;
+                if (!currentLine.items.empty() && currentLineMain + gapValue + itemMainOuter > maxLineLimit) {
+                    lines.push_back(currentLine);
+                    currentLine = FlexLine();
+                    currentLineMain = 0.0f;
+                    gapValue = 0.0f;
+                }
+                currentLine.items.push_back(item);
+                currentLine.totalFlexGrow += item.flexGrow;
+                currentLine.fixedSize += item.mainSize + item.mainMargin;
+                currentLine.crossSize = std::max(currentLine.crossSize, item.crossSize + item.crossMargin);
+                currentLineMain += gapValue + itemMainOuter;
+                currentLine.mainSize = currentLineMain - item.mainMargin;
+            }
+            if (!currentLine.items.empty()) {
+                lines.push_back(currentLine);
+            }
+        }
+
+        if (s.flexWrap == FlexWrap::WrapReverse) {
+            std::reverse(lines.begin(), lines.end());
+        }
+
+        float lineCrossStart = isRow ? contentY : contentX;
+        float containerMainLimit = isRow ? contentW : contentH;
+
+        for (auto& line : lines) {
+            int lineVisibleCount = static_cast<int>(line.items.size());
+            float lineGapTotal = mainGap * std::max(0, lineVisibleCount - 1);
+            float availableSpace = containerMainLimit - line.fixedSize - lineGapTotal;
+            availableSpace = std::max(0.0f, availableSpace);
+
+            float mainAxisAvailable = availableSpace;
+            if (line.totalFlexGrow > 0) mainAxisAvailable = 0;
+            float startOffset = 0;
+            float gapOffset = mainGap;
+            if (mainAxisAvailable > 0) {
+                switch (s.justifyContent) {
+                    case JustifyContent::FlexStart: break;
+                    case JustifyContent::FlexEnd: startOffset = mainAxisAvailable; break;
+                    case JustifyContent::Center: startOffset = mainAxisAvailable / 2.0f; break;
+                    case JustifyContent::SpaceBetween:
+                        if (lineVisibleCount > 1) {
+                            gapOffset += mainAxisAvailable / (lineVisibleCount - 1);
+                            startOffset = 0;
+                        }
+                        break;
+                    case JustifyContent::SpaceAround:
+                        if (lineVisibleCount > 0) {
+                            float space = mainAxisAvailable / lineVisibleCount;
+                            startOffset = space / 2.0f;
+                            gapOffset += space;
+                        }
+                        break;
+                    case JustifyContent::SpaceEvenly:
+                        if (lineVisibleCount > 0) {
+                            float space = mainAxisAvailable / (lineVisibleCount + 1);
+                            startOffset = space;
+                            gapOffset += space;
+                        }
+                        break;
                 }
             }
-        }
-    }
 
-    float totalLinesCrossSize = cumulativeLineCrossSize + linesGapsSum;
-    if (isRow) {
-        contentHeight = totalLinesCrossSize + s.padding.vertical();
-    } else {
-        float maxLineMain = 0.0f;
-        for (const auto& line : lines) {
-            float lineGapsSum = mainGap * std::max<int>(0, static_cast<int>(line.items.size()) - 1);
-            maxLineMain = std::max(maxLineMain, line.mainSize + lineGapsSum);
-        }
-        contentHeight = maxLineMain + s.padding.vertical();
-    }
+            bool rtlRow = isRow && s.direction == Direction::Rtl;
+            float cursor = rtlRow
+                ? (contentX + contentW - startOffset)
+                : ((isRow ? contentX : contentY) + startOffset);
 
-    if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s)) {
-        bounds.h = std::max(bounds.h, contentHeight);
+            int laidOut = 0;
+            for (auto& item : line.items) {
+                auto* child = item.widget;
+                auto& cs = child->computedStyle;
+                float nextGap = (++laidOut < lineVisibleCount) ? gapOffset : 0.0f;
+
+                AlignItems effectiveAlign = s.alignItems;
+                if (cs.alignSelf != AlignSelf::Auto) {
+                    switch (cs.alignSelf) {
+                        case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
+                        case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
+                        case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
+                        case AlignSelf::Stretch: effectiveAlign = AlignItems::Stretch; break;
+                        case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
+                        default: break;
+                    }
+                }
+
+                float childW, childH;
+                if (isRow) {
+                    if (item.flexGrow > 0 && line.totalFlexGrow > 0) {
+                        childW = item.mainSize + availableSpace * (item.flexGrow / line.totalFlexGrow);
+                    } else {
+                        childW = item.mainSize;
+                    }
+                    childH = cs.height.isSet() ? cs.height.resolve(contentH) : line.crossSize - cs.margin.vertical();
+                    if (childH <= 0 && !cs.height.isSet()) childH = 0;
+
+                    float cy = lineCrossStart;
+                    float crossLimit = line.crossSize - cs.margin.vertical();
+                    if (effectiveAlign == AlignItems::Center && crossLimit > childH) {
+                        cy = lineCrossStart + (crossLimit - childH) / 2;
+                    } else if (effectiveAlign == AlignItems::FlexEnd && crossLimit > childH) {
+                        cy = lineCrossStart + crossLimit - childH;
+                    }
+
+                    Rect childArea;
+                    if (rtlRow) {
+                        childArea = {cursor - childW - cs.margin.right, cy + cs.margin.top,
+                                     std::max(0.0f, childW), std::max(0.0f, childH)};
+                        cursor -= childW + cs.margin.horizontal() + nextGap;
+                    } else {
+                        childArea = {cursor + cs.margin.left, cy + cs.margin.top,
+                                     std::max(0.0f, childW), std::max(0.0f, childH)};
+                        cursor += childW + cs.margin.horizontal() + nextGap;
+                    }
+                    child->layout(childArea);
+                    if (!cs.height.isSet() && !clipsOverflow(cs) && child->contentHeight > child->bounds.h) {
+                        child->bounds.h = child->contentHeight;
+                    }
+                } else {
+                    childW = cs.width.isSet() ? cs.width.resolve(contentW) : line.crossSize - cs.margin.horizontal();
+                    if (item.flexGrow > 0 && line.totalFlexGrow > 0) {
+                        childH = item.mainSize + availableSpace * (item.flexGrow / line.totalFlexGrow);
+                    } else {
+                        childH = item.mainSize;
+                    }
+
+                    float cx = lineCrossStart;
+                    float crossLimit = line.crossSize - cs.margin.horizontal();
+                    if (effectiveAlign == AlignItems::Center && crossLimit > childW) {
+                        cx = lineCrossStart + (crossLimit - childW) / 2;
+                    } else if (effectiveAlign == AlignItems::FlexEnd && crossLimit > childW) {
+                        cx = lineCrossStart + crossLimit - childW;
+                    }
+
+                    Rect childArea = {cx + cs.margin.left, cursor + cs.margin.top,
+                                      std::max(0.0f, childW), std::max(0.0f, childH)};
+                    child->layout(childArea);
+                    cursor += childH + cs.margin.vertical() + nextGap;
+                }
+            }
+            lineCrossStart += line.crossSize + crossGap;
+        }
+
+        if (isRow) {
+            contentHeight = (lineCrossStart - contentY) + s.padding.vertical();
+            if (!lines.empty()) {
+                contentHeight -= crossGap;
+            }
+        } else {
+            float maxLineMain = 0.0f;
+            for (const auto& line : lines) {
+                float lineGapsSum = mainGap * std::max<int>(0, static_cast<int>(line.items.size()) - 1);
+                maxLineMain = std::max(maxLineMain, line.mainSize + lineGapsSum);
+            }
+            contentHeight = maxLineMain + s.padding.vertical();
+        }
+
+        if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s)) {
+            bounds.h = std::max(bounds.h, contentHeight);
+        }
     }
 }
 void Widget::layoutPositionedChildren() {
