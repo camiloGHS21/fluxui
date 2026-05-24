@@ -464,7 +464,28 @@ static bool matchCompoundSelector(const std::string& compound,
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) i++;
             std::string pseudoName = lowerAscii(s.substr(nameStart, i - nameStart));
             if (i >= s.size() || s[i] != '(') {
-                if (!selectorPseudoMatches(pseudoName, type)) return false;
+                if (pseudoName == "first-child") {
+                    if (!widget || getSiblingIndex(widget, false, false) != 1) return false;
+                } else if (pseudoName == "last-child") {
+                    if (!widget || getSiblingIndex(widget, false, true) != 1) return false;
+                } else if (pseudoName == "only-child") {
+                    if (!widget || getSiblingIndex(widget, false, false) != 1 || getSiblingIndex(widget, false, true) != 1) return false;
+                } else if (pseudoName == "first-of-type") {
+                    if (!widget || getSiblingIndex(widget, true, false) != 1) return false;
+                } else if (pseudoName == "last-of-type") {
+                    if (!widget || getSiblingIndex(widget, true, true) != 1) return false;
+                } else if (pseudoName == "only-of-type") {
+                    if (!widget || getSiblingIndex(widget, true, false) != 1 || getSiblingIndex(widget, true, true) != 1) return false;
+                } else if (pseudoName == "empty") {
+                    if (!widget) return false;
+                    bool hasChild = false;
+                    for (const auto& child : widget->children) {
+                        if (child) { hasChild = true; break; }
+                    }
+                    if (hasChild) return false;
+                } else {
+                    if (!selectorPseudoMatches(pseudoName, type)) return false;
+                }
                 hasAnySelector = true;
                 continue;
             }
@@ -813,37 +834,116 @@ bool StyleSheet::selectorMatches(const CSSRule& rule,
     int last = (int)rule.parts.size() - 1;
     if (!matchCompoundSelector(rule.parts[(size_t)last], className, id, type, widget)) return false;
 
-    size_t ancestorCursor = 0;
-    for (int i = last - 1; i >= 0; --i) {
-        char combinator = rule.combinators[(size_t)i];
-        if (combinator == '>') {
-            if (ancestorCursor >= ancestors.size()) return false;
-            const auto& ancestor = ancestors[ancestorCursor];
-            if (!matchCompoundSelector(rule.parts[(size_t)i],
-                                       ancestor.className,
-                                       ancestor.id,
-                                       ancestor.type,
-                                       ancestor.widget)) {
+    if (widget) {
+        const Widget* current = widget;
+        for (int i = last - 1; i >= 0; --i) {
+            char combinator = rule.combinators[(size_t)i];
+            if (combinator == '>') {
+                current = current->parent;
+                if (!current) return false;
+                if (!matchCompoundSelector(rule.parts[(size_t)i],
+                                           current->className,
+                                           current->id,
+                                           current->selectorType(),
+                                           current)) {
+                    return false;
+                }
+            } else if (combinator == ' ') {
+                bool found = false;
+                current = current->parent;
+                while (current) {
+                    if (matchCompoundSelector(rule.parts[(size_t)i],
+                                              current->className,
+                                              current->id,
+                                              current->selectorType(),
+                                              current)) {
+                        found = true;
+                        break;
+                    }
+                    current = current->parent;
+                }
+                if (!found) return false;
+            } else if (combinator == '+') {
+                if (!current || !current->parent) return false;
+                const auto& siblings = current->parent->children;
+                const Widget* prev = nullptr;
+                for (const auto& child : siblings) {
+                    if (child.get() == current) break;
+                    if (child) prev = child.get();
+                }
+                if (!prev) return false;
+                current = prev;
+                if (!matchCompoundSelector(rule.parts[(size_t)i],
+                                           current->className,
+                                           current->id,
+                                           current->selectorType(),
+                                           current)) {
+                    return false;
+                }
+            } else if (combinator == '~') {
+                if (!current || !current->parent) return false;
+                const auto& siblings = current->parent->children;
+                size_t idx = 0;
+                bool foundIdx = false;
+                for (size_t k = 0; k < siblings.size(); ++k) {
+                    if (siblings[k].get() == current) {
+                        idx = k;
+                        foundIdx = true;
+                        break;
+                    }
+                }
+                if (!foundIdx) return false;
+                bool found = false;
+                for (int k = (int)idx - 1; k >= 0; --k) {
+                    const Widget* sibling = siblings[(size_t)k].get();
+                    if (sibling && matchCompoundSelector(rule.parts[(size_t)i],
+                                                         sibling->className,
+                                                         sibling->id,
+                                                         sibling->selectorType(),
+                                                         sibling)) {
+                        current = sibling;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+        }
+    } else {
+        size_t ancestorCursor = 0;
+        for (int i = last - 1; i >= 0; --i) {
+            char combinator = rule.combinators[(size_t)i];
+            if (combinator == '>') {
+                if (ancestorCursor >= ancestors.size()) return false;
+                const auto& ancestor = ancestors[ancestorCursor];
+                if (!matchCompoundSelector(rule.parts[(size_t)i],
+                                           ancestor.className,
+                                           ancestor.id,
+                                           ancestor.type,
+                                           ancestor.widget)) {
+                    return false;
+                }
+                ancestorCursor++;
+                continue;
+            } else if (combinator == ' ') {
+                bool found = false;
+                while (ancestorCursor < ancestors.size()) {
+                    const auto& ancestor = ancestors[ancestorCursor];
+                    ancestorCursor++;
+                    if (matchCompoundSelector(rule.parts[(size_t)i],
+                                              ancestor.className,
+                                              ancestor.id,
+                                              ancestor.type,
+                                              ancestor.widget)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            } else {
                 return false;
             }
-            ancestorCursor++;
-            continue;
         }
-
-        bool found = false;
-        while (ancestorCursor < ancestors.size()) {
-            const auto& ancestor = ancestors[ancestorCursor];
-            ancestorCursor++;
-            if (matchCompoundSelector(rule.parts[(size_t)i],
-                                      ancestor.className,
-                                      ancestor.id,
-                                      ancestor.type,
-                                      ancestor.widget)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) return false;
     }
 
     return true;
