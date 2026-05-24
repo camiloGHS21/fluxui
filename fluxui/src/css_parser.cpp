@@ -1203,6 +1203,7 @@ void StyleSheet::parse(const std::string& css) {
     }
 
     parseRules(cleaned, "");
+    buildInvalidationSets();
 }
 
 void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuery) {
@@ -1436,7 +1437,7 @@ struct CascadedProperty {
     bool important = false;
 };
 
-static uint64_t computeInheritedHash(const Style& style) {
+uint64_t StyleSheet::computeInheritedHash(const Style& style) {
     uint64_t hash = 14695981039346656037ULL;
 
     auto hashBytes = [&hash](const void* data, size_t size) {
@@ -2232,7 +2233,20 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         if (t == "ol") {
             style.listStyleType = ListStyleType::Decimal;
         } else {
-            style.listStyleType = ListStyleType::Disc;
+            int listDepth = 0;
+            for (const auto& ancestor : ancestors) {
+                std::string aType = lowerAscii(std::string(selectorBaseType(ancestor.type)));
+                if (aType == "ul" || aType == "ol") {
+                    listDepth++;
+                }
+            }
+            if (listDepth == 0) {
+                style.listStyleType = ListStyleType::Disc;
+            } else if (listDepth == 1) {
+                style.listStyleType = ListStyleType::Circle;
+            } else {
+                style.listStyleType = ListStyleType::Square;
+            }
         }
         style.hasListStyleType = true;
     } else if (t == "li") {
@@ -4225,6 +4239,124 @@ void StyleSheet::parseFontFace(const std::string& body) {
     if (!fontFamily.empty() && !src.empty()) {
         fontFaces.push_back({fontFamily, src});
     }
+}
+
+static void extractSelectorFeatures(const std::string& part,
+                                    std::vector<std::string>& classes,
+                                    std::vector<std::string>& ids,
+                                    std::vector<std::string>& types) {
+    size_t i = 0;
+    if (i < part.size() && part[i] != '.' && part[i] != '#' && part[i] != '[' && part[i] != ':') {
+        std::string type;
+        while (i < part.size() && part[i] != '.' && part[i] != '#' && part[i] != '[' && part[i] != ':') {
+            type += part[i];
+            i++;
+        }
+        if (!type.empty() && type != "*") {
+            types.push_back(type);
+        }
+    }
+    
+    while (i < part.size()) {
+        if (part[i] == '.') {
+            i++;
+            std::string cls;
+            while (i < part.size() && part[i] != '.' && part[i] != '#' && part[i] != '[' && part[i] != ':') {
+                cls += part[i];
+                i++;
+            }
+            if (!cls.empty()) classes.push_back(cls);
+        } else if (part[i] == '#') {
+            i++;
+            std::string id;
+            while (i < part.size() && part[i] != '.' && part[i] != '#' && part[i] != '[' && part[i] != ':') {
+                id += part[i];
+                i++;
+            }
+            if (!id.empty()) ids.push_back(id);
+        } else if (part[i] == '[') {
+            while (i < part.size() && part[i] != ']') {
+                i++;
+            }
+            if (i < part.size()) i++;
+        } else {
+            i++;
+        }
+    }
+}
+
+void StyleSheet::buildInvalidationSets() {
+    classInvalidationSets_.clear();
+    idInvalidationSets_.clear();
+    typeInvalidationSets_.clear();
+    
+    for (const auto& rule : rules) {
+        if (rule.parts.size() <= 1) continue;
+        
+        size_t K = rule.parts.size() - 1;
+        for (size_t i = 0; i < K; ++i) {
+            std::vector<std::string> srcClasses, srcIds, srcTypes;
+            extractSelectorFeatures(rule.parts[i], srcClasses, srcIds, srcTypes);
+            
+            for (size_t j = i + 1; j <= K; ++j) {
+                bool isDescendant = false;
+                for (size_t c = i; c < j; ++c) {
+                    if (rule.combinators[c] == ' ' || rule.combinators[c] == '>') {
+                        isDescendant = true;
+                        break;
+                    }
+                }
+                
+                std::vector<std::string> tgtClasses, tgtIds, tgtTypes;
+                extractSelectorFeatures(rule.parts[j], tgtClasses, tgtIds, tgtTypes);
+                
+                if (tgtClasses.empty() && tgtIds.empty() && tgtTypes.empty()) {
+                    auto addAllToInvalidationSet = [&](InvalidationSet& set) {
+                        if (isDescendant) {
+                            set.invalidateAllDescendants = true;
+                        } else {
+                            set.invalidateAllSiblings = true;
+                        }
+                    };
+                    for (const auto& c : srcClasses) addAllToInvalidationSet(classInvalidationSets_[c]);
+                    for (const auto& idVal : srcIds) addAllToInvalidationSet(idInvalidationSets_[idVal]);
+                    for (const auto& t : srcTypes) addAllToInvalidationSet(typeInvalidationSets_[t]);
+                } else {
+                    auto addToInvalidationSet = [&](InvalidationSet& set) {
+                        if (isDescendant) {
+                            for (const auto& c : tgtClasses) set.descendantClasses.insert(c);
+                            for (const auto& idVal : tgtIds) set.descendantIds.insert(idVal);
+                            for (const auto& t : tgtTypes) set.descendantTypes.insert(t);
+                        } else {
+                            for (const auto& c : tgtClasses) set.siblingClasses.insert(c);
+                            for (const auto& idVal : tgtIds) set.siblingIds.insert(idVal);
+                            for (const auto& t : tgtTypes) set.siblingTypes.insert(t);
+                        }
+                    };
+                    
+                    for (const auto& c : srcClasses) addToInvalidationSet(classInvalidationSets_[c]);
+                    for (const auto& idVal : srcIds) addToInvalidationSet(idInvalidationSets_[idVal]);
+                    for (const auto& t : srcTypes) addToInvalidationSet(typeInvalidationSets_[t]);
+                }
+            }
+        }
+    }
+}
+
+const StyleSheet::InvalidationSet* StyleSheet::getClassInvalidationSet(const std::string& className) const {
+    auto it = classInvalidationSets_.find(className);
+    if (it != classInvalidationSets_.end()) {
+        return &it->second;
+    }
+    return nullptr;
+}
+
+const StyleSheet::InvalidationSet* StyleSheet::getIdInvalidationSet(const std::string& id) const {
+    auto it = idInvalidationSets_.find(id);
+    if (it != idInvalidationSets_.end()) {
+        return &it->second;
+    }
+    return nullptr;
 }
 
 } // namespace FluxUI

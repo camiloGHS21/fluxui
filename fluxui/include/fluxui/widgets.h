@@ -252,6 +252,8 @@ public:
     void markStyleDirty();
     void markStyleDirtyRecursive();
     void markSubtreeStyleDirty();
+    void invalidateStyleOnClassListChange(const std::string& oldClassName, const std::string& newClassName);
+    void invalidateStyleOnIdChange(const std::string& oldId, const std::string& newId);
     virtual void layout(const Rect& parentBounds);
     void translateLayout(float dx, float dy);
     bool hasActiveAnimations() const;
@@ -962,13 +964,15 @@ inline Widget* Widget::br(const std::string& cls) {
     return add<Br>(cls);
 }
 inline Widget* Widget::setId(const std::string& value) {
+    std::string oldId = id;
     id = value;
-    markStyleDirtyRecursive();
+    invalidateStyleOnIdChange(oldId, id);
     return this;
 }
 inline Widget* Widget::classes(const std::string& value) {
+    std::string oldClassName = className;
     className = value;
-    markStyleDirtyRecursive();
+    invalidateStyleOnClassListChange(oldClassName, className);
     return this;
 }
 inline Widget* Widget::addClass(const std::string& value) {
@@ -978,9 +982,10 @@ inline Widget* Widget::addClass(const std::string& value) {
     while (stream >> cls) {
         if (cls == value) return this;
     }
+    std::string oldClassName = className;
     if (!className.empty()) className += ' ';
     className += value;
-    markStyleDirtyRecursive();
+    invalidateStyleOnClassListChange(oldClassName, className);
     return this;
 }
 inline Widget* Widget::removeClass(const std::string& value) {
@@ -994,8 +999,9 @@ inline Widget* Widget::removeClass(const std::string& value) {
         updated += next;
     }
     if (updated != className) {
+        std::string oldClassName = className;
         className = std::move(updated);
-        markStyleDirtyRecursive();
+        invalidateStyleOnClassListChange(oldClassName, className);
     }
     return this;
 }

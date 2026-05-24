@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <sstream>
 #include <fstream>
 
@@ -158,6 +159,7 @@ public:
                              bool* valid = nullptr) const;
 
     // Merge a resolved style onto a base style
+    static uint64_t computeInheritedHash(const Style& style);
     static void mergeProperty(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static bool mergePropertyPart1(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static void mergePropertyPart2(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
@@ -171,7 +173,26 @@ public:
                                 std::string_view* pseudo = nullptr,
                                 const Widget* widget = nullptr);
 
+    struct InvalidationSet {
+        bool invalidateAllDescendants = false;
+        bool invalidateAllSiblings = false;
+        std::unordered_set<std::string> descendantClasses;
+        std::unordered_set<std::string> descendantIds;
+        std::unordered_set<std::string> descendantTypes;
+
+        std::unordered_set<std::string> siblingClasses;
+        std::unordered_set<std::string> siblingIds;
+        std::unordered_set<std::string> siblingTypes;
+    };
+
+    const InvalidationSet* getClassInvalidationSet(const std::string& className) const;
+    const InvalidationSet* getIdInvalidationSet(const std::string& id) const;
+    void buildInvalidationSets();
+
 private:
+    std::unordered_map<std::string, InvalidationSet> classInvalidationSets_;
+    std::unordered_map<std::string, InvalidationSet> idInvalidationSets_;
+    std::unordered_map<std::string, InvalidationSet> typeInvalidationSets_;
     std::unordered_map<std::string, std::string> variables_;
     struct StyleCacheEntry {
         StyleCacheKey key;

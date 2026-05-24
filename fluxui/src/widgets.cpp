@@ -1,4 +1,5 @@
 #include "fluxui/widgets.h"
+#include <unordered_set>
 #include <iostream>
 #include <algorithm>
 #include <chrono>
@@ -844,6 +845,253 @@ void Widget::markStyleDirtyRecursive() {
     }
     if (parent) parent->markSubtreeStyleDirty();
 }
+
+void Widget::invalidateStyleOnClassListChange(const std::string& oldClassName, const std::string& newClassName) {
+    styleDirty = true;
+    markSubtreeStyleDirty();
+    
+    const StyleSheet* sheet = nullptr;
+    if (auto* app = Application::instance()) {
+        sheet = &app->stylesheet();
+    }
+    if (!sheet) {
+        markStyleDirtyRecursive();
+        return;
+    }
+    
+    auto splitClasses = [](const std::string& s, std::unordered_set<std::string>& out) {
+        std::istringstream stream(s);
+        std::string cls;
+        while (stream >> cls) {
+            out.insert(cls);
+        }
+    };
+    
+    std::unordered_set<std::string> oldSet, newSet;
+    splitClasses(oldClassName, oldSet);
+    splitClasses(newClassName, newSet);
+    
+    std::vector<std::string> changedClasses;
+    for (const auto& c : oldSet) {
+        if (newSet.find(c) == newSet.end()) {
+            changedClasses.push_back(c);
+        }
+    }
+    for (const auto& c : newSet) {
+        if (oldSet.find(c) == oldSet.end()) {
+            changedClasses.push_back(c);
+        }
+    }
+    
+    if (changedClasses.empty()) return;
+    
+    for (const auto& c : changedClasses) {
+        const auto* invalidationSet = sheet->getClassInvalidationSet(c);
+        if (!invalidationSet) continue;
+        
+        if (invalidationSet->invalidateAllDescendants) {
+            markStyleDirtyRecursive();
+        } else if (!invalidationSet->descendantClasses.empty() ||
+                   !invalidationSet->descendantIds.empty() ||
+                   !invalidationSet->descendantTypes.empty()) {
+            
+            std::function<void(Widget*)> invalidateDescendants = [&](Widget* w) {
+                for (auto& child : w->children) {
+                    bool match = false;
+                    
+                    if (!invalidationSet->descendantClasses.empty() && !child->className.empty()) {
+                        std::istringstream stream(child->className);
+                        std::string cc;
+                        while (stream >> cc) {
+                            if (invalidationSet->descendantClasses.find(cc) != invalidationSet->descendantClasses.end()) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->descendantIds.empty()) {
+                        if (invalidationSet->descendantIds.find(child->id) != invalidationSet->descendantIds.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->descendantTypes.empty()) {
+                        if (invalidationSet->descendantTypes.find(child->type) != invalidationSet->descendantTypes.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (match) {
+                        child->styleDirty = true;
+                        child->markSubtreeStyleDirty();
+                    }
+                    
+                    invalidateDescendants(child.get());
+                }
+            };
+            invalidateDescendants(this);
+        }
+        
+        if (parent) {
+            if (invalidationSet->invalidateAllSiblings) {
+                for (auto& sibling : parent->children) {
+                    if (sibling.get() != this) {
+                        sibling->markStyleDirtyRecursive();
+                    }
+                }
+            } else if (!invalidationSet->siblingClasses.empty() ||
+                       !invalidationSet->siblingIds.empty() ||
+                       !invalidationSet->siblingTypes.empty()) {
+                for (auto& sibling : parent->children) {
+                    if (sibling.get() == this) continue;
+                    
+                    bool match = false;
+                    
+                    if (!invalidationSet->siblingClasses.empty() && !sibling->className.empty()) {
+                        std::istringstream stream(sibling->className);
+                        std::string cc;
+                        while (stream >> cc) {
+                            if (invalidationSet->siblingClasses.find(cc) != invalidationSet->siblingClasses.end()) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->siblingIds.empty()) {
+                        if (invalidationSet->siblingIds.find(sibling->id) != invalidationSet->siblingIds.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->siblingTypes.empty()) {
+                        if (invalidationSet->siblingTypes.find(sibling->type) != invalidationSet->siblingTypes.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (match) {
+                        sibling->markStyleDirtyRecursive();
+                    }
+                }
+            }
+        }
+    }
+}
+
+void Widget::invalidateStyleOnIdChange(const std::string& oldId, const std::string& newId) {
+    styleDirty = true;
+    markSubtreeStyleDirty();
+    
+    const StyleSheet* sheet = nullptr;
+    if (auto* app = Application::instance()) {
+        sheet = &app->stylesheet();
+    }
+    if (!sheet) {
+        markStyleDirtyRecursive();
+        return;
+    }
+    
+    std::vector<std::string> changedIds;
+    if (!oldId.empty()) changedIds.push_back(oldId);
+    if (!newId.empty()) changedIds.push_back(newId);
+    
+    for (const auto& idVal : changedIds) {
+        const auto* invalidationSet = sheet->getIdInvalidationSet(idVal);
+        if (!invalidationSet) continue;
+        
+        if (invalidationSet->invalidateAllDescendants) {
+            markStyleDirtyRecursive();
+        } else if (!invalidationSet->descendantClasses.empty() ||
+                   !invalidationSet->descendantIds.empty() ||
+                   !invalidationSet->descendantTypes.empty()) {
+            
+            std::function<void(Widget*)> invalidateDescendants = [&](Widget* w) {
+                for (auto& child : w->children) {
+                    bool match = false;
+                    
+                    if (!invalidationSet->descendantClasses.empty() && !child->className.empty()) {
+                        std::istringstream stream(child->className);
+                        std::string cc;
+                        while (stream >> cc) {
+                            if (invalidationSet->descendantClasses.find(cc) != invalidationSet->descendantClasses.end()) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->descendantIds.empty()) {
+                        if (invalidationSet->descendantIds.find(child->id) != invalidationSet->descendantIds.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->descendantTypes.empty()) {
+                        if (invalidationSet->descendantTypes.find(child->type) != invalidationSet->descendantTypes.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (match) {
+                        child->styleDirty = true;
+                        child->markSubtreeStyleDirty();
+                    }
+                    
+                    invalidateDescendants(child.get());
+                }
+            };
+            invalidateDescendants(this);
+        }
+        
+        if (parent) {
+            if (invalidationSet->invalidateAllSiblings) {
+                for (auto& sibling : parent->children) {
+                    if (sibling.get() != this) {
+                        sibling->markStyleDirtyRecursive();
+                    }
+                }
+            } else if (!invalidationSet->siblingClasses.empty() ||
+                       !invalidationSet->siblingIds.empty() ||
+                       !invalidationSet->siblingTypes.empty()) {
+                for (auto& sibling : parent->children) {
+                    if (sibling.get() == this) continue;
+                    
+                    bool match = false;
+                    
+                    if (!invalidationSet->siblingClasses.empty() && !sibling->className.empty()) {
+                        std::istringstream stream(sibling->className);
+                        std::string cc;
+                        while (stream >> cc) {
+                            if (invalidationSet->siblingClasses.find(cc) != invalidationSet->siblingClasses.end()) {
+                                match = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->siblingIds.empty()) {
+                        if (invalidationSet->siblingIds.find(sibling->id) != invalidationSet->siblingIds.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (!match && !invalidationSet->siblingTypes.empty()) {
+                        if (invalidationSet->siblingTypes.find(sibling->type) != invalidationSet->siblingTypes.end()) {
+                            match = true;
+                        }
+                    }
+                    
+                    if (match) {
+                        sibling->markStyleDirtyRecursive();
+                    }
+                }
+            }
+        }
+    }
+}
+
 void Widget::resolveStyles(const StyleSheet& sheet) {
     if (!subtreeStyleDirty) {
         return;
@@ -1046,6 +1294,16 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                                       value);
         }
         computedStyle.resolveLogicalProperties();
+        
+        uint64_t oldInheritedHash = computedStyle.inheritedHash;
+        computedStyle.inheritedHash = StyleSheet::computeInheritedHash(computedStyle);
+        if (computedStyle.inheritedHash != oldInheritedHash) {
+            for (auto& child : children) {
+                child->styleDirty = true;
+                child->markSubtreeStyleDirty();
+            }
+        }
+        
         size_t nextLayoutSignature = layoutStyleSignature(computedStyle);
         if (nextLayoutSignature != layoutSignature) {
             layoutSignature = nextLayoutSignature;
