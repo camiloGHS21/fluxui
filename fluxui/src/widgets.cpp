@@ -2597,6 +2597,7 @@ void Text::layout(const Rect& parentBounds) {
 void Text::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     renderBackground(renderer);
+    renderListMarker(renderer);
     Color textColor = computedStyle.color;
     if (computedStyle.hasHoverColor && hoverAnim > 0) {
         textColor = Color::lerp(computedStyle.color, computedStyle.hoverColor, hoverAnim);
