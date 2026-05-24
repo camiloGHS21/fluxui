@@ -48,7 +48,19 @@ int main() {
 
     // Custom Bullet: Circle
     auto* ulCircle = root->element("ul", "", "circle-list");
-    ulCircle->element("li", "Circle bullet item");
+    
+    // Register DOM Event Listeners for capture/bubble testing
+    ulCircle->addEventListener("click", [](FluxUI::Event& ev) {
+        std::cout << "[Capture Phase] Clicked on ulCircle container! Phase=" << (int)ev.phase << std::endl;
+    }, true);
+    ulCircle->addEventListener("click", [](FluxUI::Event& ev) {
+        std::cout << "[Bubbling Phase] Clicked on ulCircle container! Phase=" << (int)ev.phase << std::endl;
+    }, false);
+
+    auto* liCircle = ulCircle->element("li", "Circle bullet item");
+    liCircle->addEventListener("click", [](FluxUI::Event& ev) {
+        std::cout << "[At Target] Clicked on liCircle target! Phase=" << (int)ev.phase << std::endl;
+    });
 
     // Custom Numeric: Upper Roman
     auto* olRoman = root->element("ol", "", "roman-list");

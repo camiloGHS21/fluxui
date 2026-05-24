@@ -834,6 +834,82 @@ static size_t layoutStyleSignature(const Style& s) {
     hashCombine(seed, std::hash<int>{}((int)s.unicodeBidi));
     return seed;
 }
+size_t Widget::addEventListener(const std::string& type, DOMEventListener callback, bool useCapture) {
+    EventListenerEntry entry;
+    entry.id = nextDomListenerId++;
+    entry.type = type;
+    entry.callback = callback;
+    entry.useCapture = useCapture;
+    domEventListeners.push_back(entry);
+    return entry.id;
+}
+
+void Widget::removeEventListener(size_t listenerId) {
+    domEventListeners.erase(
+        std::remove_if(domEventListeners.begin(), domEventListeners.end(),
+                       [listenerId](const EventListenerEntry& entry) {
+                           return entry.id == listenerId;
+                       }),
+        domEventListeners.end());
+}
+
+void Widget::dispatchEvent(Event& event) {
+    if (event.type.empty()) return;
+    std::vector<Widget*> path;
+    Widget* curr = this;
+    while (curr) {
+        path.push_back(curr);
+        curr = curr->parent;
+    }
+    std::reverse(path.begin(), path.end());
+    if (!event.target) {
+        event.target = this;
+    }
+    event.phase = EventPhase::Capture;
+    for (size_t i = 0; i < path.size() - 1; ++i) {
+        Widget* w = path[i];
+        event.currentTarget = w;
+        auto listenersCopy = w->domEventListeners;
+        for (auto& entry : listenersCopy) {
+            if (entry.type == event.type && entry.useCapture) {
+                entry.callback(event);
+                if (event.propagationStopped) break;
+            }
+        }
+        if (event.propagationStopped) break;
+    }
+    if (!event.propagationStopped && !path.empty()) {
+        Widget* w = path.back();
+        event.phase = EventPhase::AtTarget;
+        event.currentTarget = w;
+        auto listenersCopy = w->domEventListeners;
+        for (auto& entry : listenersCopy) {
+            if (entry.type == event.type) {
+                entry.callback(event);
+                if (event.propagationStopped) break;
+            }
+        }
+        if (event.type == "click" && !event.defaultPrevented && w->onClick) {
+            w->onClick();
+        }
+    }
+    if (event.bubbles && !event.propagationStopped && path.size() > 1) {
+        event.phase = EventPhase::Bubble;
+        for (int i = static_cast<int>(path.size()) - 2; i >= 0; --i) {
+            Widget* w = path[i];
+            event.currentTarget = w;
+            auto listenersCopy = w->domEventListeners;
+            for (auto& entry : listenersCopy) {
+                if (entry.type == event.type && !entry.useCapture) {
+                    entry.callback(event);
+                    if (event.propagationStopped) break;
+                }
+            }
+            if (event.propagationStopped) break;
+        }
+    }
+}
+
 void Widget::markLayoutDirty() {
     if (layoutDirty && (!parent || parent->layoutDirty)) return;
     layoutDirty = true;
@@ -2112,9 +2188,6 @@ void Widget::update(const InputState& input) {
             focused = false;
         }
     }
-    if (hovered && input.mouseClicked[0] && onClick) {
-        onClick();
-    }
     float target = hovered ? 1.0f : 0.0f;
     if (hoverAnim != target || hoverVelocity != 0.0f) {
         float k = computedStyle.springStiffness;
@@ -2134,7 +2207,10 @@ void Widget::update(const InputState& input) {
         (input.modifiers & (MOD_CTRL | MOD_ALT | MOD_GUI)) == 0;
     if (keyboardActivate) {
         pressed = true;
-        if (onClick) onClick();
+        Event clickEv;
+        clickEv.type = "click";
+        clickEv.target = this;
+        dispatchEvent(clickEv);
     }
     float currentScale = computedStyle.scale;
     if (computedStyle.hoverScale >= 0) {
@@ -4170,6 +4246,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         Vec2 oldPos = app->input().mousePos;
         app->input().mousePos = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
         app->input().mouseDelta = app->input().mousePos - oldPos;
+        app->dispatchMouseMove(app->input().mousePos.x, app->input().mousePos.y, app->input().mouseDelta.x, app->input().mouseDelta.y);
         UIEvent event;
         event.type = UIEventType::MouseMove;
         event.position = app->input().mousePos;
@@ -4185,6 +4262,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         app->input().mouseDown[btn] = true;
         app->input().mouseClicked[btn] = true;
         app->input().mouseClickCount[btn] = 1;
+        app->dispatchMouseDown(btn + 1, (float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam), 1);
         UIEvent event;
         event.type = UIEventType::MouseDown;
         event.position = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
@@ -4200,6 +4278,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         int btn = (msg == WM_LBUTTONUP) ? 0 : (msg == WM_RBUTTONUP ? 1 : 2);
         app->input().mouseDown[btn] = false;
         app->input().mouseReleased[btn] = true;
+        app->dispatchMouseUp(btn + 1, (float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam));
         UIEvent event;
         event.type = UIEventType::MouseUp;
         event.position = {(float)GET_X_LPARAM(lParam), (float)GET_Y_LPARAM(lParam)};
@@ -4211,6 +4290,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
     case WM_MOUSEWHEEL: {
         float delta = (float)GET_WHEEL_DELTA_WPARAM(wParam) / (float)WHEEL_DELTA;
         app->input().scroll.y += delta;
+        app->dispatchMouseWheel(app->input().mousePos.x, app->input().mousePos.y, 0.0f, delta);
         UIEvent event;
         event.type = UIEventType::MouseWheel;
         event.delta = {0, delta};
@@ -4223,6 +4303,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
             char utf8[5] = {0};
             WideCharToMultiByte(CP_UTF8, 0, (LPCWSTR)&wParam, 1, utf8, 4, nullptr, nullptr);
             app->input().text += utf8;
+            app->dispatchTextInput(utf8);
             UIEvent event;
             event.type = UIEventType::TextInput;
             event.text = utf8;
@@ -4239,6 +4320,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         if (GetKeyState(VK_CONTROL) & 0x8000) app->input().modifiers |= MOD_CTRL;
         if (GetKeyState(VK_MENU) & 0x8000) app->input().modifiers |= MOD_ALT;
         if ((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) app->input().modifiers |= MOD_GUI;
+        app->dispatchKeyDown(app->input().keyCode, app->input().modifiers);
         UIEvent event;
         event.type = UIEventType::KeyDown;
         event.keyCode = app->input().keyCode;
@@ -4250,6 +4332,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
     }
     case WM_KEYUP:
     case WM_SYSKEYUP: {
+        app->dispatchKeyUp((int)wParam, app->input().modifiers);
         UIEvent event;
         event.type = UIEventType::KeyUp;
         event.keyCode = (int)wParam;
@@ -4289,6 +4372,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
         Vec2 oldPos = app->input().mousePos;
         app->input().mousePos = {event.x, event.y};
         app->input().mouseDelta = app->input().mousePos - oldPos;
+        app->dispatchMouseMove(event.x, event.y, app->input().mouseDelta.x, app->input().mouseDelta.y);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::MouseMove;
         uiEvent.position = app->input().mousePos;
@@ -4305,6 +4389,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
             app->input().mouseClickCount[btn] = 1;
         }
         app->input().mousePos = {event.x, event.y};
+        app->dispatchMouseDown(btn + 1, event.x, event.y, 1);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::MouseDown;
         uiEvent.position = {event.x, event.y};
@@ -4321,6 +4406,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
             app->input().mouseReleased[btn] = true;
         }
         app->input().mousePos = {event.x, event.y};
+        app->dispatchMouseUp(btn + 1, event.x, event.y);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::MouseUp;
         uiEvent.position = {event.x, event.y};
@@ -4332,6 +4418,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
     case PlatformInputEvent::Scroll: {
         app->input().scroll.y += event.y;
         app->input().scroll.x += event.x;
+        app->dispatchMouseWheel(app->input().mousePos.x, app->input().mousePos.y, event.x, event.y);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::MouseWheel;
         uiEvent.delta = {event.x, event.y};
@@ -4342,6 +4429,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
     case PlatformInputEvent::KeyDown: {
         app->input().keyCode = event.button;
         app->input().modifiers = event.modifiers;
+        app->dispatchKeyDown(event.button, event.modifiers);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::KeyDown;
         uiEvent.keyCode = event.button;
@@ -4352,6 +4440,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
         break;
     }
     case PlatformInputEvent::KeyUp: {
+        app->dispatchKeyUp(event.button, event.modifiers);
         UIEvent uiEvent;
         uiEvent.type = UIEventType::KeyUp;
         uiEvent.keyCode = event.button;
@@ -4363,6 +4452,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
     case PlatformInputEvent::TextInput: {
         if (event.text[0] != '\0') {
             app->input().text += event.text;
+            app->dispatchTextInput(event.text);
             UIEvent uiEvent;
             uiEvent.type = UIEventType::TextInput;
             uiEvent.text = event.text;
@@ -4611,6 +4701,276 @@ static Widget* findFocusedWidgetHelper(Widget* w) {
 
 Widget* Application::focusedWidget() {
     return findFocusedWidgetHelper(root_.get());
+}
+
+void Application::dispatchMouseDown(int button, float x, float y, int clickCount) {
+    Widget* target = nullptr;
+    std::vector<Widget*> fixedWidgets;
+    std::function<void(Widget*)> gatherFixed = [&](Widget* w) {
+        if (!w || !w->visible || w->computedStyle.display == Display::None) return;
+        if (w->computedStyle.position == Position::Fixed) {
+            fixedWidgets.push_back(w);
+            return;
+        }
+        for (auto& child : w->children) {
+            gatherFixed(child.get());
+        }
+    };
+    if (root_) {
+        gatherFixed(root_.get());
+    }
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        if (Widget* t = (*it)->hitTest({x, y}, true)) {
+            target = t;
+            break;
+        }
+    }
+    if (!target && root_) {
+        target = root_->hitTest({x, y}, true);
+    }
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "mousedown";
+    ev.target = target;
+    ev.mousePos = {x, y};
+    ev.button = button;
+    ev.clickCount = clickCount;
+    target->dispatchEvent(ev);
+    if (button >= 1 && button <= 3) {
+        lastMouseDownTarget_[button - 1] = target;
+    }
+    if (button == 1 && !ev.defaultPrevented) {
+        Widget* focusTarget = target;
+        while (focusTarget) {
+            if (focusTarget->type == "button" || focusTarget->computedStyle.cursor == CursorType::Pointer ||
+                focusTarget->type == "textarea" || focusTarget->type == "input" ||
+                dynamic_cast<TextInput*>(focusTarget) || dynamic_cast<Checkbox*>(focusTarget) ||
+                dynamic_cast<Radio*>(focusTarget) || dynamic_cast<RangeInput*>(focusTarget) ||
+                dynamic_cast<Select*>(focusTarget)) {
+                break;
+            }
+            focusTarget = focusTarget->parent;
+        }
+        if (root_) {
+            std::function<void(Widget*)> clearFocus = [&](Widget* w) {
+                if (!w) return;
+                if (w != focusTarget) {
+                    w->focused = false;
+                }
+                for (auto& child : w->children) {
+                    clearFocus(child.get());
+                }
+            };
+            clearFocus(root_.get());
+        }
+        if (focusTarget) {
+            focusTarget->focused = true;
+        }
+    }
+}
+
+void Application::dispatchMouseUp(int button, float x, float y) {
+    Widget* target = nullptr;
+    std::vector<Widget*> fixedWidgets;
+    std::function<void(Widget*)> gatherFixed = [&](Widget* w) {
+        if (!w || !w->visible || w->computedStyle.display == Display::None) return;
+        if (w->computedStyle.position == Position::Fixed) {
+            fixedWidgets.push_back(w);
+            return;
+        }
+        for (auto& child : w->children) {
+            gatherFixed(child.get());
+        }
+    };
+    if (root_) {
+        gatherFixed(root_.get());
+    }
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        if (Widget* t = (*it)->hitTest({x, y}, true)) {
+            target = t;
+            break;
+        }
+    }
+    if (!target && root_) {
+        target = root_->hitTest({x, y}, true);
+    }
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "mouseup";
+    ev.target = target;
+    ev.mousePos = {x, y};
+    ev.button = button;
+    target->dispatchEvent(ev);
+    if (button == 1) {
+        Widget* downTarget = (button >= 1 && button <= 3) ? lastMouseDownTarget_[button - 1] : nullptr;
+        if (downTarget && (downTarget == target || downTarget->hitTest({x, y}, true) == target)) {
+            Event clickEv;
+            clickEv.type = "click";
+            clickEv.target = target;
+            clickEv.mousePos = {x, y};
+            clickEv.button = 1;
+            target->dispatchEvent(clickEv);
+        }
+    }
+}
+
+void Application::dispatchMouseMove(float x, float y, float dx, float dy) {
+    Widget* target = nullptr;
+    std::vector<Widget*> fixedWidgets;
+    std::function<void(Widget*)> gatherFixed = [&](Widget* w) {
+        if (!w || !w->visible || w->computedStyle.display == Display::None) return;
+        if (w->computedStyle.position == Position::Fixed) {
+            fixedWidgets.push_back(w);
+            return;
+        }
+        for (auto& child : w->children) {
+            gatherFixed(child.get());
+        }
+    };
+    if (root_) {
+        gatherFixed(root_.get());
+    }
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        if (Widget* t = (*it)->hitTest({x, y}, true)) {
+            target = t;
+            break;
+        }
+    }
+    if (!target && root_) {
+        target = root_->hitTest({x, y}, true);
+    }
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "mousemove";
+    ev.target = target;
+    ev.mousePos = {x, y};
+    ev.mouseDelta = {dx, dy};
+    target->dispatchEvent(ev);
+    if (target != lastHoveredWidget_) {
+        if (lastHoveredWidget_) {
+            Event outEv;
+            outEv.type = "mouseout";
+            outEv.target = lastHoveredWidget_;
+            outEv.mousePos = {x, y};
+            outEv.mouseDelta = {dx, dy};
+            lastHoveredWidget_->dispatchEvent(outEv);
+            Widget* p = lastHoveredWidget_;
+            while (p && p != target && !p->bounds.contains({x, y})) {
+                Event leaveEv;
+                leaveEv.type = "mouseleave";
+                leaveEv.target = p;
+                leaveEv.bubbles = false;
+                leaveEv.mousePos = {x, y};
+                p->dispatchEvent(leaveEv);
+                p = p->parent;
+            }
+        }
+        if (target) {
+            Event overEv;
+            overEv.type = "mouseover";
+            overEv.target = target;
+            overEv.mousePos = {x, y};
+            overEv.mouseDelta = {dx, dy};
+            target->dispatchEvent(overEv);
+            Widget* p = target;
+            std::vector<Widget*> enterChain;
+            while (p && p != lastHoveredWidget_ && p->bounds.contains({x, y})) {
+                enterChain.push_back(p);
+                p = p->parent;
+            }
+            for (auto it = enterChain.rbegin(); it != enterChain.rend(); ++it) {
+                Event enterEv;
+                enterEv.type = "mouseenter";
+                enterEv.target = *it;
+                enterEv.bubbles = false;
+                enterEv.mousePos = {x, y};
+                (*it)->dispatchEvent(enterEv);
+            }
+        }
+        lastHoveredWidget_ = target;
+    }
+}
+
+void Application::dispatchMouseWheel(float x, float y, float dx, float dy) {
+    Widget* target = nullptr;
+    std::vector<Widget*> fixedWidgets;
+    std::function<void(Widget*)> gatherFixed = [&](Widget* w) {
+        if (!w || !w->visible || w->computedStyle.display == Display::None) return;
+        if (w->computedStyle.position == Position::Fixed) {
+            fixedWidgets.push_back(w);
+            return;
+        }
+        for (auto& child : w->children) {
+            gatherFixed(child.get());
+        }
+    };
+    if (root_) {
+        gatherFixed(root_.get());
+    }
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        if (Widget* t = (*it)->hitTest({x, y}, true)) {
+            target = t;
+            break;
+        }
+    }
+    if (!target && root_) {
+        target = root_->hitTest({x, y}, true);
+    }
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "wheel";
+    ev.target = target;
+    ev.mousePos = {x, y};
+    ev.scroll = {dx, dy};
+    target->dispatchEvent(ev);
+    if (ev.defaultPrevented) {
+        input_.scroll = {0.0f, 0.0f};
+    }
+}
+
+void Application::dispatchKeyDown(int keyCode, int modifiers) {
+    Widget* target = focusedWidget();
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "keydown";
+    ev.target = target;
+    ev.keyCode = keyCode;
+    ev.modifiers = modifiers;
+    target->dispatchEvent(ev);
+    if (ev.defaultPrevented) {
+        input_.keyCode = 0;
+    }
+}
+
+void Application::dispatchKeyUp(int keyCode, int modifiers) {
+    Widget* target = focusedWidget();
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "keyup";
+    ev.target = target;
+    ev.keyCode = keyCode;
+    ev.modifiers = modifiers;
+    target->dispatchEvent(ev);
+}
+
+void Application::dispatchTextInput(const std::string& text) {
+    Widget* target = focusedWidget();
+    if (!target) target = root_.get();
+    if (!target) return;
+    Event ev;
+    ev.type = "textinput";
+    ev.target = target;
+    ev.text = text;
+    target->dispatchEvent(ev);
+    if (ev.defaultPrevented) {
+        input_.text.clear();
+    }
 }
 
 void Application::registerAction(const std::string& name, ActionCallback callback) {

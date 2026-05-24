@@ -52,6 +52,34 @@ inline bool operator!=(const WidgetArenaAllocator<T>& a, const WidgetArenaAlloca
     return !(a == b);
 }
 }
+class Widget;
+enum class EventPhase {
+    None = 0,
+    Capture = 1,
+    AtTarget = 2,
+    Bubble = 3
+};
+struct Event {
+    std::string type;
+    Widget* target = nullptr;
+    Widget* currentTarget = nullptr;
+    EventPhase phase = EventPhase::None;
+    bool bubbles = true;
+    bool cancelable = true;
+    bool propagationStopped = false;
+    bool defaultPrevented = false;
+    Vec2 mousePos{0.0f, 0.0f};
+    Vec2 mouseDelta{0.0f, 0.0f};
+    Vec2 scroll{0.0f, 0.0f};
+    int button = 0;
+    int clickCount = 0;
+    int keyCode = 0;
+    int modifiers = 0;
+    std::string text;
+    void stopPropagation() { propagationStopped = true; }
+    void preventDefault() { defaultPrevented = true; }
+};
+using DOMEventListener = std::function<void(Event&)>;
 class Panel;
 class Text;
 class Button;
@@ -247,6 +275,17 @@ public:
     Widget* removeClass(const std::string& value);
     Widget* toggleClass(const std::string& value, bool enabled);
     Widget* css(const std::string& declarations);
+    struct EventListenerEntry {
+        size_t id = 0;
+        std::string type;
+        DOMEventListener callback;
+        bool useCapture = false;
+    };
+    std::vector<EventListenerEntry> domEventListeners;
+    size_t nextDomListenerId = 1;
+    size_t addEventListener(const std::string& type, DOMEventListener callback, bool useCapture = false);
+    void removeEventListener(size_t listenerId);
+    void dispatchEvent(Event& event);
     virtual void resolveStyles(const StyleSheet& sheet);
     void markLayoutDirty();
     void markStyleDirty();
@@ -1161,6 +1200,13 @@ public:
     bool loadKeymap(const std::string& path);
     Widget* focusedWidget();
     bool dispatchKeyAction(int keyCode, int modifiers);
+    void dispatchMouseDown(int button, float x, float y, int clickCount);
+    void dispatchMouseUp(int button, float x, float y);
+    void dispatchMouseMove(float x, float y, float dx, float dy);
+    void dispatchMouseWheel(float x, float y, float dx, float dy);
+    void dispatchKeyDown(int keyCode, int modifiers);
+    void dispatchKeyUp(int keyCode, int modifiers);
+    void dispatchTextInput(const std::string& text);
     void addRoute(const std::string& path, RouteBuilder builder);
     void setNotFoundRoute(RouteBuilder builder);
     bool navigate(const std::string& path);
@@ -1193,6 +1239,8 @@ private:
     std::string currentRoute_;
     bool routeDirty_ = false;
     bool needsRedraw_ = true;
+    Widget* lastHoveredWidget_ = nullptr;
+    Widget* lastMouseDownTarget_[3] = { nullptr, nullptr, nullptr };
     struct EventListener {
         size_t id = 0;
         UIEventType type = UIEventType::Any;
