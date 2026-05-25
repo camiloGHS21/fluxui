@@ -1,4 +1,5 @@
 #include "fluxui/widgets.h"
+#include "fluxui/compositor.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -2608,8 +2609,7 @@ void Widget::clampScroll() {
     scrollY = clampedScroll;
 }
 bool Widget::hasActiveAnimations() const {
-    float hoverTarget = hovered ? 1.0f : 0.0f;
-    if (std::abs(hoverAnim - hoverTarget) > 0.001f || std::abs(hoverVelocity) > 0.001f) {
+    if (CompositorEngine::instance().hasAnimations(reinterpret_cast<uintptr_t>(this))) {
         return true;
     }
     if (std::abs(scrollY - targetScrollY) > 0.1f || std::abs(scrollVelocity) > 0.1f) {
@@ -2640,24 +2640,31 @@ void Widget::update(const InputState& input) {
         return;
     }
     float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
+    bool oldHovered = hovered;
     hovered = bounds.contains(input.mousePos);
+    if (hovered != oldHovered) {
+        float from = hoverAnim;
+        float to = hovered ? 1.0f : 0.0f;
+        CompositorEngine::instance().animatePropertyFloat(
+            reinterpret_cast<uintptr_t>(this), "hoverAnim",
+            from, to, computedStyle.transitionDuration,
+            TimingFunctionType::Spring,
+            computedStyle.springStiffness, computedStyle.springDamping
+        );
+    }
+
+    float compositedHoverAnim = 0.0f;
+    if (CompositorEngine::instance().getAnimatedFloat(reinterpret_cast<uintptr_t>(this), "hoverAnim", compositedHoverAnim)) {
+        hoverAnim = compositedHoverAnim;
+    } else {
+        hoverAnim = hovered ? 1.0f : 0.0f;
+    }
+
     if (input.mouseClicked[0]) {
         if (hovered && (type == "button" || computedStyle.cursor == CursorType::Pointer)) {
             focused = true;
         } else if (focused) {
             focused = false;
-        }
-    }
-    float target = hovered ? 1.0f : 0.0f;
-    if (hoverAnim != target || hoverVelocity != 0.0f) {
-        float k = computedStyle.springStiffness;
-        float d = computedStyle.springDamping;
-        float force = -k * (hoverAnim - target) - d * hoverVelocity;
-        hoverVelocity += force * dt;
-        hoverAnim += hoverVelocity * dt;
-        if (std::abs(hoverAnim - target) < 0.0001f && std::abs(hoverVelocity) < 0.0001f) {
-            hoverAnim = target;
-            hoverVelocity = 0.0f;
         }
     }
     pressed = hovered && input.mouseDown[0];

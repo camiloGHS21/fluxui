@@ -209,6 +209,7 @@ set(FLUXUI_SOURCES
     fluxui/src/renderer.cpp
     fluxui/src/css_parser.cpp
     fluxui/src/fluxui_c.cpp
+    fluxui/src/compositor.cpp
 )
 
 if(WIN32)
