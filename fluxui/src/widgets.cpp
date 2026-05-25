@@ -590,39 +590,45 @@ const std::string& Widget::selectorType() const {
     if (!cachedSelectorType.empty()) {
         return cachedSelectorType;
     }
-    std::string type;
+    cachedSelectorType.clear();
     if (dynamic_cast<const TextArea*>(this)) {
-        type = "textarea";
+        cachedSelectorType = "textarea";
     } else if (auto* input = dynamic_cast<const TextInput*>(this)) {
-        if (this->type == "textarea") type = "textarea";
-        else type = std::string("input|type=") + textInputTypeSelector(input->inputType);
+        if (this->type == "textarea") cachedSelectorType = "textarea";
+        else {
+            cachedSelectorType = "input|type=";
+            cachedSelectorType += textInputTypeSelector(input->inputType);
+        }
     } else if (auto* checkbox = dynamic_cast<const Checkbox*>(this)) {
-        type = std::string("input|type=checkbox") + (checkbox->checked ? "|checked" : "");
+        cachedSelectorType = "input|type=checkbox";
+        if (checkbox->checked) cachedSelectorType += "|checked";
     } else if (auto* radio = dynamic_cast<const Radio*>(this)) {
-        type = std::string("input|type=radio") + (radio->checked ? "|checked" : "");
+        cachedSelectorType = "input|type=radio";
+        if (radio->checked) cachedSelectorType += "|checked";
     } else if (dynamic_cast<const RangeInput*>(this)) {
-        type = "input|type=range";
+        cachedSelectorType = "input|type=range";
     } else if (auto* select = dynamic_cast<const Select*>(this)) {
-        type = std::string("select") + (select->expanded ? "|open" : "");
+        cachedSelectorType = "select";
+        if (select->expanded) cachedSelectorType += "|open";
     } else if (auto* details = dynamic_cast<const Details*>(this)) {
-        type = std::string("details") + (details->open ? "|open" : "");
+        cachedSelectorType = "details";
+        if (details->open) cachedSelectorType += "|open";
     } else if (auto* dialog = dynamic_cast<const Dialog*>(this)) {
-        type = "dialog";
-        if (dialog->open) type += "|open";
-        if (dialog->modal) type += "|modal";
+        cachedSelectorType = "dialog";
+        if (dialog->open) cachedSelectorType += "|open";
+        if (dialog->modal) cachedSelectorType += "|modal";
     } else if (auto* progress = dynamic_cast<const Progress*>(this)) {
-        type = "progress";
-        if (progress->value < 0.0f) type += "|indeterminate";
-        else type += "|value";
+        cachedSelectorType = "progress";
+        if (progress->value < 0.0f) cachedSelectorType += "|indeterminate";
+        else cachedSelectorType += "|value";
     } else {
-        type = this->type;
+        cachedSelectorType = this->type;
     }
     // Append dir attribute for CSS [dir="rtl"] / [dir="ltr"] matching
     if (!dir.empty()) {
-        type += "|dir=";
-        type += dir;
+        cachedSelectorType += "|dir=";
+        cachedSelectorType += dir;
     }
-    cachedSelectorType = std::move(type);
     return cachedSelectorType;
 }
 
@@ -1218,23 +1224,52 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             ancestorH2 = 5381ULL;
         }
 
-        auto getAncestors = [this]() -> const std::vector<CSSSelectorNode>& {
-            thread_local std::vector<CSSSelectorNode> t_ancestors;
-            t_ancestors.clear();
-            size_t ancestorCount = 0;
-            for (Widget* node = parent; node; node = node->parent) {
-                ++ancestorCount;
-            }
-            t_ancestors.reserve(ancestorCount);
-            for (Widget* node = parent; node; node = node->parent) {
-                t_ancestors.push_back({node->className, node->id, widgetSelectorType(node), node});
-            }
-            return t_ancestors;
-        };
-
         const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
         std::string_view selectorType = widgetSelectorType(this);
-        computedStyle = sheet.resolveLazy(className, id, selectorType, ancestorH1, ancestorH2, parentStyle, getAncestors, this);
+
+        uint64_t h1 = ancestorH1;
+        uint64_t h2 = ancestorH2;
+        auto hashStr = [&](std::string_view sv) {
+            for (char c : sv) {
+                h1 ^= static_cast<uint64_t>(c);
+                h1 *= 1099511628211ULL;
+            }
+            for (char c : sv) {
+                h2 = ((h2 << 5) + h2) + static_cast<uint64_t>(c);
+            }
+        };
+        hashStr(className);
+        h1 ^= 0xFFULL; h2 ^= 0xFFULL;
+        hashStr(id);
+        h1 ^= 0xEEULL; h2 ^= 0xEEULL;
+        hashStr(selectorType);
+
+        if (parentStyle) {
+            h1 ^= parentStyle->inheritedHash;
+            h2 ^= ~parentStyle->inheritedHash;
+        }
+        StyleCacheKey currentKey{h1, h2};
+
+        if (hasLastResolveKey && lastResolveKey == currentKey && lastStyleSheetEpoch == sheet.getEpoch()) {
+            styleDirty = false;
+        }
+
+        if (styleDirty) {
+            auto getAncestors = [this]() -> const std::vector<CSSSelectorNode>& {
+                thread_local std::vector<CSSSelectorNode> t_ancestors;
+                t_ancestors.clear();
+                size_t ancestorCount = 0;
+                for (Widget* node = parent; node; node = node->parent) {
+                    ++ancestorCount;
+                }
+                t_ancestors.reserve(ancestorCount);
+                for (Widget* node = parent; node; node = node->parent) {
+                    t_ancestors.push_back({node->className, node->id, widgetSelectorType(node), node});
+                }
+                return t_ancestors;
+            };
+
+            computedStyle = sheet.resolveLazy(className, id, selectorType, ancestorH1, ancestorH2, parentStyle, getAncestors, this);
         if (!parent && computedStyle.overflowY == Overflow::Visible) {
             computedStyle.overflowY = Overflow::Auto;
         }
@@ -1392,7 +1427,174 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                                       value);
         }
         computedStyle.resolveLogicalProperties();
-        
+
+        // Resolve dynamic color/gradient properties using the active custom properties and parent/viewport styles
+        if (!computedStyle.unresolvedColor.empty()) {
+            bool valid = true;
+            std::string resolved = sheet.resolveValue(computedStyle.unresolvedColor, computedStyle.customProperties, &valid);
+            if (valid) {
+                computedStyle.color = StyleSheet::parseColor(resolved);
+                computedStyle.hasColor = true;
+            }
+        }
+        if (!computedStyle.unresolvedBackgroundColor.empty()) {
+            bool valid = true;
+            std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundColor, computedStyle.customProperties, &valid);
+            if (valid) {
+                computedStyle.backgroundColor = StyleSheet::parseColor(resolved);
+            }
+        }
+        if (!computedStyle.unresolvedBackgroundGradient.empty()) {
+            bool valid = true;
+            std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.customProperties, &valid);
+            if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                computedStyle.backgroundGradient = StyleSheet::parseGradient(resolved);
+            }
+        }
+        if (!computedStyle.unresolvedBorderColor.empty()) {
+            bool valid = true;
+            std::string resolved = sheet.resolveValue(computedStyle.unresolvedBorderColor, computedStyle.customProperties, &valid);
+            if (valid) {
+                computedStyle.border.color = StyleSheet::parseColor(resolved);
+            }
+        }
+
+        // Evaluate hover, focus, active custom properties
+        // Hover state:
+        {
+            if (!computedStyle.unresolvedColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedColor, computedStyle.hoverCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.color) {
+                        computedStyle.hoverColor = c;
+                        computedStyle.hasHoverColor = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundColor, computedStyle.hoverCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.backgroundColor) {
+                        computedStyle.hoverBackgroundColor = c;
+                        computedStyle.hasHoverBg = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundGradient.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.hoverCustomProperties, &valid);
+                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                    computedStyle.hoverBackgroundGradient = StyleSheet::parseGradient(resolved);
+                    computedStyle.hasHoverGradient = true;
+                }
+            }
+            if (!computedStyle.unresolvedBorderColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBorderColor, computedStyle.hoverCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.border.color) {
+                        computedStyle.hoverBorderColor = c;
+                        computedStyle.hasHoverBorder = true;
+                    }
+                }
+            }
+        }
+
+        // Focus state:
+        {
+            if (!computedStyle.unresolvedColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedColor, computedStyle.focusCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.color) {
+                        computedStyle.focusColor = c;
+                        computedStyle.hasFocusColor = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundColor, computedStyle.focusCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.backgroundColor) {
+                        computedStyle.focusBackgroundColor = c;
+                        computedStyle.hasFocusBg = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundGradient.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.focusCustomProperties, &valid);
+                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                    computedStyle.focusBackgroundGradient = StyleSheet::parseGradient(resolved);
+                    computedStyle.hasFocusGradient = true;
+                }
+            }
+            if (!computedStyle.unresolvedBorderColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBorderColor, computedStyle.focusCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.border.color) {
+                        computedStyle.focusBorderColor = c;
+                        computedStyle.hasFocusBorder = true;
+                    }
+                }
+            }
+        }
+
+        // Active state:
+        {
+            if (!computedStyle.unresolvedColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedColor, computedStyle.activeCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.color) {
+                        computedStyle.activeColor = c;
+                        computedStyle.hasActiveColor = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundColor, computedStyle.activeCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.backgroundColor) {
+                        computedStyle.activeBackgroundColor = c;
+                        computedStyle.hasActiveBg = true;
+                    }
+                }
+            }
+            if (!computedStyle.unresolvedBackgroundGradient.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.activeCustomProperties, &valid);
+                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                    computedStyle.activeBackgroundGradient = StyleSheet::parseGradient(resolved);
+                    computedStyle.hasActiveGradient = true;
+                }
+            }
+            if (!computedStyle.unresolvedBorderColor.empty()) {
+                bool valid = true;
+                std::string resolved = sheet.resolveValue(computedStyle.unresolvedBorderColor, computedStyle.activeCustomProperties, &valid);
+                if (valid) {
+                    Color c = StyleSheet::parseColor(resolved);
+                    if (c != computedStyle.border.color) {
+                        computedStyle.activeBorderColor = c;
+                        computedStyle.hasActiveBorder = true;
+                    }
+                }
+            }
+        }
+
         uint64_t oldInheritedHash = computedStyle.inheritedHash;
         computedStyle.inheritedHash = StyleSheet::computeInheritedHash(computedStyle);
         if (computedStyle.inheritedHash != oldInheritedHash) {
@@ -1449,6 +1651,12 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                 children.erase(std::remove(children.begin(), children.end(), afterPseudoNode), children.end());
                 afterPseudoNode.reset();
             }
+        }
+
+        lastResolveKey = currentKey;
+        lastStyleSheetEpoch = sheet.getEpoch();
+        hasLastResolveKey = true;
+        styleDirty = false;
         }
     }
     for (auto& child : children) {
@@ -2790,8 +2998,18 @@ void Widget::renderBackground(Renderer& renderer) {
     if (pressed && s.activeOpacity >= 0) {
         opacity = s.activeOpacity;
     }
-    if (s.backgroundGradient.type != Gradient::None) {
-        renderer.drawRoundedRectGradient(bounds, s.backgroundGradient, s.borderRadius, opacity);
+    Gradient bgGradient = s.backgroundGradient;
+    if (s.hasHoverGradient && hoverAnim > 0) {
+        bgGradient = Gradient::lerp(s.backgroundGradient, s.hoverBackgroundGradient, hoverAnim);
+    }
+    if (focused && s.hasFocusGradient) {
+        bgGradient = s.focusBackgroundGradient;
+    }
+    if (pressed && s.hasActiveGradient) {
+        bgGradient = s.activeBackgroundGradient;
+    }
+    if (bgGradient.type != Gradient::None) {
+        renderer.drawRoundedRectGradient(bounds, bgGradient, s.borderRadius, opacity);
     } else if (bgColor.a > 0.001f) {
         renderer.drawRoundedRect(bounds, bgColor, s.borderRadius, opacity);
     }
@@ -3048,8 +3266,18 @@ void Button::render(Renderer& renderer) {
     if (pressed && s.hasActiveBg) {
         bgColor = s.activeBackgroundColor;
     }
-    if (s.backgroundGradient.type != Gradient::None) {
-        renderer.drawRoundedRectGradient(drawBounds, s.backgroundGradient, s.borderRadius, s.opacity);
+    Gradient bgGradient = s.backgroundGradient;
+    if (s.hasHoverGradient && hoverAnim > 0) {
+        bgGradient = Gradient::lerp(s.backgroundGradient, s.hoverBackgroundGradient, hoverAnim);
+    }
+    if (focused && s.hasFocusGradient) {
+        bgGradient = s.focusBackgroundGradient;
+    }
+    if (pressed && s.hasActiveGradient) {
+        bgGradient = s.activeBackgroundGradient;
+    }
+    if (bgGradient.type != Gradient::None) {
+        renderer.drawRoundedRectGradient(drawBounds, bgGradient, s.borderRadius, s.opacity);
     } else {
         renderer.drawRoundedRect(drawBounds, bgColor, s.borderRadius, s.opacity);
     }

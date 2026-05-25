@@ -136,6 +136,9 @@ public:
     bool layoutDirty = true;
     bool styleDirty = true;
     bool subtreeStyleDirty = true;
+    StyleCacheKey lastResolveKey;
+    uint32_t lastStyleSheetEpoch = 0;
+    bool hasLastResolveKey = false;
     Rect lastLayoutParentBounds;
     size_t layoutSignature = 0;
     mutable std::string cachedSelectorType;

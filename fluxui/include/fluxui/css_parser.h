@@ -77,6 +77,13 @@ struct StyleCacheKeyHash {
     }
 };
 
+struct CSSPropertyDefinition {
+    std::string name;
+    std::string syntax = "*";
+    bool inherits = true;
+    std::string initialValue;
+};
+
 // ============================================================
 //  CSS Stylesheet
 // ============================================================
@@ -88,6 +95,12 @@ public:
     std::vector<CSSRule> rules;
     std::vector<CSSFontFace> fontFaces;
     std::vector<std::string> layersOrder;
+
+    const std::unordered_map<std::string, CSSPropertyDefinition>& getPropertyDefinitions() const {
+        return propertyDefinitions_;
+    }
+
+    uint32_t getEpoch() const { return currentEpoch_; }
 
     // Load and parse a CSS file
     bool loadFile(const std::string& path);
@@ -112,14 +125,14 @@ public:
                   const Widget* widget = nullptr,
                   std::string_view targetPseudo = "") const;
     template <typename F>
-    Style resolveLazy(std::string_view className,
-                      std::string_view id,
-                      std::string_view type,
-                      uint64_t ancestorH1,
-                      uint64_t ancestorH2,
-                      const Style* parentStyle,
-                      F&& getAncestors,
-                      const Widget* widget = nullptr) const {
+    const Style& resolveLazy(std::string_view className,
+                             std::string_view id,
+                             std::string_view type,
+                             uint64_t ancestorH1,
+                             uint64_t ancestorH2,
+                             const Style* parentStyle,
+                             F&& getAncestors,
+                             const Widget* widget = nullptr) const {
         uint64_t h1 = ancestorH1;
         uint64_t h2 = ancestorH2;
 
@@ -154,7 +167,13 @@ public:
 #endif
 
         const auto& ancestors = getAncestors();
-        return resolve(className, id, type, ancestors, parentStyle, widget);
+        resolve(className, id, type, ancestors, parentStyle, widget);
+#if FLUXUI_STYLE_CACHE_SIZE > 0
+        return resolvedCache_[cacheIdx].style;
+#else
+        static Style fallback;
+        return fallback;
+#endif
     }
     std::string resolveValue(const std::string& value,
                              const std::unordered_map<std::string, std::string>& customProperties,
@@ -196,6 +215,7 @@ private:
     std::unordered_map<std::string, InvalidationSet> idInvalidationSets_;
     std::unordered_map<std::string, InvalidationSet> typeInvalidationSets_;
     std::unordered_map<std::string, std::string> variables_;
+    std::unordered_map<std::string, CSSPropertyDefinition> propertyDefinitions_;
     struct StyleCacheEntry {
         StyleCacheKey key;
         Style style;
@@ -228,6 +248,7 @@ private:
     void parseRules(const std::string& css, const std::string& mediaQuery, const std::string& currentLayer = "");
     void parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery = "", const std::string& currentLayer = "");
     void parseFontFace(const std::string& body);
+    void parsePropertyRule(const std::string& name, const std::string& body);
     void indexRule(size_t ruleIndex);
     std::string resolveValueInternal(const std::string& value,
                                      const std::unordered_map<std::string, std::string>* customProperties,
@@ -255,6 +276,8 @@ private:
     static void mergeHoverProperty(Style& style, const std::string& name, const std::string& value);
     static void mergeFocusProperty(Style& style, const std::string& name, const std::string& value);
     static void mergeActiveProperty(Style& style, const std::string& name, const std::string& value);
+    static bool isValidSyntax(const std::string& value, const std::string& syntax);
+public:
     static Color parseColor(const std::string& val);
     static CSSValue parseCSSValue(const std::string& val);
     static float parseLengthPixels(const std::string& val, float emBase = 16.0f);

@@ -122,6 +122,12 @@ struct Color {
     }
 
     Vec4 toVec4() const { return {r, g, b, a}; }
+    bool operator==(const Color& other) const {
+        return r == other.r && g == other.g && b == other.b && a == other.a;
+    }
+    bool operator!=(const Color& other) const {
+        return !(*this == other);
+    }
 };
 
 // ============================================================
@@ -186,6 +192,26 @@ struct Gradient {
         g.angle = angle;
         g.stops = stops;
         return g;
+    }
+
+    static Gradient lerp(const Gradient& a, const Gradient& b, float t) {
+        if (t <= 0.0f) return a;
+        if (t >= 1.0f) return b;
+        if (a.type == None) return b;
+        if (b.type == None) return a;
+
+        Gradient result;
+        result.type = a.type;
+        result.angle = a.angle + (b.angle - a.angle) * t;
+
+        size_t size = std::min(a.stops.size(), b.stops.size());
+        result.stops.reserve(size);
+        for (size_t i = 0; i < size; ++i) {
+            Color c = Color::lerp(a.stops[i].first, b.stops[i].first, t);
+            float pos = a.stops[i].second + (b.stops[i].second - a.stops[i].second) * t;
+            result.stops.emplace_back(c, pos);
+        }
+        return result;
     }
 };
 
@@ -337,26 +363,15 @@ private:
 };
 
 struct FastCustomProperties {
-    std::unique_ptr<std::unordered_map<std::string, std::string>> map;
+    std::shared_ptr<std::unordered_map<std::string, std::string>> map;
 
     FastCustomProperties() = default;
 
-    FastCustomProperties(const FastCustomProperties& other) {
-        if (other.map && !other.map->empty()) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>(*other.map);
-        }
-    }
+    FastCustomProperties(const FastCustomProperties& other) : map(other.map) {}
 
     FastCustomProperties& operator=(const FastCustomProperties& other) {
-        if (this == &other) return *this;
-        if (!other.map || other.map->empty()) {
-            map.reset();
-        } else {
-            if (map) {
-                *map = *other.map;
-            } else {
-                map = std::make_unique<std::unordered_map<std::string, std::string>>(*other.map);
-            }
+        if (this != &other) {
+            map = other.map;
         }
         return *this;
     }
@@ -370,7 +385,7 @@ struct FastCustomProperties {
 
     FastCustomProperties(const std::unordered_map<std::string, std::string>& other) {
         if (!other.empty()) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>(other);
+            map = std::make_shared<std::unordered_map<std::string, std::string>>(other);
         }
     }
 
@@ -378,11 +393,7 @@ struct FastCustomProperties {
         if (other.empty()) {
             map.reset();
         } else {
-            if (map) {
-                *map = other;
-            } else {
-                map = std::make_unique<std::unordered_map<std::string, std::string>>(other);
-            }
+            map = std::make_shared<std::unordered_map<std::string, std::string>>(other);
         }
         return *this;
     }
@@ -395,10 +406,16 @@ struct FastCustomProperties {
         return map.get();
     }
 
-    std::unordered_map<std::string, std::string>& getOrCreateMap() {
+    void ensureUnique() {
         if (!map) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>();
+            map = std::make_shared<std::unordered_map<std::string, std::string>>();
+        } else if (map.use_count() > 1) {
+            map = std::make_shared<std::unordered_map<std::string, std::string>>(*map);
         }
+    }
+
+    std::unordered_map<std::string, std::string>& getOrCreateMap() {
+        ensureUnique();
         return *map;
     }
 
@@ -408,9 +425,7 @@ struct FastCustomProperties {
     }
 
     auto begin() {
-        if (!map) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>();
-        }
+        ensureUnique();
         return map->begin();
     }
 
@@ -420,9 +435,7 @@ struct FastCustomProperties {
     }
 
     auto end() {
-        if (!map) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>();
-        }
+        ensureUnique();
         return map->end();
     }
 
@@ -436,16 +449,12 @@ struct FastCustomProperties {
     void clear() { map.reset(); }
 
     std::string& operator[](const std::string& key) {
-        if (!map) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>();
-        }
+        ensureUnique();
         return (*map)[key];
     }
 
     auto find(const std::string& key) {
-        if (!map) {
-            map = std::make_unique<std::unordered_map<std::string, std::string>>();
-        }
+        ensureUnique();
         return map->find(key);
     }
 
@@ -678,6 +687,13 @@ struct Style {
     bool hasVerticalAlign = false;
     bool hasListStyleType = false;
     FastCustomProperties customProperties;
+    FastCustomProperties hoverCustomProperties;
+    FastCustomProperties focusCustomProperties;
+    FastCustomProperties activeCustomProperties;
+    std::string unresolvedBackgroundColor;
+    std::string unresolvedColor;
+    std::string unresolvedBorderColor;
+    std::string unresolvedBackgroundGradient;
 
     // Interaction
     CursorType cursor = CursorType::Default;
@@ -689,10 +705,12 @@ struct Style {
     // Hover state overrides
     Color hoverBackgroundColor;
     Color hoverColor;
+    Gradient hoverBackgroundGradient;
     float hoverOpacity = -1; // -1 means no override
     bool hasHoverBg = false;
     bool hasHoverColor = false;
     bool hasHoverBorder = false;
+    bool hasHoverGradient = false;
     Color hoverBorderColor;
     float hoverScale = -1; // -1 means no override
 
@@ -700,11 +718,13 @@ struct Style {
     Color focusBackgroundColor;
     Color focusColor;
     Color focusBorderColor;
+    Gradient focusBackgroundGradient;
     Border focusOutline;
     bool hasFocusBg = false;
     bool hasFocusColor = false;
     bool hasFocusBorder = false;
     bool hasFocusOutline = false;
+    bool hasFocusGradient = false;
     float focusOpacity = -1;
     float focusScale = -1;
 
@@ -712,11 +732,13 @@ struct Style {
     Color activeBackgroundColor;
     Color activeColor;
     Color activeBorderColor;
+    Gradient activeBackgroundGradient;
     Border activeOutline;
     bool hasActiveBg = false;
     bool hasActiveColor = false;
     bool hasActiveBorder = false;
     bool hasActiveOutline = false;
+    bool hasActiveGradient = false;
     float activeOpacity = -1;
     float activeScale = -1;
     uint64_t inheritedHash = 0;

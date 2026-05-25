@@ -22,11 +22,12 @@ static std::atomic<size_t> g_allocated_bytes{0};
 static bool g_tracking_allocations = false;
 static size_t g_allocation_sizes[100];
 static std::atomic<size_t> g_recorded_allocs{0};
+static std::atomic<int> g_current_iteration{-1};
 
 #include <dbghelp.h>
 #pragma comment(lib, "dbghelp.lib")
 
-static void printSymbol(void* address) {
+static void printSymbol(void* address, FILE* f) {
     static bool init = false;
     if (!init) {
         SymInitialize(GetCurrentProcess(), NULL, TRUE);
@@ -38,9 +39,9 @@ static void printSymbol(void* address) {
     pSymbol->MaxNameLen = MAX_SYM_NAME;
     DWORD64 displacement = 0;
     if (SymFromAddr(GetCurrentProcess(), (DWORD64)address, &displacement, pSymbol)) {
-        printf("    %s + 0x%llx\n", pSymbol->Name, displacement);
+        fprintf(f, "    %s + 0x%llx\n", pSymbol->Name, displacement);
     } else {
-        printf("    %p (unknown)\n", address);
+        fprintf(f, "    %p (unknown)\n", address);
     }
 }
 
@@ -53,12 +54,16 @@ void* operator new(size_t size) {
         g_allocation_count.fetch_add(1, std::memory_order_relaxed);
         g_allocated_bytes.fetch_add(size, std::memory_order_relaxed);
 
-        if (idx < 20) {
-            void* stack[5];
-            unsigned short frames = CaptureStackBackTrace(1, 5, stack, NULL);
-            printf("Allocation %zu: %zu bytes, caller stack:\n", idx, size);
-            for (unsigned short i = 0; i < frames; ++i) {
-                printSymbol(stack[i]);
+        if (idx < 50) {
+            FILE* f = fopen("benchmark_allocations.log", "a");
+            if (f) {
+                void* stack[10];
+                unsigned short frames = CaptureStackBackTrace(1, 10, stack, NULL);
+                fprintf(f, "Allocation %zu (iteration %d): %zu bytes, caller stack:\n", idx, g_current_iteration.load(), size);
+                for (unsigned short i = 0; i < frames; ++i) {
+                    printSymbol(stack[i], f);
+                }
+                fclose(f);
             }
         }
     }
@@ -786,6 +791,7 @@ static void runStyleResolutionBenchmark(Application& app) {
     // 2. Build a tree of widgets (e.g. 150 widgets)
     std::vector<Widget*> allWidgets;
     Widget* root = app.root();
+    root->clearChildren(true);
     root->type = "div";
     root->className = "container";
     root->id = "app-root";
@@ -820,11 +826,14 @@ static void runStyleResolutionBenchmark(Application& app) {
 
     auto t_start = std::chrono::high_resolution_clock::now();
     constexpr int iterations = 1000;
-    // Warm up the style cache (populates the cache and runs all misses)
     log_print("  Warming up style cache (Iteration 0)...");
     g_tracking_allocations = false;
+    log_print("  Calling root->markStyleDirtyRecursive()...");
     root->markStyleDirtyRecursive();
+    log_print("  Calling root->resolveStyles(sheet)...");
     root->resolveStyles(sheet);
+    log_print("  Finished root->resolveStyles(sheet).");
+
 
     g_allocation_count = 0;
     g_allocated_bytes = 0;
@@ -833,6 +842,7 @@ static void runStyleResolutionBenchmark(Application& app) {
     g_tracking_allocations = true;
     try {
         for (int it = 0; it < iterations; ++it) {
+            g_current_iteration = it;
             if (it > 0 && it % 1000 == 0) {
                 g_tracking_allocations = false;
                 log_print("  Iteration " + std::to_string(it) + "...");
@@ -881,6 +891,11 @@ static void runStyleResolutionBenchmark(Application& app) {
                 w->computedStyle.color.g != 1.0f ||
                 w->computedStyle.color.b != 1.0f ||
                 w->computedStyle.color.a != 1.0f) {
+                std::cout << "Button id=" << w->id << " failed color verification. hasColor=" << w->computedStyle.hasColor
+                          << " r=" << w->computedStyle.color.r
+                          << " g=" << w->computedStyle.color.g
+                          << " b=" << w->computedStyle.color.b
+                          << " a=" << w->computedStyle.color.a << std::endl;
                 correctness = false;
             }
         }

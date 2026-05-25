@@ -536,7 +536,7 @@ static bool widgetHasDescendantMatching(const Widget* root, const std::string& s
     return Traversal::search(root, selector, root);
 }
 
-static bool matchCompoundSelector(const std::string& compound,
+static bool matchCompoundSelector(std::string_view compound,
                                   std::string_view className,
                                   std::string_view id,
                                   std::string_view type,
@@ -1411,6 +1411,13 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
                         bodyStr += t.text;
                     }
                     parseFontFace(bodyStr);
+                } else if (lowerPrelude.rfind("@property", 0) == 0) {
+                    std::string propName = trim(preludeStr.substr(9));
+                    std::string bodyStr;
+                    for (const auto& t : blockContent) {
+                        bodyStr += t.text;
+                    }
+                    parsePropertyRule(propName, bodyStr);
                 } else if (lowerPrelude.rfind("@layer", 0) == 0) {
                     std::string layerName = trim(preludeStr.substr(6));
                     std::string nestedLayerName;
@@ -1724,14 +1731,24 @@ Style StyleSheet::resolve(std::string_view className,
         style.fontSize = 16.0f;
     }
     applyUserAgentDefaults(style, type, ancestors);
+    for (const auto& entry : propertyDefinitions_) {
+        if (!entry.second.initialValue.empty()) {
+            style.customProperties[entry.second.name] = entry.second.initialValue;
+        }
+    }
     if (!variables_.empty()) {
-        style.customProperties = variables_;
+        for (const auto& entry : variables_) {
+            style.customProperties[entry.first] = entry.second;
+        }
     }
     if (inheritedCustomProperties && !inheritedCustomProperties->empty()) {
-        if (style.customProperties.empty()) {
-            style.customProperties = *inheritedCustomProperties;
-        } else {
-            for (const auto& entry : *inheritedCustomProperties) {
+        for (const auto& entry : *inheritedCustomProperties) {
+            bool shouldInherit = true;
+            auto defIt = propertyDefinitions_.find(entry.first);
+            if (defIt != propertyDefinitions_.end()) {
+                shouldInherit = defIt->second.inherits;
+            }
+            if (shouldInherit) {
                 style.customProperties[entry.first] = entry.second;
             }
         }
@@ -1795,7 +1812,6 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
     }
-
     auto applyCustomProperties = [&](std::vector<CascadedProperty>& properties,
                                      FastCustomProperties& customProperties) {
         std::sort(properties.begin(), properties.end(), lessCascadePriority);
@@ -1805,6 +1821,15 @@ Style StyleSheet::resolve(std::string_view className,
             std::string value = resolveValueInternal(item.property->value, customProperties.getMapPointer(), &valid);
             if (!valid) continue;
             stripImportant(value);
+
+            // Syntax validation check
+            auto defIt = propertyDefinitions_.find(item.property->name);
+            if (defIt != propertyDefinitions_.end()) {
+                if (!isValidSyntax(value, defIt->second.syntax)) {
+                    value = defIt->second.initialValue;
+                }
+            }
+
             customProperties[item.property->name] = value;
         }
     };
@@ -1837,11 +1862,53 @@ Style StyleSheet::resolve(std::string_view className,
     }, style.customProperties);
 
     auto hoverCustomProperties = style.customProperties;
-    auto focusCustomProperties = style.customProperties;
-    auto activeCustomProperties = style.customProperties;
+    if (parentStyle && !parentStyle->hoverCustomProperties.empty()) {
+        for (const auto& entry : parentStyle->hoverCustomProperties) {
+            bool shouldInherit = true;
+            auto defIt = propertyDefinitions_.find(entry.first);
+            if (defIt != propertyDefinitions_.end()) {
+                shouldInherit = defIt->second.inherits;
+            }
+            if (shouldInherit) {
+                hoverCustomProperties[entry.first] = entry.second;
+            }
+        }
+    }
     applyCustomProperties(hoverProperties, hoverCustomProperties);
+
+    auto focusCustomProperties = style.customProperties;
+    if (parentStyle && !parentStyle->focusCustomProperties.empty()) {
+        for (const auto& entry : parentStyle->focusCustomProperties) {
+            bool shouldInherit = true;
+            auto defIt = propertyDefinitions_.find(entry.first);
+            if (defIt != propertyDefinitions_.end()) {
+                shouldInherit = defIt->second.inherits;
+            }
+            if (shouldInherit) {
+                focusCustomProperties[entry.first] = entry.second;
+            }
+        }
+    }
     applyCustomProperties(focusProperties, focusCustomProperties);
+
+    auto activeCustomProperties = style.customProperties;
+    if (parentStyle && !parentStyle->activeCustomProperties.empty()) {
+        for (const auto& entry : parentStyle->activeCustomProperties) {
+            bool shouldInherit = true;
+            auto defIt = propertyDefinitions_.find(entry.first);
+            if (defIt != propertyDefinitions_.end()) {
+                shouldInherit = defIt->second.inherits;
+            }
+            if (shouldInherit) {
+                activeCustomProperties[entry.first] = entry.second;
+            }
+        }
+    }
     applyCustomProperties(activeProperties, activeCustomProperties);
+
+    style.hoverCustomProperties = hoverCustomProperties;
+    style.focusCustomProperties = focusCustomProperties;
+    style.activeCustomProperties = activeCustomProperties;
 
     applyProperties(hoverProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeHoverProperty(target, name, value);
@@ -2102,8 +2169,24 @@ static const Style& cssWideSource(const std::string& name,
 
 static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto customProperties = std::move(target.customProperties);
+    auto hoverCustomProperties = std::move(target.hoverCustomProperties);
+    auto focusCustomProperties = std::move(target.focusCustomProperties);
+    auto activeCustomProperties = std::move(target.activeCustomProperties);
+    auto unresolvedBackgroundColor = std::move(target.unresolvedBackgroundColor);
+    auto unresolvedColor = std::move(target.unresolvedColor);
+    auto unresolvedBorderColor = std::move(target.unresolvedBorderColor);
+    auto unresolvedBackgroundGradient = std::move(target.unresolvedBackgroundGradient);
+
     target = source;
+
     target.customProperties = std::move(customProperties);
+    target.hoverCustomProperties = std::move(hoverCustomProperties);
+    target.focusCustomProperties = std::move(focusCustomProperties);
+    target.activeCustomProperties = std::move(activeCustomProperties);
+    target.unresolvedBackgroundColor = std::move(unresolvedBackgroundColor);
+    target.unresolvedColor = std::move(unresolvedColor);
+    target.unresolvedBorderColor = std::move(unresolvedBorderColor);
+    target.unresolvedBackgroundGradient = std::move(unresolvedBackgroundGradient);
 }
 
 static bool applyCSSWideProperty(Style& target,
@@ -3021,25 +3104,67 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     mergePropertyPart2(style, name, value, emBase);
 }
 
+static bool isDynamicValue(const std::string& val) {
+    return val.find("var(") != std::string::npos ||
+           val.find("min(") != std::string::npos ||
+           val.find("max(") != std::string::npos ||
+           val.find("clamp(") != std::string::npos ||
+           val.find("calc(") != std::string::npos;
+}
+
 bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name.rfind("--", 0) == 0) {
         style.customProperties[name] = value;
     } else if (name == "color") {
-        style.color = parseColor(value);
-        style.hasColor = true;
+        if (isDynamicValue(value)) {
+            style.unresolvedColor = value;
+        } else {
+            style.color = parseColor(value);
+            style.hasColor = true;
+        }
     } else if (name == "background-color" || name == "background") {
         if (value.find("linear-gradient") != std::string::npos) {
-            style.backgroundGradient = parseGradient(value);
+            if (isDynamicValue(value)) {
+                style.unresolvedBackgroundGradient = value;
+            } else {
+                style.backgroundGradient = parseGradient(value);
+            }
         } else {
-            style.backgroundColor = parseColor(value);
+            if (isDynamicValue(value)) {
+                style.unresolvedBackgroundColor = value;
+            } else {
+                style.backgroundColor = parseColor(value);
+            }
         }
     } else if (name == "background-image") {
         if (value.find("linear-gradient") != std::string::npos) {
-            style.backgroundGradient = parseGradient(value);
+            if (isDynamicValue(value)) {
+                style.unresolvedBackgroundGradient = value;
+            } else {
+                style.backgroundGradient = parseGradient(value);
+            }
         }
     } else if (name == "border-radius") {
         style.borderRadius = parseBorderRadius(value, emBase);
     } else if (name == "border") {
+        if (isDynamicValue(value)) {
+            size_t varPos = value.find("var(");
+            if (varPos == std::string::npos) varPos = value.find("min(");
+            if (varPos == std::string::npos) varPos = value.find("max(");
+            if (varPos == std::string::npos) varPos = value.find("clamp(");
+            if (varPos != std::string::npos) {
+                int depth = 1;
+                size_t cursor = varPos + 4;
+                while (cursor < value.size() && depth > 0) {
+                    if (value[cursor] == '(') depth++;
+                    if (value[cursor] == ')') depth--;
+                    if (depth > 0) cursor++;
+                }
+                if (cursor < value.size()) {
+                    style.unresolvedBorderColor = value.substr(varPos, cursor - varPos + 1);
+                }
+            }
+        }
         style.border = parseBorder(value, emBase);
     } else if (name == "border-top") {
         style.borderTop = parseBorder(value, emBase);
@@ -3066,7 +3191,11 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.borderInlineEnd = parseBorder(value, emBase);
         style.hasBorderInlineEnd = true;
     } else if (name == "border-color") {
-        style.border.color = parseColor(value);
+        if (isDynamicValue(value)) {
+            style.unresolvedBorderColor = value;
+        } else {
+            style.border.color = parseColor(value);
+        }
     } else if (name == "border-width") {
         style.border.width = parseLengthPixels(value, emBase);
     } else if (name == "outline") {
@@ -3674,12 +3803,19 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         style.hoverScale = parseFloat(value);
     }
 }
-
 void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "background-color" || name == "background") {
-        if (value.find("linear-gradient") == std::string::npos) {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.hoverBackgroundGradient = parseGradient(value);
+            style.hasHoverGradient = true;
+        } else {
             style.hoverBackgroundColor = parseColor(value);
             style.hasHoverBg = true;
+        }
+    } else if (name == "background-image") {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.hoverBackgroundGradient = parseGradient(value);
+            style.hasHoverGradient = true;
         }
     } else if (name == "color") {
         style.hoverColor = parseColor(value);
@@ -3728,9 +3864,17 @@ void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const
 
 void StyleSheet::mergeFocusProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "background-color" || name == "background") {
-        if (value.find("linear-gradient") == std::string::npos) {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.focusBackgroundGradient = parseGradient(value);
+            style.hasFocusGradient = true;
+        } else {
             style.focusBackgroundColor = parseColor(value);
             style.hasFocusBg = true;
+        }
+    } else if (name == "background-image") {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.focusBackgroundGradient = parseGradient(value);
+            style.hasFocusGradient = true;
         }
     } else if (name == "color") {
         style.focusColor = parseColor(value);
@@ -3768,9 +3912,17 @@ void StyleSheet::mergeFocusProperty(Style& style, const std::string& name, const
 
 void StyleSheet::mergeActiveProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "background-color" || name == "background") {
-        if (value.find("linear-gradient") == std::string::npos) {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.activeBackgroundGradient = parseGradient(value);
+            style.hasActiveGradient = true;
+        } else {
             style.activeBackgroundColor = parseColor(value);
             style.hasActiveBg = true;
+        }
+    } else if (name == "background-image") {
+        if (value.find("linear-gradient") != std::string::npos) {
+            style.activeBackgroundGradient = parseGradient(value);
+            style.hasActiveGradient = true;
         }
     } else if (name == "color") {
         style.activeColor = parseColor(value);
@@ -3804,6 +3956,101 @@ void StyleSheet::mergeActiveProperty(Style& style, const std::string& name, cons
             }
         }
     }
+}
+
+bool StyleSheet::isValidSyntax(const std::string& value, const std::string& syntax) {
+    std::string val = trim(value);
+    std::string syn = trim(syntax);
+    if (syn == "*") return true;
+    if (syn.empty()) return true;
+
+    // Handle combinations like "left | right"
+    if (syn.find('|') != std::string::npos) {
+        std::istringstream ss(syn);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            part = trim(part);
+            if (part == val || (part.size() > 0 && part[0] == '<' && isValidSyntax(val, part))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (syn == "<color>") {
+        if (val.empty()) return false;
+        if (val == "transparent" || val == "currentColor" || val == "inherit" || val == "initial" || val == "unset") return true;
+        if (val[0] == '#') return true;
+        if (val.rfind("rgb", 0) == 0 || val.rfind("hsl", 0) == 0) return true;
+        std::string lower = lowerAscii(val);
+        Color c = parseColor(val);
+        if (c.r == 0 && c.g == 0 && c.b == 0 && c.a == 1.0f) {
+            return lower == "black" || lower == "#000000" || lower == "#000" || lower == "rgb(0,0,0)" || lower == "rgba(0,0,0,1)";
+        }
+        if (c.r == 0 && c.g == 0 && c.b == 0 && c.a == 0.0f) {
+            return lower == "transparent" || lower == "rgba(0,0,0,0)" || lower == "hsla(0,0%,0%,0)";
+        }
+        return true;
+    }
+
+    if (syn == "<length>") {
+        if (val.empty()) return false;
+        if (val == "0") return true;
+        std::string lower = lowerAscii(val);
+        size_t lastNum = lower.find_last_of("0123456789.");
+        if (lastNum == std::string::npos) return false;
+        std::string unit = lower.substr(lastNum + 1);
+        return unit == "px" || unit == "em" || unit == "rem" || unit == "vw" || unit == "vh" || unit == "pt" || unit == "%" || unit == "in" || unit == "cm" || unit == "mm" || unit == "pc";
+    }
+
+    if (syn == "<percentage>") {
+        if (val.empty()) return false;
+        return val.back() == '%';
+    }
+
+    if (syn == "<length-percentage>") {
+        return isValidSyntax(val, "<length>") || isValidSyntax(val, "<percentage>");
+    }
+
+    if (syn == "<number>" || syn == "<integer>") {
+        if (val.empty()) return false;
+        bool hasDecimal = false;
+        for (size_t i = 0; i < val.size(); i++) {
+            char c = val[i];
+            if (c == '+' || c == '-') {
+                if (i != 0) return false;
+            } else if (c == '.') {
+                if (syn == "<integer>") return false;
+                if (hasDecimal) return false;
+                hasDecimal = true;
+            } else if (!std::isdigit(static_cast<unsigned char>(c))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    if (syn == "<angle>") {
+        if (val.empty()) return false;
+        if (val == "0") return true;
+        std::string lower = lowerAscii(val);
+        size_t lastNum = lower.find_last_of("0123456789.");
+        if (lastNum == std::string::npos) return false;
+        std::string unit = lower.substr(lastNum + 1);
+        return unit == "deg" || unit == "rad" || unit == "grad" || unit == "turn";
+    }
+
+    if (syn == "<time>") {
+        if (val.empty()) return false;
+        if (val == "0") return true;
+        std::string lower = lowerAscii(val);
+        size_t lastNum = lower.find_last_of("0123456789.");
+        if (lastNum == std::string::npos) return false;
+        std::string unit = lower.substr(lastNum + 1);
+        return unit == "s" || unit == "ms";
+    }
+
+    return lowerAscii(val) == lowerAscii(syn);
 }
 
 Color StyleSheet::parseColor(const std::string& val) {
@@ -4153,21 +4400,39 @@ Border StyleSheet::parseBorder(const std::string& val, float emBase) {
     }
 
     std::string colorStr;
-    auto hashPos = v.find('#');
-    if (hashPos != std::string::npos) {
-        auto end = v.find(' ', hashPos + 1);
-        if (end == std::string::npos) end = v.size();
-        colorStr = v.substr(hashPos, end - hashPos);
-        v = v.substr(0, hashPos) + v.substr(end);
+    auto varPos = v.find("var(");
+    if (varPos == std::string::npos) varPos = v.find("min(");
+    if (varPos == std::string::npos) varPos = v.find("max(");
+    if (varPos == std::string::npos) varPos = v.find("clamp(");
+    if (varPos != std::string::npos) {
+        int depth = 1;
+        size_t cursor = varPos + 4;
+        while (cursor < v.size() && depth > 0) {
+            if (v[cursor] == '(') depth++;
+            if (v[cursor] == ')') depth--;
+            if (depth > 0) cursor++;
+        }
+        if (cursor < v.size()) {
+            colorStr = v.substr(varPos, cursor - varPos + 1);
+            v = v.substr(0, varPos) + v.substr(cursor + 1);
+        }
     } else {
-        auto rgbPos = v.find("rgb");
-        auto hslPos = v.find("hsl");
-        auto colorPos = rgbPos != std::string::npos ? rgbPos : hslPos;
-        if (colorPos != std::string::npos) {
-            auto end = v.find(')', colorPos);
-            if (end != std::string::npos) {
-                colorStr = v.substr(colorPos, end - colorPos + 1);
-                v = v.substr(0, colorPos) + v.substr(end + 1);
+        auto hashPos = v.find('#');
+        if (hashPos != std::string::npos) {
+            auto end = v.find(' ', hashPos + 1);
+            if (end == std::string::npos) end = v.size();
+            colorStr = v.substr(hashPos, end - hashPos);
+            v = v.substr(0, hashPos) + v.substr(end);
+        } else {
+            auto rgbPos = v.find("rgb");
+            auto hslPos = v.find("hsl");
+            auto colorPos = rgbPos != std::string::npos ? rgbPos : hslPos;
+            if (colorPos != std::string::npos) {
+                auto end = v.find(')', colorPos);
+                if (end != std::string::npos) {
+                    colorStr = v.substr(colorPos, end - colorPos + 1);
+                    v = v.substr(0, colorPos) + v.substr(end + 1);
+                }
             }
         }
     }
@@ -4473,6 +4738,35 @@ void StyleSheet::parseFontFace(const std::string& body) {
         fontFaces.push_back({fontFamily, src});
     }
 }
+
+void StyleSheet::parsePropertyRule(const std::string& name, const std::string& body) {
+    CSSPropertyDefinition def;
+    def.name = name;
+    
+    // Parse declarations inside the body
+    auto declarations = splitDeclarations(body);
+    for (const auto& decl : declarations) {
+        size_t colon = decl.find(':');
+        if (colon == std::string::npos) continue;
+        std::string propName = lowerAscii(trim(decl.substr(0, colon)));
+        std::string propValue = trim(decl.substr(colon + 1));
+        
+        if (propName == "syntax") {
+            // Strip quotes around syntax string if present
+            if (propValue.size() >= 2 && (propValue.front() == '"' || propValue.front() == '\'') && propValue.front() == propValue.back()) {
+                propValue = propValue.substr(1, propValue.size() - 2);
+            }
+            def.syntax = propValue;
+        } else if (propName == "inherits") {
+            def.inherits = (propValue == "true");
+        } else if (propName == "initial-value") {
+            def.initialValue = propValue;
+        }
+    }
+    
+    propertyDefinitions_[name] = def;
+}
+
 
 static void extractSelectorFeatures(const std::string& part,
                                     std::vector<std::string>& classes,
