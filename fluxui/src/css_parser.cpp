@@ -2530,6 +2530,7 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
         style.appearance = Appearance::Auto;
         style.hasAppearance = true;
         style.cursor = CursorType::Text;
+        style.overflow = Overflow::Auto;
         style.whiteSpace = WhiteSpace::PreWrap;
         style.hasWhiteSpace = true;
         style.wordBreak = WordBreak::BreakWord;
@@ -3310,6 +3311,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "grabbing") style.cursor = CursorType::Grabbing;
         else if (value == "not-allowed") style.cursor = CursorType::NotAllowed;
         else if (value == "crosshair") style.cursor = CursorType::Crosshair;
+        else if (value == "se-resize" || value == "nwse-resize") style.cursor = CursorType::ResizeNWSE;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {
         for (const auto& part : splitTopLevel(value, ',')) {

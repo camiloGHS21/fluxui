@@ -331,6 +331,7 @@ NativeCursorHandle Platform::createSystemCursor(CursorType type) {
     switch (type) {
         case CursorType::Pointer: cursor = [NSCursor pointingHandCursor]; break;
         case CursorType::Text: cursor = [NSCursor IBeamCursor]; break;
+        case CursorType::ResizeNWSE: cursor = [NSCursor arrowCursor]; break;
         default: break;
     }
     return (NativeCursorHandle)cursor;

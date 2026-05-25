@@ -3,7 +3,10 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 #include <iostream>
+
+#pragma comment(lib, "dwmapi.lib")
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
@@ -112,7 +115,7 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     int y = CW_USEDEFAULT;
     
     std::wstring wTitle = utf8ToWide(config.title);
-    DWORD style = WS_OVERLAPPEDWINDOW | WS_MAXIMIZE;
+    DWORD style = WS_OVERLAPPEDWINDOW;
     if (!config.resizable) style &= ~WS_THICKFRAME;
 
     HWND hwnd = CreateWindowExW(
@@ -124,6 +127,11 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
         nullptr, nullptr, hInst, nullptr
     );
 
+    if (hwnd) {
+        BOOL cloak = TRUE;
+        DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
+    }
+
     return (NativeWindowHandle)hwnd;
 }
 
@@ -131,9 +139,11 @@ void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     HWND hwnd = (HWND)window;
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
-    if (!GetWindowLongPtr(hwnd, GWLP_USERDATA)) {
-        UpdateWindow(hwnd);
-    }
+    UpdateWindow(hwnd);
+    
+    // Uncloak window after first show and layout update
+    BOOL cloak = FALSE;
+    DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
 }
 
 void Platform::destroyWindow(NativeWindowHandle window) {
@@ -193,6 +203,7 @@ NativeCursorHandle Platform::createSystemCursor(CursorType type) {
     switch (type) {
         case CursorType::Pointer: id = (LPCWSTR)32649; break; // IDC_HAND
         case CursorType::Text: id = (LPCWSTR)32513; break;    // IDC_IBEAM
+        case CursorType::ResizeNWSE: id = (LPCWSTR)32642; break; // IDC_SIZENWSE
         default: id = (LPCWSTR)32512; break;                  // IDC_ARROW
     }
     return (NativeCursorHandle)LoadCursorW(nullptr, id);

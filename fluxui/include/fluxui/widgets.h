@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <chrono>
 #include <memory_resource>
 #include <functional>
 #include <cstddef>
@@ -395,9 +396,9 @@ public:
     int cols = 20;
     bool wrap = true;
 
-    TextArea() { type = "textarea"; }
+    TextArea() { type = "textarea"; style.overflow = Overflow::Auto; }
     TextArea(const std::string& ph, const std::string& cls = "")
-        : placeholder(ph) { type = "textarea"; className = cls; }
+        : placeholder(ph) { type = "textarea"; className = cls; style.overflow = Overflow::Auto; }
 
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
@@ -409,10 +410,14 @@ private:
     size_t selectionAnchor_ = 0;
     size_t selectionFocus_ = 0;
     bool selecting_ = false;
-    float scrollY_ = 0;
     float scrollX_ = 0;
     float focusAnim_ = 0;
     float caretBlinkTime_ = 0;
+
+    bool resizing_ = false;
+    Vec2 resizeStartMousePos_ = {0.0f, 0.0f};
+    Vec2 resizeStartSize_ = {0.0f, 0.0f};
+    bool isOverResizeHandle(Vec2 point) const;
 
     struct LineInfo {
         size_t start;
@@ -1215,6 +1220,7 @@ public:
     bool init(const std::string& title, int width, int height);
     bool init(const std::string& title, int width, int height, RenderBackendType backend);
     void run();
+    void renderFrame();
     void shutdown();
     void setBackend(RenderBackendType backend);
     RenderBackendType backendPreference() const { return backendPreference_; }
@@ -1268,12 +1274,14 @@ private:
     void* defaultCursor_ = nullptr;
     void* pointerCursor_ = nullptr;
     void* textCursor_ = nullptr;
+    void* resizeNWSECursor_ = nullptr;
     CursorType activeCursor_ = CursorType::Default;
     Renderer renderer_;
     RenderBackendType backendPreference_ = Renderer::defaultBackend();
     StyleSheet stylesheet_;
     InputState input_;
     std::shared_ptr<Widget> root_;
+    std::chrono::high_resolution_clock::time_point lastTime_;
     std::unordered_map<std::string, RouteBuilder> routes_;
     RouteBuilder notFoundRoute_;
     std::string currentRoute_;

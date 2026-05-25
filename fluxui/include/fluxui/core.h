@@ -228,7 +228,7 @@ enum class Overflow { Visible, Hidden, Scroll, Auto, Clip };
 enum class TextAlign { Left, Center, Right, Justify };
 enum class FontWeight { Normal, Bold };
 enum class FontStyle { Normal, Italic, Oblique };
-enum class CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, Crosshair };
+enum class CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, Crosshair, ResizeNWSE };
 enum class BoxSizing { ContentBox, BorderBox };
 enum class Visibility { Visible, Hidden, Collapse };
 enum class TextOverflow { Clip, Ellipsis };

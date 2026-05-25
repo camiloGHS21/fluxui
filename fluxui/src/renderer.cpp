@@ -2238,6 +2238,9 @@ void destroyVulkanSwapchain(VulkanRendererState& state) {
 }
 
 bool createVulkanSwapchain(VulkanRendererState& state, int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
     auto support = queryVulkanSwapchainSupport(state.physicalDevice, state.surface);
     if (support.formats.empty() || support.presentModes.empty()) {
         std::cerr << "FluxUI: Vulkan surface does not support a usable swapchain." << std::endl;
@@ -2247,6 +2250,9 @@ bool createVulkanSwapchain(VulkanRendererState& state, int width, int height) {
     auto surfaceFormat = chooseVulkanSurfaceFormat(support.formats);
     auto presentMode = chooseVulkanPresentMode(support.presentModes);
     auto extent = chooseVulkanExtent(support.capabilities, width, height);
+    if (extent.width == 0 || extent.height == 0) {
+        return false;
+    }
 
     uint32_t imageCount = support.capabilities.minImageCount;
 #if !FLUXUI_LOW_MEMORY
@@ -5186,14 +5192,8 @@ void Renderer::beginFrame(int w, int h) {
         if (beginVulkanFrame(w, h)) {
             return;
         }
-        std::cerr << "FluxUI: Vulkan frame begin failed. Switching to CPU "
-                  << "software compatibility renderer." << std::endl;
-        shutdownVulkan();
-        activeBackend_ = RenderBackendType::Compatibility;
-        if (!backendInitialized_) {
-            initSoftware(window_);
-        }
-        beginSoftwareFrame(w, h);
+        // Vulkan frame begin failed (e.g. during resize/minimize/out-of-date swapchain).
+        // Do not permanently switch to software renderer. Just return to skip this frame.
         return;
     }
 

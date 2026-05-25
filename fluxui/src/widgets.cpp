@@ -1235,6 +1235,9 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         const Style* parentStyle = parent ? &parent->computedStyle : nullptr;
         std::string_view selectorType = widgetSelectorType(this);
         computedStyle = sheet.resolveLazy(className, id, selectorType, ancestorH1, ancestorH2, parentStyle, getAncestors, this);
+        if (!parent && computedStyle.overflowY == Overflow::Visible) {
+            computedStyle.overflowY = Overflow::Auto;
+        }
         if (parent) {
             const Style& inherited = parent->computedStyle;
             if (!computedStyle.hasColor) computedStyle.color = inherited.color;
@@ -1262,6 +1265,9 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.bottom.isSet()) computedStyle.bottom = style.bottom;
         if (style.left.isSet()) computedStyle.left = style.left;
         if (style.position != Position::Static) computedStyle.position = style.position;
+        if (style.overflow != Overflow::Visible) computedStyle.overflow = style.overflow;
+        if (style.overflowX != Overflow::Visible) computedStyle.overflowX = style.overflowX;
+        if (style.overflowY != Overflow::Visible) computedStyle.overflowY = style.overflowY;
         if (style.fontSize > 0 && style.fontSize != 14.0f) computedStyle.fontSize = style.fontSize;
         if (style.hasFontStyle) {
             computedStyle.fontStyle = style.fontStyle;
@@ -1592,7 +1598,7 @@ void Widget::layout(const Rect& parentBounds) {
             currentRowY += maxRowH + rGap;
         }
 
-        if (!s.height.isSet() && !heightProvidedByParentFlex) {
+        if (!s.height.isSet() && !heightProvidedByParentFlex && parent != nullptr) {
             float totalH = currentRowY - startY + s.padding.vertical();
             if (currentRowY > startY) {
                 totalH -= rGap;
@@ -1695,7 +1701,7 @@ void Widget::layout(const Rect& parentBounds) {
             currentY += rowH;
         }
 
-        if (!s.height.isSet() && !heightProvidedByParentFlex) {
+        if (!s.height.isSet() && !heightProvidedByParentFlex && parent != nullptr) {
             bounds.h = std::max(bounds.h, currentY - bounds.y + s.padding.bottom);
         }
         contentHeight = currentY - bounds.y + s.padding.bottom;
@@ -1780,7 +1786,7 @@ void Widget::layout(const Rect& parentBounds) {
         }
         cy = maxFloatY;
 
-        if (!s.height.isSet() && !heightProvidedByParentFlex && !children.empty()) {
+        if (!s.height.isSet() && !heightProvidedByParentFlex && !children.empty() && parent != nullptr) {
             bounds.h = std::max(bounds.h, cy - bounds.y + s.padding.bottom);
         }
         contentHeight = cy - bounds.y + s.padding.bottom;
@@ -2282,7 +2288,7 @@ void Widget::layoutFlexChildren() {
             contentHeight = maxLineMain + s.padding.vertical();
         }
 
-        if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s)) {
+        if (!s.height.isSet() && !consumesParentMainAxisHeight(this, s) && parent != nullptr) {
             bounds.h = std::max(bounds.h, contentHeight);
         }
     }
@@ -3589,6 +3595,21 @@ void TextArea::layout(const Rect& parentBounds) {
     if (!s.height.isSet()) {
         bounds.h = rows * lineH + s.padding.vertical() + s.margin.vertical();
     }
+    float clipW = std::max(0.0f, bounds.w - s.padding.horizontal());
+    auto lines = layoutLines(s.fontSize, clipW);
+    contentHeight = lines.size() * lineH + s.padding.vertical();
+}
+
+bool TextArea::isOverResizeHandle(Vec2 point) const {
+    float size = 14.0f;
+    Rect handle = {
+        bounds.x + bounds.w - size,
+        bounds.y + bounds.h - size,
+        size,
+        size
+    };
+    return point.x >= handle.x && point.x <= handle.x + handle.w &&
+           point.y >= handle.y && point.y <= handle.y + handle.h;
 }
 
 bool TextArea::hasSelection() const {
@@ -3683,9 +3704,6 @@ void TextArea::getLineAndColumnOfOffset(const std::vector<LineInfo>& lines, size
 
 void TextArea::update(const InputState& input) {
     Widget::update(input);
-    caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
-    selectionAnchor_ = clampToUtf8Boundary(value, selectionAnchor_);
-    selectionFocus_ = clampToUtf8Boundary(value, selectionFocus_);
     
     auto updateFocusAnimation = [&]() {
         float focusTarget = focused ? 1.0f : 0.0f;
@@ -3697,6 +3715,28 @@ void TextArea::update(const InputState& input) {
             focusAnim_ = std::max(focusAnim_ - input.deltaTime * focusSpeed, focusTarget);
         }
     };
+
+    if (resizing_) {
+        if (input.mouseDown[0]) {
+            float newWidth = resizeStartSize_.x + (input.mousePos.x - resizeStartMousePos_.x);
+            float newHeight = resizeStartSize_.y + (input.mousePos.y - resizeStartMousePos_.y);
+            newWidth = std::max(50.0f, newWidth);
+            newHeight = std::max(30.0f, newHeight);
+            style.width = CSSValue::px(newWidth);
+            style.height = CSSValue::px(newHeight);
+            markStyleDirty();
+        } else {
+            resizing_ = false;
+        }
+        if (input.mouseReleased[0]) {
+            resizing_ = false;
+        }
+        updateFocusAnimation();
+        return;
+    }
+    caretIndex_ = clampToUtf8Boundary(value, caretIndex_);
+    selectionAnchor_ = clampToUtf8Boundary(value, selectionAnchor_);
+    selectionFocus_ = clampToUtf8Boundary(value, selectionFocus_);
     
     auto setCaret = [&](size_t index, bool extendSelection) {
         caretIndex_ = clampToUtf8Boundary(value, index);
@@ -3733,7 +3773,7 @@ void TextArea::update(const InputState& input) {
     
     auto indexAtMouse = [&]() {
         float localX = input.mousePos.x - bounds.x - computedStyle.padding.left + scrollX_;
-        float localY = input.mousePos.y - bounds.y - computedStyle.padding.top + scrollY_;
+        float localY = input.mousePos.y - bounds.y - computedStyle.padding.top + scrollY;
         float lineHeight = computedStyle.fontSize * 1.2f;
         float maxWidth = std::max(0.0f, bounds.w - computedStyle.padding.horizontal());
         auto lines = layoutLines(computedStyle.fontSize, maxWidth);
@@ -3756,6 +3796,14 @@ void TextArea::update(const InputState& input) {
     }
     
     if (hovered && input.mouseClicked[0]) {
+        if (isOverResizeHandle(input.mousePos)) {
+            resizing_ = true;
+            resizeStartMousePos_ = input.mousePos;
+            resizeStartSize_ = { bounds.w, bounds.h };
+            focused = true;
+            updateFocusAnimation();
+            return;
+        }
         focused = true;
         size_t index = indexAtMouse();
         if (!shift && input.mouseClickCount[0] >= 2) {
@@ -3906,18 +3954,27 @@ void TextArea::update(const InputState& input) {
     float lineHeight = computedStyle.fontSize * 1.2f;
     float caretY = caretLine * lineHeight;
     float clipH = std::max(0.0f, bounds.h - computedStyle.padding.vertical());
-    if (caretY - scrollY_ > clipH - lineHeight) {
-        scrollY_ = caretY - clipH + lineHeight;
-    } else if (caretY - scrollY_ < 0) {
-        scrollY_ = caretY;
+    if (caretY - scrollY > clipH - lineHeight) {
+        targetScrollY = caretY - clipH + lineHeight;
+        scrollY = targetScrollY;
+    } else if (caretY - scrollY < 0) {
+        targetScrollY = caretY;
+        scrollY = targetScrollY;
     }
-    float maxScrollY = std::max(0.0f, static_cast<float>(lines.size()) * lineHeight - clipH);
-    scrollY_ = std::clamp(scrollY_, 0.0f, maxScrollY);
+    float maxScroll = maxScrollY();
+    targetScrollY = std::clamp(targetScrollY, 0.0f, maxScroll);
+    scrollY = std::clamp(scrollY, 0.0f, maxScroll);
 }
 
 CursorType TextArea::cursorAt(Vec2 point) const {
+    if (resizing_) {
+        return CursorType::ResizeNWSE;
+    }
     if (!canHitTestWidget(this) || !bounds.contains(point)) {
         return CursorType::Default;
+    }
+    if (isOverResizeHandle(point)) {
+        return CursorType::ResizeNWSE;
     }
     return CursorType::Text;
 }
@@ -3955,7 +4012,7 @@ void TextArea::render(Renderer& renderer) {
         size_t end = selectionEnd();
         for (size_t i = 0; i < lines.size(); ++i) {
             const auto& line = lines[i];
-            float lineY = bounds.y + s.padding.top + i * lineHeight - scrollY_;
+            float lineY = bounds.y + s.padding.top + i * lineHeight - scrollY;
             if (lineY + lineHeight < bounds.y || lineY > bounds.y + bounds.h) {
                 continue;
             }
@@ -4000,7 +4057,7 @@ void TextArea::render(Renderer& renderer) {
         Color textColor = s.color;
         for (size_t i = 0; i < lines.size(); ++i) {
             const auto& line = lines[i];
-            float lineY = bounds.y + s.padding.top + i * lineHeight - scrollY_;
+            float lineY = bounds.y + s.padding.top + i * lineHeight - scrollY;
             if (lineY + lineHeight < bounds.y || lineY > bounds.y + bounds.h) {
                 continue;
             }
@@ -4027,7 +4084,7 @@ void TextArea::render(Renderer& renderer) {
         std::string lineStr = value.substr(line.start, line.end - line.start);
         std::string prefix = lineStr.substr(0, caretCol);
         float caretX = clipRect.x + renderer.measureText(prefix, s.fontSize, fontName).x - scrollX_;
-        float caretY = bounds.y + s.padding.top + caretLine * lineHeight - scrollY_;
+        float caretY = bounds.y + s.padding.top + caretLine * lineHeight - scrollY;
         float cursorH = s.fontSize + 4.0f;
         float cursorY = caretY + (lineHeight - cursorH) * 0.5f;
         float blink = std::fmod(caretBlinkTime_, 1.0f);
@@ -4038,6 +4095,50 @@ void TextArea::render(Renderer& renderer) {
         }
     }
     renderer.popScissor();
+
+    // Draw Scrollbar (matching Widget::render scrollbar drawing)
+    bool scrollable = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
+    if (scrollable) {
+        Rect track, thumb;
+        if (getScrollBarRects(track, thumb)) {
+            float active = (scrollbarHovered || scrollbarDragging) ? 1.0f : 0.0f;
+            float pressed = scrollbarDragging ? 1.0f : 0.0f;
+            Rect visualTrack = {
+                track.x,
+                track.y,
+                track.w,
+                track.h
+            };
+            Rect visualThumb = thumb;
+            if (!scrollbarHovered && !scrollbarDragging) {
+                visualThumb.x += 2.0f;
+                visualThumb.w -= 4.0f;
+            }
+            renderer.drawRoundedRect(visualTrack,
+                                     Color(0.13f, 0.14f, 0.16f, 0.32f + active * 0.22f),
+                                     BorderRadius(0));
+            renderer.drawRoundedRect(visualThumb,
+                                     Color(0.47f + pressed * 0.16f,
+                                           0.49f + pressed * 0.16f,
+                                           0.53f + pressed * 0.16f,
+                                           0.72f + active * 0.18f),
+                                     BorderRadius(5));
+        }
+    }
+
+    // Draw Resize Handle in the bottom-right corner of the whole widget bounds
+    float rx = bounds.x + bounds.w;
+    float ry = bounds.y + bounds.h;
+    Color dotColor = Color(0.50f, 0.53f, 0.57f, 0.8f);
+    renderer.drawRoundedRect({rx - 4.5f, ry - 4.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+    renderer.drawRoundedRect({rx - 7.5f, ry - 4.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+    renderer.drawRoundedRect({rx - 10.5f, ry - 4.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+    
+    renderer.drawRoundedRect({rx - 4.5f, ry - 7.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+    renderer.drawRoundedRect({rx - 7.5f, ry - 7.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+    
+    renderer.drawRoundedRect({rx - 4.5f, ry - 10.5f, 1.5f, 1.5f}, dotColor, BorderRadius(0.5f));
+
     renderChildren(renderer);
 }
 
@@ -4950,6 +5051,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
         event.position = app->input().windowSize;
         app->emit(std::move(event));
         app->requestRedraw();
+        app->renderFrame();
         break;
     }
     case WM_MOUSEMOVE: {
@@ -5052,6 +5154,7 @@ void Internal_OnWindowEvent(void* appPtr, UINT msg, WPARAM wParam, LPARAM lParam
     }
     case WM_PAINT:
         app->requestRedraw();
+        app->renderFrame();
         break;
     }
 }
@@ -5179,6 +5282,7 @@ static void fluxuiPlatformEventHandler(void* ctx, const PlatformInputEvent& even
 #endif
 bool Application::init(const std::string& title, int width, int height) {
     g_activeApp = this;
+    lastTime_ = std::chrono::high_resolution_clock::now();
     if (!Platform::init()) return false;
     PlatformWindowConfig config;
     config.title = title;
@@ -5196,6 +5300,7 @@ bool Application::init(const std::string& title, int width, int height) {
     defaultCursor_ = Platform::createSystemCursor(CursorType::Default);
     pointerCursor_ = Platform::createSystemCursor(CursorType::Pointer);
     textCursor_ = Platform::createSystemCursor(CursorType::Text);
+    resizeNWSECursor_ = Platform::createSystemCursor(CursorType::ResizeNWSE);
     routes_.reserve(FLUXUI_PREALLOC_ROUTES);
     eventListeners_.reserve(FLUXUI_PREALLOC_EVENT_LISTENERS);
     root_ = std::make_shared<Panel>();
@@ -5229,7 +5334,8 @@ void Application::updateCursor(CursorType cursor) {
     if (cursor == activeCursor_) return;
     Platform::setCursor((NativeCursorHandle)
         (cursor == CursorType::Pointer ? pointerCursor_ :
-         (cursor == CursorType::Text ? textCursor_ : defaultCursor_)));
+         (cursor == CursorType::Text ? textCursor_ :
+          (cursor == CursorType::ResizeNWSE ? resizeNWSECursor_ : defaultCursor_))));
     activeCursor_ = cursor;
 }
 bool Application::loadStylesheet(const std::string& path) {
@@ -5838,8 +5944,96 @@ bool Application::renderRoute(Widget* container) {
 #ifdef _WIN32
 #include <windows.h>
 #endif
+void Application::renderFrame() {
+    int w = 0, h = 0;
+    Platform::getWindowSize(window_, w, h);
+    if (w <= 0 || h <= 0) {
+        if (root_) root_->resetTransientMotion();
+        needsRedraw_ = false;
+        return;
+    }
+    needsRedraw_ = false;
+    if (onUpdate) onUpdate(input_.deltaTime);
+    if (stylesheet_.setViewportSize((float)w, (float)h)) {
+        root_->markStyleDirtyRecursive();
+    }
+    root_->resolveStyles(stylesheet_);
+    root_->layout({0, 0, (float)w, (float)h});
+    int documentKeyCode = normalizeTextEditingKey(input_.keyCode);
+    if (documentKeyCode == 0x09) {
+        bool backwards = (input_.modifiers & MOD_SHIFT) != 0;
+        if (moveDocumentFocus(root_.get(), backwards)) {
+            input_.keyCode = 0;
+            input_.text.clear();
+            needsRedraw_ = true;
+        }
+    }
+    // Gather fixed widgets
+    std::vector<Widget*> fixedWidgets;
+    std::function<void(Widget*)> gatherFixed = [&](Widget* widget) {
+        if (!widget || !widget->visible || widget->computedStyle.display == Display::None) return;
+        if (widget->computedStyle.position == Position::Fixed) {
+            fixedWidgets.push_back(widget);
+            return;
+        }
+        for (auto& child : widget->children) {
+            gatherFixed(child.get());
+        }
+    };
+    gatherFixed(root_.get());
+
+    // Update fixed widgets
+    for (auto* fw : fixedWidgets) {
+        fw->update(input_);
+    }
+    root_->update(input_);
+
+    Widget* hitTarget = nullptr;
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        if (Widget* t = (*it)->hitTest(input_.mousePos, true)) {
+            hitTarget = t;
+            break;
+        }
+    }
+    if (!hitTarget) {
+        hitTarget = root_->hitTest(input_.mousePos, true);
+    }
+
+    if (input_.mouseClicked[0] && hitTarget) {
+        UIEvent clickEvent;
+        clickEvent.type = UIEventType::WidgetClick;
+        clickEvent.target = hitTarget;
+        clickEvent.position = input_.mousePos;
+        clickEvent.button = 1;
+        clickEvent.clickCount = input_.mouseClickCount[0];
+        if (clickEvent.target) {
+            emit(std::move(clickEvent));
+        }
+    }
+
+    CursorType currentCursor = CursorType::Default;
+    for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
+        CursorType c = (*it)->cursorAt(input_.mousePos);
+        if (c != CursorType::Default) {
+            currentCursor = c;
+            break;
+        }
+    }
+    if (currentCursor == CursorType::Default) {
+        currentCursor = root_->cursorAt(input_.mousePos);
+    }
+    updateCursor(currentCursor);
+
+    renderer_.beginFrame(w, h);
+    root_->render(renderer_);
+    for (auto* fw : fixedWidgets) {
+        fw->render(renderer_);
+    }
+    if (onRender) onRender();
+    renderer_.endFrame();
+}
+
 void Application::run() {
-    auto lastTime = std::chrono::high_resolution_clock::now();
     bool firstFrame = true;
     bool windowVisible = false;
 #if FLUXUI_SHOW_WINDOW_ON_INIT
@@ -5848,6 +6042,7 @@ void Application::run() {
         windowVisible = true;
     }
 #endif
+    lastTime_ = std::chrono::high_resolution_clock::now();
     while (running) {
         processEvents();
         if (!running) {
@@ -5863,105 +6058,16 @@ void Application::run() {
 #else
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
 #endif
-            lastTime = std::chrono::high_resolution_clock::now();
+            lastTime_ = std::chrono::high_resolution_clock::now();
             continue;
         }
         auto now = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<float> elapsed = now - lastTime;
+        std::chrono::duration<float> elapsed = now - lastTime_;
         input_.deltaTime = std::clamp(elapsed.count(), 0.001f, 1.0f / 30.0f);
-        lastTime = now;
-        int w = 0, h = 0;
-        Platform::getWindowSize(window_, w, h);
-        if (w <= 0 || h <= 0) {
-            if (root_) root_->resetTransientMotion();
-            needsRedraw_ = false;
-#ifdef _WIN32
-            WaitMessage();
-#else
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
-#endif
-            lastTime = std::chrono::high_resolution_clock::now();
-            continue;
-        }
-        needsRedraw_ = false;
-        if (onUpdate) onUpdate(input_.deltaTime);
-        if (stylesheet_.setViewportSize((float)w, (float)h)) {
-            root_->markStyleDirtyRecursive();
-        }
-        root_->resolveStyles(stylesheet_);
-        root_->layout({0, 0, (float)w, (float)h});
-        int documentKeyCode = normalizeTextEditingKey(input_.keyCode);
-        if (documentKeyCode == 0x09) {
-            bool backwards = (input_.modifiers & MOD_SHIFT) != 0;
-            if (moveDocumentFocus(root_.get(), backwards)) {
-                input_.keyCode = 0;
-                input_.text.clear();
-                needsRedraw_ = true;
-            }
-        }
-        // Gather fixed widgets
-        std::vector<Widget*> fixedWidgets;
-        std::function<void(Widget*)> gatherFixed = [&](Widget* widget) {
-            if (!widget || !widget->visible || widget->computedStyle.display == Display::None) return;
-            if (widget->computedStyle.position == Position::Fixed) {
-                fixedWidgets.push_back(widget);
-                return;
-            }
-            for (auto& child : widget->children) {
-                gatherFixed(child.get());
-            }
-        };
-        gatherFixed(root_.get());
+        lastTime_ = now;
 
-        // Update fixed widgets
-        for (auto* fw : fixedWidgets) {
-            fw->update(input_);
-        }
-        root_->update(input_);
+        renderFrame();
 
-        Widget* hitTarget = nullptr;
-        for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
-            if (Widget* t = (*it)->hitTest(input_.mousePos, true)) {
-                hitTarget = t;
-                break;
-            }
-        }
-        if (!hitTarget) {
-            hitTarget = root_->hitTest(input_.mousePos, true);
-        }
-
-        if (input_.mouseClicked[0] && hitTarget) {
-            UIEvent clickEvent;
-            clickEvent.type = UIEventType::WidgetClick;
-            clickEvent.target = hitTarget;
-            clickEvent.position = input_.mousePos;
-            clickEvent.button = 1;
-            clickEvent.clickCount = input_.mouseClickCount[0];
-            if (clickEvent.target) {
-                emit(std::move(clickEvent));
-            }
-        }
-
-        CursorType currentCursor = CursorType::Default;
-        for (auto it = fixedWidgets.rbegin(); it != fixedWidgets.rend(); ++it) {
-            CursorType c = (*it)->cursorAt(input_.mousePos);
-            if (c != CursorType::Default) {
-                currentCursor = c;
-                break;
-            }
-        }
-        if (currentCursor == CursorType::Default) {
-            currentCursor = root_->cursorAt(input_.mousePos);
-        }
-        updateCursor(currentCursor);
-
-        renderer_.beginFrame(w, h);
-        root_->render(renderer_);
-        for (auto* fw : fixedWidgets) {
-            fw->render(renderer_);
-        }
-        if (onRender) onRender();
-        renderer_.endFrame();
 #if FLUXUI_REVEAL_WINDOW_ON_FIRST_FRAME
         if (firstFrame && window_ && !windowVisible) {
             Platform::showWindow(window_);

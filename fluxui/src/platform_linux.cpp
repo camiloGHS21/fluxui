@@ -424,6 +424,7 @@ NativeCursorHandle Platform::createSystemCursor(CursorType type) {
     switch (type) {
         case CursorType::Pointer: shape = XC_hand2; break;
         case CursorType::Text: shape = XC_xterm; break;
+        case CursorType::ResizeNWSE: shape = 14; break; // XC_bottom_right_corner
         default: shape = XC_left_ptr; break;
     }
     return (NativeCursorHandle)XCreateFontCursor(g_display, shape);
