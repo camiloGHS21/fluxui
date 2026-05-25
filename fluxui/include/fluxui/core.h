@@ -297,7 +297,7 @@ enum class Appearance {
 // ============================================================
 
 struct CSSValue {
-    enum Unit { Px, Percent, Auto, None, Vw, Vh, Em, Rem, MinContent, MaxContent, FitContent };
+    enum Unit { Px, Percent, Auto, None, Vw, Vh, Em, Rem, MinContent, MaxContent, FitContent, Ch, Lh, Vi, Vb, Dvw, Dvh };
     float value = 0;
     Unit unit = None;
 
@@ -319,6 +319,12 @@ struct CSSValue {
     static CSSValue vh(float v) { return {v, Vh}; }
     static CSSValue em(float v) { return {v, Em}; }
     static CSSValue rem(float v) { return {v, Rem}; }
+    static CSSValue ch(float v) { return {v, Ch}; }
+    static CSSValue lh(float v) { return {v, Lh}; }
+    static CSSValue vi(float v) { return {v, Vi}; }
+    static CSSValue vb(float v) { return {v, Vb}; }
+    static CSSValue dvw(float v) { return {v, Dvw}; }
+    static CSSValue dvh(float v) { return {v, Dvh}; }
     static CSSValue minContent() { return {0, MinContent}; }
     static CSSValue maxContent() { return {0, MaxContent}; }
     static CSSValue fitContent() { return {0, FitContent}; }
@@ -357,6 +363,12 @@ private:
             case Vh: return val * vpH / 100.0f;
             case Em: return val * emBase;
             case Rem: return val * 16.0f;
+            case Ch: return val * emBase * 0.5f; // 0.5em width of '0' character fallback
+            case Lh: return val * emBase * 1.2f; // line-height: 1.2em fallback
+            case Vi: return val * vpW / 100.0f;  // Inline axis in horizontal writing mode (width)
+            case Vb: return val * vpH / 100.0f;  // Block axis in horizontal writing mode (height)
+            case Dvw: return val * vpW / 100.0f; // Dynamic viewport width (same as vw)
+            case Dvh: return val * vpH / 100.0f; // Dynamic viewport height (same as vh)
             default: return 0;
         }
     }

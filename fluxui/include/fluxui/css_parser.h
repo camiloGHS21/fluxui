@@ -108,6 +108,8 @@ public:
     // Parse CSS string
     void parse(const std::string& css);
     bool setViewportSize(float width, float height);
+    float viewportWidth() const { return viewportWidth_; }
+    float viewportHeight() const { return viewportHeight_; }
 
     // Get style for a specific class/id/type
     Style resolve(std::string_view className,

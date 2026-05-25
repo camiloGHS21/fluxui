@@ -4008,7 +4008,9 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         size_t lastNum = lower.find_last_of("0123456789.");
         if (lastNum == std::string::npos) return false;
         std::string unit = lower.substr(lastNum + 1);
-        return unit == "px" || unit == "em" || unit == "rem" || unit == "vw" || unit == "vh" || unit == "pt" || unit == "%" || unit == "in" || unit == "cm" || unit == "mm" || unit == "pc";
+        return unit == "px" || unit == "em" || unit == "rem" || unit == "vw" || unit == "vh" || 
+               unit == "ch" || unit == "lh" || unit == "vi" || unit == "vb" || unit == "dvw" || unit == "dvh" ||
+               unit == "pt" || unit == "%" || unit == "in" || unit == "cm" || unit == "mm" || unit == "pc";
     }
 
     if (syn == "<percentage>") {
@@ -4452,12 +4454,30 @@ CSSValue StyleSheet::parseCSSValue(const std::string& val) {
         return CSSValue::pct(std::stof(v.substr(0, v.size() - 1)));
     }
 
-    // vw / vh units (Blink viewport units)
+    // vw / vh / viewport / typographic units (Blink style)
+    if (lower.size() > 3 && lower.substr(lower.size() - 3) == "dvw") {
+        return CSSValue::dvw(parseFloat(lower));
+    }
+    if (lower.size() > 3 && lower.substr(lower.size() - 3) == "dvh") {
+        return CSSValue::dvh(parseFloat(lower));
+    }
     if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vw") {
         return CSSValue::vw(parseFloat(lower));
     }
     if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vh") {
         return CSSValue::vh(parseFloat(lower));
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "ch") {
+        return CSSValue::ch(parseFloat(lower));
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "lh") {
+        return CSSValue::lh(parseFloat(lower));
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vi") {
+        return CSSValue::vi(parseFloat(lower));
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vb") {
+        return CSSValue::vb(parseFloat(lower));
     }
 
     if (lower.size() > 3 && lower.substr(lower.size() - 3) == "rem") {
@@ -4484,6 +4504,13 @@ float StyleSheet::parseLengthPixels(const std::string& val, float emBase) {
     std::string lower = lowerAscii(v);
     if (lower.empty() || lower == "auto") return 0.0f;
 
+    float vpW = 1920.0f;
+    float vpH = 1080.0f;
+    if (auto* app = Application::instance()) {
+        vpW = app->stylesheet().viewportWidth();
+        vpH = app->stylesheet().viewportHeight();
+    }
+
     if (lower.find("__qem") != std::string::npos) {
         return parseFloat(lower) * emBase;
     }
@@ -4492,6 +4519,30 @@ float StyleSheet::parseLengthPixels(const std::string& val, float emBase) {
     }
     if (lower.size() > 2 && lower.substr(lower.size() - 2) == "em") {
         return parseFloat(lower) * emBase;
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "ch") {
+        return parseFloat(lower) * emBase * 0.5f; // 0.5em width of '0' character fallback
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "lh") {
+        return parseFloat(lower) * emBase * 1.2f; // line-height: 1.2em fallback
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vi") {
+        return parseFloat(lower) * vpW / 100.0f;
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vb") {
+        return parseFloat(lower) * vpH / 100.0f;
+    }
+    if (lower.size() > 3 && lower.substr(lower.size() - 3) == "dvw") {
+        return parseFloat(lower) * vpW / 100.0f;
+    }
+    if (lower.size() > 3 && lower.substr(lower.size() - 3) == "dvh") {
+        return parseFloat(lower) * vpH / 100.0f;
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vw") {
+        return parseFloat(lower) * vpW / 100.0f;
+    }
+    if (lower.size() > 2 && lower.substr(lower.size() - 2) == "vh") {
+        return parseFloat(lower) * vpH / 100.0f;
     }
     if (lower.back() == '%') {
         return parseFloat(lower) * emBase / 100.0f;
