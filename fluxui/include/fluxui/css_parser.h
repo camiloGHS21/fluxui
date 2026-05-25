@@ -290,6 +290,15 @@ public:
     static Gradient parseGradient(const std::string& val);
     static float parseFloat(const std::string& val);
     static float parseDuration(const std::string& val);
+
+    // @property typed interpolation: lerp between two custom property values
+    // based on the registered syntax type. Returns the interpolated string.
+    // For <color> → Color::lerp, for <number>/<length>/<percentage>/<angle> → numeric lerp.
+    // For unregistered ("*") or non-interpolable types → discrete swap at t >= 0.5.
+    static std::string interpolateTypedValue(const std::string& from,
+                                             const std::string& to,
+                                             float t,
+                                             const std::string& syntax);
 };
 
 // ============================================================

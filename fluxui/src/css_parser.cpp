@@ -1613,8 +1613,16 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         } else if (!fallback.empty()) {
             out += resolveValueInternal(fallback, customProperties, valid, depth + 1);
         } else {
-            if (valid) *valid = false;
-            return "";
+            // @property initial-value fallback (Blink parity):
+            // If the variable has a registered @property definition with an initial-value,
+            // use that instead of failing the entire resolution.
+            auto defIt = propertyDefinitions_.find(name);
+            if (defIt != propertyDefinitions_.end() && !defIt->second.initialValue.empty()) {
+                out += resolveValueInternal(defIt->second.initialValue, customProperties, valid, depth + 1);
+            } else {
+                if (valid) *valid = false;
+                return "";
+            }
         }
         pos = cursor + 1;
     }
@@ -4051,6 +4059,190 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
     }
 
     return lowerAscii(val) == lowerAscii(syn);
+}
+
+// ============================================================
+//  @property typed interpolation (Blink parity)
+//  Interpolates two resolved custom property values based on their
+//  registered @property syntax type. This enables smooth CSS transitions
+//  of custom properties, matching Chromium's CSSPropertyRegistration behavior.
+// ============================================================
+std::string StyleSheet::interpolateTypedValue(const std::string& from,
+                                              const std::string& to,
+                                              float t,
+                                              const std::string& syntax) {
+    if (t <= 0.0f) return from;
+    if (t >= 1.0f) return to;
+    if (from == to) return from;
+
+    std::string syn = trim(syntax);
+
+    // Universal syntax "*" — not interpolable, discrete swap
+    if (syn == "*" || syn.empty()) {
+        return t < 0.5f ? from : to;
+    }
+
+    // Handle "|" alternatives: try each component type
+    if (syn.find('|') != std::string::npos) {
+        // Find which component type both values match
+        std::istringstream ss(syn);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            part = trim(part);
+            if (part.size() > 0 && part[0] == '<' &&
+                isValidSyntax(from, part) && isValidSyntax(to, part)) {
+                return interpolateTypedValue(from, to, t, part);
+            }
+        }
+        // No matching interpolable type — discrete
+        return t < 0.5f ? from : to;
+    }
+
+    // <color> — use Color::lerp for smooth RGBA interpolation
+    if (syn == "<color>") {
+        Color cFrom = parseColor(from);
+        Color cTo = parseColor(to);
+        Color result = Color::lerp(cFrom, cTo, t);
+        // Output as rgba() string for full precision
+        int r = static_cast<int>(result.r * 255.0f + 0.5f);
+        int g = static_cast<int>(result.g * 255.0f + 0.5f);
+        int b = static_cast<int>(result.b * 255.0f + 0.5f);
+        if (std::abs(result.a - 1.0f) < 0.001f) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "rgb(%d, %d, %d)", r, g, b);
+            return buf;
+        } else {
+            char buf[48];
+            snprintf(buf, sizeof(buf), "rgba(%d, %d, %d, %.3f)", r, g, b, result.a);
+            return buf;
+        }
+    }
+
+    // <number> / <integer> — numeric lerp
+    if (syn == "<number>" || syn == "<integer>") {
+        float vFrom = parseFloat(from);
+        float vTo = parseFloat(to);
+        float result = vFrom + (vTo - vFrom) * t;
+        if (syn == "<integer>") {
+            return std::to_string(static_cast<int>(result + 0.5f));
+        }
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4g", result);
+        return buf;
+    }
+
+    // <length> — numeric lerp preserving unit
+    if (syn == "<length>") {
+        std::string fromLower = lowerAscii(trim(from));
+        std::string toLower = lowerAscii(trim(to));
+        // Extract numeric part and unit
+        auto extractUnit = [](const std::string& v) -> std::pair<float, std::string> {
+            if (v == "0") return {0.0f, "px"};
+            size_t lastNum = v.find_last_of("0123456789.");
+            if (lastNum == std::string::npos) return {0.0f, "px"};
+            std::string num = v.substr(0, lastNum + 1);
+            std::string unit = v.substr(lastNum + 1);
+            if (unit.empty()) unit = "px";
+            float val = 0;
+            try { val = std::stof(num); } catch (...) {}
+            return {val, unit};
+        };
+        auto [vFrom, unitFrom] = extractUnit(fromLower);
+        auto [vTo, unitTo] = extractUnit(toLower);
+        // Only interpolate if units match (or one is zero)
+        std::string unit = unitFrom;
+        if (vFrom == 0.0f) unit = unitTo;
+        else if (vTo == 0.0f) unit = unitFrom;
+        else if (unitFrom != unitTo) {
+            // Different units — convert both to pixels, lerp, output as px
+            float pxFrom = parseLengthPixels(from);
+            float pxTo = parseLengthPixels(to);
+            float result = pxFrom + (pxTo - pxFrom) * t;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%.4gpx", result);
+            return buf;
+        }
+        float result = vFrom + (vTo - vFrom) * t;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4g%s", result, unit.c_str());
+        return buf;
+    }
+
+    // <percentage>
+    if (syn == "<percentage>") {
+        float vFrom = parseFloat(from);
+        float vTo = parseFloat(to);
+        float result = vFrom + (vTo - vFrom) * t;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4g%%", result);
+        return buf;
+    }
+
+    // <length-percentage> — try matching
+    if (syn == "<length-percentage>") {
+        if (isValidSyntax(from, "<length>") && isValidSyntax(to, "<length>")) {
+            return interpolateTypedValue(from, to, t, "<length>");
+        }
+        if (isValidSyntax(from, "<percentage>") && isValidSyntax(to, "<percentage>")) {
+            return interpolateTypedValue(from, to, t, "<percentage>");
+        }
+        // Mixed length/percentage — convert to px
+        float pxFrom = parseLengthPixels(from);
+        float pxTo = parseLengthPixels(to);
+        float result = pxFrom + (pxTo - pxFrom) * t;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4gpx", result);
+        return buf;
+    }
+
+    // <angle>
+    if (syn == "<angle>") {
+        auto extractAngle = [](const std::string& v) -> std::pair<float, std::string> {
+            if (v == "0") return {0.0f, "deg"};
+            std::string lower = v;
+            for (char& c : lower) c = (char)std::tolower((unsigned char)c);
+            size_t lastNum = lower.find_last_of("0123456789.");
+            if (lastNum == std::string::npos) return {0.0f, "deg"};
+            std::string num = lower.substr(0, lastNum + 1);
+            std::string unit = lower.substr(lastNum + 1);
+            if (unit.empty()) unit = "deg";
+            float val = 0;
+            try { val = std::stof(num); } catch (...) {}
+            return {val, unit};
+        };
+        auto [vFrom, unitFrom] = extractAngle(trim(from));
+        auto [vTo, unitTo] = extractAngle(trim(to));
+        std::string unit = unitFrom;
+        if (unitFrom != unitTo) {
+            // Normalize to degrees
+            auto toDeg = [](float v, const std::string& u) -> float {
+                if (u == "rad") return v * 180.0f / 3.14159265358979f;
+                if (u == "grad") return v * 0.9f;
+                if (u == "turn") return v * 360.0f;
+                return v;
+            };
+            vFrom = toDeg(vFrom, unitFrom);
+            vTo = toDeg(vTo, unitTo);
+            unit = "deg";
+        }
+        float result = vFrom + (vTo - vFrom) * t;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4g%s", result, unit.c_str());
+        return buf;
+    }
+
+    // <time>
+    if (syn == "<time>") {
+        float msFrom = parseDuration(from) * 1000.0f;
+        float msTo = parseDuration(to) * 1000.0f;
+        float result = msFrom + (msTo - msFrom) * t;
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.4gms", result);
+        return buf;
+    }
+
+    // Not interpolable — discrete
+    return t < 0.5f ? from : to;
 }
 
 Color StyleSheet::parseColor(const std::string& val) {
