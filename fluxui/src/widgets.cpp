@@ -3589,15 +3589,22 @@ void TextArea::layout(const Rect& parentBounds) {
     auto& s = computedStyle;
     float charW = approximateGlyphAdvance('m', s.fontSize);
     float lineH = s.fontSize * 1.2f;
+    
+    float minHeight = bounds.h;
+    if (!s.height.isSet()) {
+        minHeight = rows * lineH + s.padding.vertical() + s.margin.vertical();
+    }
+    
     if (!s.width.isSet()) {
         bounds.w = cols * charW + s.padding.horizontal() + s.margin.horizontal();
     }
-    if (!s.height.isSet()) {
-        bounds.h = rows * lineH + s.padding.vertical() + s.margin.vertical();
-    }
+    
     float clipW = std::max(0.0f, bounds.w - s.padding.horizontal());
     auto lines = layoutLines(s.fontSize, clipW);
     contentHeight = lines.size() * lineH + s.padding.vertical();
+    
+    float requiredHeight = contentHeight + s.margin.vertical();
+    bounds.h = std::max(minHeight, requiredHeight);
 }
 
 bool TextArea::isOverResizeHandle(Vec2 point) const {
