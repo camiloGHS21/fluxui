@@ -90,6 +90,89 @@ static Application* g_activeApp = nullptr;
 Application* Application::instance() {
     return g_activeApp;
 }
+
+void Application::registerResizeObserver(ResizeObserver* observer) {
+    if (!observer) return;
+    for (auto* obs : resizeObservers_) {
+        if (obs == observer) return;
+    }
+    resizeObservers_.push_back(observer);
+}
+
+void Application::unregisterResizeObserver(ResizeObserver* observer) {
+    resizeObservers_.erase(
+        std::remove(resizeObservers_.begin(), resizeObservers_.end(), observer),
+        resizeObservers_.end()
+    );
+}
+void Application::onWidgetDestroyed(Widget* w) {
+    if (!w) return;
+    for (auto* obs : resizeObservers_) {
+        obs->unobserve(w);
+    }
+}
+
+ResizeObserver::ResizeObserver(ResizeObserverCallback callback) : callback_(callback) {
+    if (Application::instance()) {
+        Application::instance()->registerResizeObserver(this);
+    }
+}
+
+ResizeObserver::~ResizeObserver() {
+    if (Application::instance()) {
+        Application::instance()->unregisterResizeObserver(this);
+    }
+}
+
+void ResizeObserver::observe(Widget* target) {
+    if (!target) return;
+    for (const auto& obs : observedTargets_) {
+        if (obs.target == target) return;
+    }
+    observedTargets_.push_back({ target, -1.0f, -1.0f });
+}
+
+void ResizeObserver::unobserve(Widget* target) {
+    observedTargets_.erase(
+        std::remove_if(observedTargets_.begin(), observedTargets_.end(),
+            [target](const ObservedTarget& obs) { return obs.target == target; }),
+        observedTargets_.end()
+    );
+}
+
+void ResizeObserver::disconnect() {
+    observedTargets_.clear();
+}
+
+void ResizeObserver::gatherObservations(std::vector<ResizeObserverEntry>& activeObservations) {
+    for (auto& obs : observedTargets_) {
+        if (!obs.target) continue;
+        float w = obs.target->bounds.w;
+        float h = obs.target->bounds.h;
+        if (w != obs.lastWidth || h != obs.lastHeight) {
+            ResizeObserverEntry entry;
+            entry.target = obs.target;
+            entry.contentRect = Rect(0, 0, w, h);
+            
+            ResizeObserverSize size;
+            size.inlineSize = w;
+            size.blockSize = h;
+            entry.borderBoxSize.push_back(size);
+            entry.contentBoxSize.push_back(size);
+            
+            activeObservations.push_back(entry);
+            
+            obs.lastWidth = w;
+            obs.lastHeight = h;
+        }
+    }
+}
+
+void ResizeObserver::deliverObservations(const std::vector<ResizeObserverEntry>& activeObservations) {
+    if (callback_ && !activeObservations.empty()) {
+        callback_(activeObservations, *this);
+    }
+}
 static bool isUtf8Continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
@@ -588,6 +671,11 @@ static const char* textInputTypeSelector(TextInputType type) {
     default: return "text";
     }
 }
+Widget::~Widget() {
+    if (auto* app = Application::instance()) {
+        app->onWidgetDestroyed(this);
+    }
+}
 const std::string& Widget::selectorType() const {
     if (!cachedSelectorType.empty()) {
         return cachedSelectorType;
@@ -924,6 +1012,9 @@ void Widget::markLayoutDirty() {
     if (layoutDirty && (!parent || parent->layoutDirty)) return;
     layoutDirty = true;
     if (parent) parent->markLayoutDirty();
+    if (auto* app = Application::instance()) {
+        app->requestRedraw();
+    }
 }
 void Widget::markSubtreeStyleDirty() {
     if (subtreeStyleDirty && (!parent || parent->subtreeStyleDirty)) return;
@@ -1252,7 +1343,8 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         }
         StyleCacheKey currentKey{h1, h2};
 
-        if (hasLastResolveKey && lastResolveKey == currentKey && lastStyleSheetEpoch == sheet.getEpoch()) {
+        if (hasLastResolveKey && lastResolveKey == currentKey && lastStyleSheetEpoch == sheet.getEpoch()
+            && inlineProperties.size() == lastInlinePropertyCount && inlinePropertyEpoch == lastInlinePropertyEpoch) {
             styleDirty = false;
         }
 
@@ -1379,6 +1471,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             bool valid = true;
             std::string value = sheet.resolveValue(prop.value, computedStyle.customProperties, &valid);
             if (!valid) continue;
+
             std::string lowerValue = value;
             for (char& c : lowerValue) c = (char)std::tolower((unsigned char)c);
             if (lowerValue == "inherit" || lowerValue == "initial" || lowerValue == "unset") {
@@ -1437,6 +1530,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                                       prop.name,
                                       value);
         }
+
         computedStyle.resolveLogicalProperties();
 
         // Resolve dynamic color/gradient properties using the active custom properties and parent/viewport styles
@@ -1621,6 +1715,8 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             markLayoutDirty();
         }
         styleDirty = false;
+        lastInlinePropertyEpoch = inlinePropertyEpoch;
+        lastInlinePropertyCount = inlineProperties.size();
         
         Style beforeStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "before");
         beforeStyle.resolveLogicalProperties();
@@ -6207,6 +6303,32 @@ void Application::renderFrame() {
     }
     root_->resolveStyles(stylesheet_);
     root_->layout({0, 0, (float)w, (float)h});
+
+    // ResizeObserver processing cycle (matches Chromium Blink high-fidelity resize observations)
+    int resizeIteration = 0;
+    constexpr int maxResizeIterations = 10;
+    bool sizeChanged = true;
+
+    while (sizeChanged && resizeIteration < maxResizeIterations) {
+        sizeChanged = false;
+        
+        // Deliver observations for each registered observer
+        for (auto* obs : resizeObservers_) {
+            std::vector<ResizeObserverEntry> activeObservations;
+            obs->gatherObservations(activeObservations);
+            if (!activeObservations.empty()) {
+                obs->deliverObservations(activeObservations);
+            }
+        }
+
+        // If a callback dirty-marked the style or layout, re-resolve and re-layout
+        if (root_->layoutDirty || root_->styleDirty || root_->subtreeStyleDirty) {
+            root_->resolveStyles(stylesheet_);
+            root_->layout({0, 0, (float)w, (float)h});
+            sizeChanged = true;
+            resizeIteration++;
+        }
+    }
     int documentKeyCode = normalizeTextEditingKey(input_.keyCode);
     if (documentKeyCode == 0x09) {
         bool backwards = (input_.modifiers & MOD_SHIFT) != 0;

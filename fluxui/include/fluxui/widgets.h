@@ -140,6 +140,9 @@ public:
     StyleCacheKey lastResolveKey;
     uint32_t lastStyleSheetEpoch = 0;
     bool hasLastResolveKey = false;
+    uint32_t inlinePropertyEpoch = 0;
+    uint32_t lastInlinePropertyEpoch = 0;
+    size_t lastInlinePropertyCount = 0;
     Rect lastLayoutParentBounds;
     size_t layoutSignature = 0;
     mutable std::string cachedSelectorType;
@@ -157,7 +160,7 @@ public:
     std::function<void()> onHover;
     const std::string& selectorType() const;
     Widget() = default;
-    virtual ~Widget() = default;
+    virtual ~Widget();
     Widget* addChild(std::shared_ptr<Widget> child) {
         child->parent = this;
         children.push_back(child);
@@ -1098,6 +1101,7 @@ inline Widget* Widget::toggleClass(const std::string& value, bool enabled) {
 }
 inline Widget* Widget::css(const std::string& declarations) {
     inlineProperties.clear();
+    ++inlinePropertyEpoch;
     auto trimLocal = [](const std::string& s) {
         size_t start = s.find_first_not_of(" \t\n\r");
         size_t end = s.find_last_not_of(" \t\n\r");
@@ -1215,12 +1219,53 @@ struct UIEvent {
     int clickCount = 0;
     bool handled = false;
 };
+
+struct ResizeObserverSize {
+    float inlineSize = 0.0f;
+    float blockSize = 0.0f;
+};
+
+struct ResizeObserverEntry {
+    Widget* target = nullptr;
+    Rect contentRect;
+    std::vector<ResizeObserverSize> borderBoxSize;
+    std::vector<ResizeObserverSize> contentBoxSize;
+};
+
+class ResizeObserver;
+using ResizeObserverCallback = std::function<void(const std::vector<ResizeObserverEntry>&, ResizeObserver&)>;
+
+class ResizeObserver {
+public:
+    ResizeObserver(ResizeObserverCallback callback);
+    ~ResizeObserver();
+
+    void observe(Widget* target);
+    void unobserve(Widget* target);
+    void disconnect();
+
+    void gatherObservations(std::vector<ResizeObserverEntry>& activeObservations);
+    void deliverObservations(const std::vector<ResizeObserverEntry>& activeObservations);
+
+private:
+    ResizeObserverCallback callback_;
+    struct ObservedTarget {
+        Widget* target = nullptr;
+        float lastWidth = -1.0f;
+        float lastHeight = -1.0f;
+    };
+    std::vector<ObservedTarget> observedTargets_;
+};
+
 class Application {
 public:
     using EventCallback = std::function<void(UIEvent&)>;
     using RouteBuilder = std::function<void(Application&, Widget*)>;
     using ActionCallback = std::function<void(Application&, const std::string&)>;
     static Application* instance();
+    void registerResizeObserver(ResizeObserver* observer);
+    void unregisterResizeObserver(ResizeObserver* observer);
+    void onWidgetDestroyed(Widget* w);
     bool init(const std::string& title, int width, int height);
     bool init(const std::string& title, int width, int height, RenderBackendType backend);
     void run();
@@ -1323,5 +1368,6 @@ private:
     void processMainThreadTasks();
     void processEvents();
     void updateCursor(CursorType cursor);
+    std::vector<ResizeObserver*> resizeObservers_;
 };
 }

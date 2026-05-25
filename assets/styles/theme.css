@@ -1233,3 +1233,160 @@ hr {
     color: rgba(255, 255, 255, 0.9);
 }
 
+/* Premium Reactive Auto-scaling Badge */
+.reactive-badge {
+    height: 26px;
+    padding: 0 14px 0 14px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--stroke);
+    white-space: nowrap;
+}
+
+/* HIGH-FIDELITY RESPONSIVE STYLING */
+@media (max-width: 1150px) {
+    .sidebar {
+        width: 220px;
+    }
+    .logo-row {
+        gap: 8px;
+    }
+    .logo-mark {
+        width: 36px;
+        height: 36px;
+    }
+    .logo-icon {
+        width: 20px;
+        height: 20px;
+    }
+    .sidebar-logo {
+        font-size: 16px;
+        height: 20px;
+    }
+    .sidebar-subtitle {
+        font-size: 10px;
+    }
+    .nav-item {
+        height: 40px;
+        padding: 0 10px;
+        font-size: 13px;
+        gap: 8px;
+    }
+    .nav-icon {
+        width: 16px;
+        height: 16px;
+    }
+    .nav-text {
+        font-size: 13px;
+        height: 16px;
+    }
+    
+    .dashboard-grid, .three-grid, .blink-showcase-grid {
+        flex-direction: column;
+        min-height: auto;
+    }
+    .panel-side {
+        width: 100%;
+    }
+    .stats-row {
+        flex-direction: column;
+        height: auto;
+        min-height: auto;
+        gap: 12px;
+    }
+    .stat-card {
+        width: 100%;
+        min-height: 110px;
+        height: auto;
+    }
+    
+    .hero-panel,
+    .scanner-cockpit,
+    .builder-panel {
+        flex-direction: column;
+        align-items: flex-start;
+        height: auto;
+        min-height: auto;
+        gap: 16px;
+    }
+    .hero-actions, .builder-fields {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+    .hero-actions .btn, .builder-fields .btn {
+        flex: 1;
+        min-width: 130px;
+    }
+    
+    .main-scroll {
+        padding: 16px 20px 24px 20px;
+        gap: 16px;
+    }
+    .top-bar {
+        height: auto;
+        padding: 16px 20px 16px 20px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .top-tools {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 12px;
+    }
+    .search-box {
+        width: 100%;
+        flex-grow: 1;
+    }
+}
+
+@media (max-width: 850px) {
+    .root {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 24px 12px 24px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25);
+    }
+    .sidebar-header {
+        padding: 0;
+        margin-bottom: 0;
+    }
+    .logo-copy {
+        display: none;
+    }
+    .nav-section {
+        flex-direction: row;
+        align-items: center;
+        padding: 0;
+        gap: 8px;
+        height: auto;
+        flex-grow: 0;
+    }
+    .nav-label {
+        display: none;
+    }
+    .nav-item {
+        height: 38px;
+        padding: 0 10px;
+        font-size: 13px;
+        gap: 0;
+    }
+    .nav-text {
+        display: none;
+    }
+    .posture-card {
+        display: none;
+    }
+}
+
+

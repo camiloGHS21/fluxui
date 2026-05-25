@@ -640,7 +640,7 @@ static void buildBlinkParity(Application& app, Widget* content) {
     cardProgress->text("Indeterminate (Animated):", "page-subtitle");
     cardProgress->progressElement(-1.0f, 1.0f, "progress");
 
-    auto* col2 = grid->panel("blink-showcase-column", 4);
+    auto* col2 = grid->panel("blink-showcase-column", 5);
     
     // Progress Meters
     auto* cardMeters = col2->panel("blink-section-card", 7);
@@ -705,6 +705,56 @@ static void buildBlinkParity(Application& app, Widget* content) {
     auto* glassOverlay = glassContainer->panel("glass-overlay", 2);
     glassOverlay->text("Frosted Glass Effect", "glass-title");
     glassOverlay->text("Blink visual filter rendering in high-fidelity on C++.", "glass-text");
+
+    // Resize Observer Card (Blink Parity)
+    auto* cardResize = col2->panel("blink-section-card", 4);
+    cardResize->text("Resize Observer (<ResizeObserver>)", "blink-section-title");
+    cardResize->text("Observed Container Query box. Toggle size to trigger observer updates.", "page-subtitle");
+
+    auto* observedBox = cardResize->panel("posture-card", 2);
+    observedBox->css("width: 260px; height: 110px; display: flex; flex-direction: column; gap: 8px; justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.15); background-color: rgba(237,243,248,0.03); border-radius: 6px;");
+
+    auto* statusText = observedBox->text("Narrow Layout", "pill-text");
+    statusText->classes("reactive-badge pill-warning pill-text");
+    auto* sizeText = observedBox->text("Size: 260px x 110px", "page-subtitle");
+
+    // Static/persisted ResizeObserver so it stays alive throughout the app lifecycle
+    static ResizeObserver* ro = nullptr;
+    if (ro) {
+        delete ro;
+    }
+    ro = new ResizeObserver([statusText, sizeText](const std::vector<ResizeObserverEntry>& entries, ResizeObserver&) {
+        for (const auto& entry : entries) {
+            float w = entry.contentRect.w;
+            float h = entry.contentRect.h;
+            
+            char buf[128];
+            sprintf(buf, "Size: %.0fpx x %.0fpx", w, h);
+            sizeText->content = buf;
+            sizeText->markStyleDirty();
+
+            if (w > 350.0f) {
+                statusText->content = "Wide Layout Badge (Reactive)";
+                statusText->classes("reactive-badge pill-ok pill-text");
+            } else {
+                statusText->content = "Narrow Layout Badge (Reactive)";
+                statusText->classes("reactive-badge pill-warning pill-text");
+            }
+            statusText->markStyleDirty();
+        }
+    });
+
+    ro->observe(observedBox);
+
+
+    addButton(cardResize, "Toggle Size (Resize)", "expand", "btn btn-secondary btn-full", [observedBox, isExpanded = false]() mutable {
+        isExpanded = !isExpanded;
+        if (isExpanded) {
+            observedBox->css("width: 400px; flex-shrink: 0; height: 110px; display: flex; flex-direction: column; gap: 8px; justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.15); background-color: rgba(200,50,50,0.2); border-radius: 6px;");
+        } else {
+            observedBox->css("width: 260px; flex-shrink: 0; height: 110px; display: flex; flex-direction: column; gap: 8px; justify-content: center; align-items: center; border: 1px solid rgba(255,255,255,0.15); background-color: rgba(50,200,50,0.2); border-radius: 6px;");
+        }
+    });
 }
 static void runKeymapBenchmark(Application& app) {
     std::cout << "\n==================================================" << std::endl;
