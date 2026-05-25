@@ -1344,6 +1344,10 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.flexGrow > 0) computedStyle.flexGrow = style.flexGrow;
         if (style.flexBasis.isSet()) computedStyle.flexBasis = style.flexBasis;
         if (style.borderRadius.maxRadius() > 0) computedStyle.borderRadius = style.borderRadius;
+        if (style.hasBackdropFilterBlur) {
+            computedStyle.backdropFilterBlur = style.backdropFilterBlur;
+            computedStyle.hasBackdropFilterBlur = true;
+        }
         if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
         if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;
         if (style.hasHoverBg) {
@@ -1404,6 +1408,11 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                 if (prop.name == "display") { computedStyle.display = source.display; continue; }
                 if (prop.name == "position") { computedStyle.position = source.position; continue; }
                 if (prop.name == "opacity") { computedStyle.opacity = source.opacity; continue; }
+                if (prop.name == "backdrop-filter") {
+                    computedStyle.backdropFilterBlur = source.backdropFilterBlur;
+                    computedStyle.hasBackdropFilterBlur = source.hasBackdropFilterBlur;
+                    continue;
+                }
                 if (prop.name == "margin") { computedStyle.margin = source.margin; continue; }
                 if (prop.name == "padding") { computedStyle.padding = source.padding; continue; }
                 if (prop.name == "background" || prop.name == "background-color") {
@@ -2943,6 +2952,9 @@ void Widget::renderListMarker(Renderer& renderer) {
 
 void Widget::renderBackground(Renderer& renderer) {
     auto& s = computedStyle;
+    if (s.hasBackdropFilterBlur && s.backdropFilterBlur > 0.0f) {
+        renderer.drawBackdropFilterBlur(bounds, s.backdropFilterBlur, s.borderRadius);
+    }
     if (s.boxShadow.blur > 0 || s.boxShadow.spread > 0) {
         renderer.drawBoxShadow(bounds, s.boxShadow, s.borderRadius);
     }

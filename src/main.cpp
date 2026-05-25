@@ -640,7 +640,7 @@ static void buildBlinkParity(Application& app, Widget* content) {
     cardProgress->text("Indeterminate (Animated):", "page-subtitle");
     cardProgress->progressElement(-1.0f, 1.0f, "progress");
 
-    auto* col2 = grid->panel("blink-showcase-column", 3);
+    auto* col2 = grid->panel("blink-showcase-column", 4);
     
     // Progress Meters
     auto* cardMeters = col2->panel("blink-section-card", 7);
@@ -697,6 +697,14 @@ static void buildBlinkParity(Application& app, Widget* content) {
         std::cout << "[Blink UI] Showing Modal Dialog" << std::endl;
         dl->showModal();
     });
+
+    // Backdrop Filters Glassmorphism Card
+    auto* cardGlass = col2->panel("blink-section-card", 2);
+    cardGlass->text("Backdrop Filters (Glassmorphism)", "blink-section-title");
+    auto* glassContainer = cardGlass->panel("glass-container", 1);
+    auto* glassOverlay = glassContainer->panel("glass-overlay", 2);
+    glassOverlay->text("Frosted Glass Effect", "glass-title");
+    glassOverlay->text("Blink visual filter rendering in high-fidelity on C++.", "glass-text");
 }
 static void runKeymapBenchmark(Application& app) {
     std::cout << "\n==================================================" << std::endl;

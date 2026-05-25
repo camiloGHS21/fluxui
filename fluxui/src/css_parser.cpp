@@ -3152,6 +3152,26 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
                 style.backgroundGradient = parseGradient(value);
             }
         }
+    } else if (name == "backdrop-filter") {
+        size_t blurPos = value.find("blur(");
+        if (blurPos != std::string::npos) {
+            size_t endPos = value.find(")", blurPos);
+            if (endPos != std::string::npos) {
+                std::string blurValStr = value.substr(blurPos + 5, endPos - (blurPos + 5));
+                float val = 0.0f;
+                try {
+                    size_t pxPos = blurValStr.find("px");
+                    if (pxPos != std::string::npos) {
+                        blurValStr = blurValStr.substr(0, pxPos);
+                    }
+                    val = std::stof(blurValStr);
+                } catch (...) {
+                    val = 0.0f;
+                }
+                style.backdropFilterBlur = val;
+                style.hasBackdropFilterBlur = true;
+            }
+        }
     } else if (name == "border-radius") {
         style.borderRadius = parseBorderRadius(value, emBase);
     } else if (name == "border") {

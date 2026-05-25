@@ -217,6 +217,7 @@ public:
                                  const BorderRadius& radius, float opacity = 1.0f);
     void drawBorder(const Rect& rect, const Border& border, const BorderRadius& radius);
     void drawBoxShadow(const Rect& rect, const BoxShadow& shadow, const BorderRadius& radius);
+    void drawBackdropFilterBlur(const Rect& rect, float blurRadius, const BorderRadius& radius);
     void drawText(const std::string& text, const Vec2& pos, const Color& color,
                   float fontSize = 14.0f, FontWeight weight = FontWeight::Normal,
                   const std::string& fontName = "default",
@@ -414,6 +415,8 @@ private:
     void drawSoftwareImage(const std::string& key, ImageData& image,
                            const Rect& rect, const Rect& sourceUv,
                            const Color& tint, float opacity);
+    void applySoftwareBackdropBlur(const Rect& rect, float blurRadius,
+                                   const BorderRadius& radius);
     Rect transformSoftwareRect(const Rect& rect, float drawScale,
                                const Vec2& pivot) const;
 

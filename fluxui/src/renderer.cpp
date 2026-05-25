@@ -6830,6 +6830,285 @@ void Renderer::popScissor() {
     }
 }
 
+void Renderer::applySoftwareBackdropBlur(const Rect& rect, float blurRadius, const BorderRadius& radius) {
+    if (!softwareFrameActive_ || softwarePixels_.empty() || blurRadius <= 0.0f) {
+        return;
+    }
+
+    // Flush any pending rect batches to ensure the backbuffer is fully updated
+    flushRectBatch();
+
+    Vec2 pivot = scalePivotStack_.empty() ? Vec2(0, 0) : scalePivotStack_.back();
+    Rect drawRect = rect;
+    drawRect.x += translation_.x;
+    drawRect.y += translation_.y;
+    drawRect = transformSoftwareRect(drawRect, scale_, pivot);
+
+    int x0 = std::max(0, (int)std::floor(drawRect.x));
+    int y0 = std::max(0, (int)std::floor(drawRect.y));
+    int x1 = std::min(softwareWidth_, (int)std::ceil(drawRect.x + drawRect.w));
+    int y1 = std::min(softwareHeight_, (int)std::ceil(drawRect.y + drawRect.h));
+    int w = x1 - x0;
+    int h = y1 - y0;
+    if (w <= 0 || h <= 0) return;
+
+    // 1. Copy the sub-rectangle pixels from softwarePixels_
+    std::vector<uint32_t> tempBuffer(w * h);
+    for (int y = 0; y < h; ++y) {
+        std::memcpy(&tempBuffer[y * w], &softwarePixels_[static_cast<size_t>(y0 + y) * softwareWidth_ + x0], w * sizeof(uint32_t));
+    }
+
+    // 2. Generate 1D Gaussian kernel
+    float sigma = std::max(0.5f, blurRadius / 2.0f);
+    int kSize = (int)(ceil(blurRadius * 3.0f));
+    if (kSize < 1) kSize = 1;
+    if (kSize > 50) kSize = 50;
+
+    std::vector<float> kernel(kSize + 1);
+    float sum = 0.0f;
+    for (int i = 0; i <= kSize; ++i) {
+        float xVal = (float)i;
+        kernel[i] = std::exp(-(xVal * xVal) / (2.0f * sigma * sigma));
+        if (i == 0) sum += kernel[i];
+        else sum += 2.0f * kernel[i];
+    }
+    for (int i = 0; i <= kSize; ++i) {
+        kernel[i] /= sum;
+    }
+
+    // 3. Horizontal Pass
+    std::vector<uint32_t> horizontalPass(w * h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
+            for (int k = -kSize; k <= kSize; ++k) {
+                int px = std::clamp(x + k, 0, w - 1);
+                uint32_t pixel = tempBuffer[y * w + px];
+                float weight = kernel[std::abs(k)];
+
+                rSum += static_cast<float>((pixel >> 16) & 0xffu) * weight;
+                gSum += static_cast<float>((pixel >> 8) & 0xffu) * weight;
+                bSum += static_cast<float>(pixel & 0xffu) * weight;
+            }
+            horizontalPass[y * w + x] = 0xff000000u |
+                (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(rSum)), 0, 255)) << 16) |
+                (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(gSum)), 0, 255)) << 8) |
+                static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(bSum)), 0, 255));
+        }
+    }
+
+    // 4. Vertical Pass
+    std::vector<uint32_t> verticalPass(w * h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
+            for (int k = -kSize; k <= kSize; ++k) {
+                int py = std::clamp(y + k, 0, h - 1);
+                uint32_t pixel = horizontalPass[py * w + x];
+                float weight = kernel[std::abs(k)];
+
+                rSum += static_cast<float>((pixel >> 16) & 0xffu) * weight;
+                gSum += static_cast<float>((pixel >> 8) & 0xffu) * weight;
+                bSum += static_cast<float>(pixel & 0xffu) * weight;
+            }
+            verticalPass[y * w + x] = 0xff000000u |
+                (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(rSum)), 0, 255)) << 16) |
+                (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(gSum)), 0, 255)) << 8) |
+                static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(bSum)), 0, 255));
+        }
+    }
+
+    // 5. Blending & Write-back
+    float scaledRadius = radius.maxRadius() * scale_;
+    for (int y = 0; y < h; ++y) {
+        int dstY = y0 + y;
+        float py = (float)dstY;
+        for (int x = 0; x < w; ++x) {
+            int dstX = x0 + x;
+            float px = (float)dstX;
+
+            float coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
+            if (coverage <= 0.0f) continue;
+
+            size_t dstIdx = static_cast<size_t>(dstY) * softwareWidth_ + dstX;
+            uint32_t blurredPixel = verticalPass[y * w + x];
+
+            if (coverage >= 0.999f) {
+                softwarePixels_[dstIdx] = blurredPixel;
+            } else {
+                uint32_t bgPixel = softwarePixels_[dstIdx];
+                float bgR = (float)((bgPixel >> 16) & 0xffu);
+                float bgG = (float)((bgPixel >> 8) & 0xffu);
+                float bgB = (float)(bgPixel & 0xffu);
+
+                float fgR = (float)((blurredPixel >> 16) & 0xffu);
+                float fgG = (float)((blurredPixel >> 8) & 0xffu);
+                float fgB = (float)(blurredPixel & 0xffu);
+
+                float outR = fgR * coverage + bgR * (1.0f - coverage);
+                float outG = fgG * coverage + bgG * (1.0f - coverage);
+                float outB = fgB * coverage + bgB * (1.0f - coverage);
+
+                softwarePixels_[dstIdx] = 0xff000000u |
+                    (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outR)), 0, 255)) << 16) |
+                    (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outG)), 0, 255)) << 8) |
+                    static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outB)), 0, 255));
+            }
+        }
+    }
+}
+
+void Renderer::drawBackdropFilterBlur(const Rect& rect, float blurRadius, const BorderRadius& radius) {
+    if (blurRadius <= 0.0f) return;
+
+    if (activeBackend_ == RenderBackendType::Compatibility) {
+        applySoftwareBackdropBlur(rect, blurRadius, radius);
+        return;
+    }
+
+    if (activeBackend_ == RenderBackendType::Vulkan) {
+        return;
+    }
+
+    // OpenGL FBO support (as requested by the user!)
+    flushRectBatch();
+    
+    Rect drawRect = rect;
+    drawRect.x += translation_.x;
+    drawRect.y += translation_.y;
+    if (scale_ != 1.0f) {
+        Vec2 pivot = scalePivotStack_.empty() ? Vec2(0, 0) : scalePivotStack_.back();
+        drawRect.x = pivot.x + (drawRect.x - pivot.x) * scale_;
+        drawRect.y = pivot.y + (drawRect.y - pivot.y) * scale_;
+        drawRect.w *= scale_;
+        drawRect.h *= scale_;
+    }
+    
+    int rx = (int)std::floor(drawRect.x * dpiScale_);
+    int ry = (int)std::floor((windowHeight_ - drawRect.y - drawRect.h) * dpiScale_);
+    int rw = (int)std::ceil(drawRect.w * dpiScale_);
+    int rh = (int)std::ceil(drawRect.h * dpiScale_);
+    if (rw <= 0 || rh <= 0) return;
+    
+    std::vector<uint32_t> pixels(rw * rh);
+    glReadPixels(rx, ry, rw, rh, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    
+    float sigma = std::max(0.5f, blurRadius * dpiScale_ / 2.0f);
+    int kSize = (int)(ceil(blurRadius * dpiScale_ * 3.0f));
+    if (kSize < 1) kSize = 1;
+    if (kSize > 50) kSize = 50;
+
+    std::vector<float> kernel(kSize + 1);
+    float sum = 0.0f;
+    for (int i = 0; i <= kSize; ++i) {
+        float xVal = (float)i;
+        kernel[i] = std::exp(-(xVal * xVal) / (2.0f * sigma * sigma));
+        if (i == 0) sum += kernel[i];
+        else sum += 2.0f * kernel[i];
+    }
+    for (int i = 0; i <= kSize; ++i) {
+        kernel[i] /= sum;
+    }
+
+    // Horizontal Pass
+    std::vector<uint32_t> horiz(rw * rh);
+    for (int yVal = 0; yVal < rh; ++yVal) {
+        for (int xVal = 0; xVal < rw; ++xVal) {
+            float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f, aSum = 0.0f;
+            for (int k = -kSize; k <= kSize; ++k) {
+                int px = std::clamp(xVal + k, 0, rw - 1);
+                uint32_t pixel = pixels[yVal * rw + px];
+                float weight = kernel[std::abs(k)];
+
+                uint8_t* rgba = reinterpret_cast<uint8_t*>(&pixel);
+                rSum += rgba[0] * weight;
+                gSum += rgba[1] * weight;
+                bSum += rgba[2] * weight;
+                aSum += rgba[3] * weight;
+            }
+            uint32_t& outPixel = horiz[yVal * rw + xVal];
+            uint8_t* rgba = reinterpret_cast<uint8_t*>(&outPixel);
+            rgba[0] = static_cast<uint8_t>(std::clamp((int)round(rSum), 0, 255));
+            rgba[1] = static_cast<uint8_t>(std::clamp((int)round(gSum), 0, 255));
+            rgba[2] = static_cast<uint8_t>(std::clamp((int)round(bSum), 0, 255));
+            rgba[3] = static_cast<uint8_t>(std::clamp((int)round(aSum), 0, 255));
+        }
+    }
+
+    // Vertical Pass and Rounded corners clipping
+    float scaledRadius = radius.maxRadius() * scale_ * dpiScale_;
+    Rect bufferRect = { 0.0f, 0.0f, (float)rw, (float)rh };
+    for (int yVal = 0; yVal < rh; ++yVal) {
+        float cy = (float)(rh - 1 - yVal);
+        for (int xVal = 0; xVal < rw; ++xVal) {
+            float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f, aSum = 0.0f;
+            for (int k = -kSize; k <= kSize; ++k) {
+                int py = std::clamp(yVal + k, 0, rh - 1);
+                uint32_t pixel = horiz[py * rw + xVal];
+                float weight = kernel[std::abs(k)];
+
+                uint8_t* rgba = reinterpret_cast<uint8_t*>(&pixel);
+                rSum += rgba[0] * weight;
+                gSum += rgba[1] * weight;
+                bSum += rgba[2] * weight;
+                aSum += rgba[3] * weight;
+            }
+            float cx = (float)xVal;
+            float coverage = softwareRoundedCoverage(cx, cy, bufferRect, scaledRadius);
+
+            uint32_t& outPixel = pixels[yVal * rw + xVal];
+            uint8_t* rgba = reinterpret_cast<uint8_t*>(&outPixel);
+            rgba[0] = static_cast<uint8_t>(std::clamp((int)round(rSum), 0, 255));
+            rgba[1] = static_cast<uint8_t>(std::clamp((int)round(gSum), 0, 255));
+            rgba[2] = static_cast<uint8_t>(std::clamp((int)round(bSum), 0, 255));
+            rgba[3] = static_cast<uint8_t>(std::clamp((int)round(aSum * coverage), 0, 255));
+        }
+    }
+
+    // Upload to a temporary OpenGL texture and render using imageShader_!
+    GLuint tempTex;
+    glGenTextures(1, &tempTex);
+    glBindTexture(GL_TEXTURE_2D, tempTex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rw, rh, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    float vertices[] = {
+        drawRect.x,              drawRect.y,              0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        drawRect.x + drawRect.w, drawRect.y,              1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        drawRect.x + drawRect.w, drawRect.y + drawRect.h, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        drawRect.x,              drawRect.y,              0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        drawRect.x + drawRect.w, drawRect.y + drawRect.h, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+        drawRect.x,              drawRect.y + drawRect.h, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    };
+
+    useShader(imageShader_);
+    Vec2 pivot = scalePivotStack_.empty() ? Vec2(0, 0) : scalePivotStack_.back();
+    setProjection(imageUniforms_.projection, windowWidth_, windowHeight_, scale_, pivot);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tempTex);
+    glUniform1i(imageUniforms_.texture, 0);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindVertexArray(textVAO_);
+    glBindBuffer(GL_ARRAY_BUFFER, textVBO_);
+    if (48 > textVBOCapacity_) {
+        textVBOCapacity_ = 48;
+        glBufferData(GL_ARRAY_BUFFER, textVBOCapacity_ * sizeof(float), nullptr, GL_STREAM_DRAW);
+    }
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+
+    glDeleteTextures(1, &tempTex);
+}
+
 void Renderer::pushTranslation(const Vec2& offset) {
     translationStack_.push_back(translation_);
     translation_ = { translation_.x + offset.x, translation_.y + offset.y };

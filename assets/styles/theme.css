@@ -1198,3 +1198,38 @@ hr {
     height: 20px;
 }
 
+.glass-container {
+    background: linear-gradient(135deg, #ff5d6c 0%, #6aa9ff 50%, #f3b64b 100%);
+    border-radius: 8px;
+    padding: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 180px;
+}
+
+.glass-overlay {
+    background-color: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+.glass-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    height: 20px;
+}
+
+.glass-text {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+}
+

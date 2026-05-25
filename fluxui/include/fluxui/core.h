@@ -663,6 +663,8 @@ struct Style {
     BoxShadow boxShadow;
     float opacity = 1.0f;
     float outlineOffset = 0;
+    float backdropFilterBlur = 0.0f;
+    bool hasBackdropFilterBlur = false;
 
     // Typography (matching Blink inherited properties)
     float fontSize = 14.0f;
