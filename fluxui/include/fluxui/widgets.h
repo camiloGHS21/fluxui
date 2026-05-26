@@ -248,6 +248,21 @@ struct PaintProperties {
     Rect clipRect{0.0f, 0.0f, 0.0f, 0.0f};
     bool hasClip = false;
     float opacity = 1.0f;
+
+    bool operator==(const PaintProperties& o) const {
+        return translation.x == o.translation.x &&
+               translation.y == o.translation.y &&
+               scale == o.scale &&
+               clipRect.x == o.clipRect.x &&
+               clipRect.y == o.clipRect.y &&
+               clipRect.w == o.clipRect.w &&
+               clipRect.h == o.clipRect.h &&
+               hasClip == o.hasClip &&
+               opacity == o.opacity;
+    }
+    bool operator!=(const PaintProperties& o) const {
+        return !(*this == o);
+    }
 };
 
 class Widget {
@@ -284,6 +299,8 @@ public:
     bool subtreeStyleDirty = true;
     WidgetLifecycle lifecycleState = WidgetLifecycle::Uninitialized;
     PaintProperties paintProperties;
+    PaintProperties lastPaintProperties;
+    Rect lastPaintBounds{0.0f, 0.0f, 0.0f, 0.0f};
     StyleCacheKey lastResolveKey;
     uint32_t lastStyleSheetEpoch = 0;
     bool hasLastResolveKey = false;
@@ -456,6 +473,8 @@ public:
     void invalidateStyleOnIdChange(const std::string& oldId, const std::string& newId);
     virtual void layout(const Rect& parentBounds);
     virtual void prePaint(const PaintProperties& parentProps);
+    void updatePaintProperties(const PaintProperties& parentProps);
+    void invalidatePaintIfNeeded();
     void translateLayout(float dx, float dy);
     bool hasActiveAnimations() const;
     void resetTransientMotion();

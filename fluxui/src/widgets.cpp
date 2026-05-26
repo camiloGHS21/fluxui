@@ -2206,6 +2206,24 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
 }
 
 void Widget::prePaint(const PaintProperties& parentProps) {
+    lifecycleState = WidgetLifecycle::PrePaintDirty;
+
+    // 1. Property Tree Builder phase:
+    updatePaintProperties(parentProps);
+
+    // 2. Paint Invalidation phase:
+    invalidatePaintIfNeeded();
+
+    lifecycleState = WidgetLifecycle::PrePaintClean;
+
+    for (auto& child : children) {
+        if (child) {
+            child->prePaint(paintProperties);
+        }
+    }
+}
+
+void Widget::updatePaintProperties(const PaintProperties& parentProps) {
     paintProperties.translation = parentProps.translation;
     paintProperties.scale = parentProps.scale;
     paintProperties.clipRect = parentProps.clipRect;
@@ -2233,14 +2251,23 @@ void Widget::prePaint(const PaintProperties& parentProps) {
             paintProperties.hasClip = true;
         }
     }
+}
 
-    lifecycleState = WidgetLifecycle::PrePaintClean;
+void Widget::invalidatePaintIfNeeded() {
+    bool propertyTreeChanged = (paintProperties != lastPaintProperties) ||
+                               (bounds.x != lastPaintBounds.x ||
+                                bounds.y != lastPaintBounds.y ||
+                                bounds.w != lastPaintBounds.w ||
+                                bounds.h != lastPaintBounds.h);
 
-    for (auto& child : children) {
-        if (child) {
-            child->prePaint(paintProperties);
+    if (propertyTreeChanged) {
+        if (layoutObject) {
+            layoutObject->markPaintDirty();
         }
     }
+
+    lastPaintProperties = paintProperties;
+    lastPaintBounds = bounds;
 }
 
 void Widget::translateLayout(float dx, float dy) {
