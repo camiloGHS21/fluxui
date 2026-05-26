@@ -6,7 +6,8 @@
     "vulkan-headers",
     "vulkan-loader",
     "vulkan-memory-allocator",
-    "freetype"
+    "freetype",
+    "harfbuzz"
   ]
 }
 

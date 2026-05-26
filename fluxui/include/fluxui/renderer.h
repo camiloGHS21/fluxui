@@ -78,12 +78,33 @@ struct FontData {
     std::unordered_map<uint64_t, float> kerningPairs;
     std::vector<std::pair<std::string, uint32_t>> supportedLigatures;
 
+    // Added for HarfBuzz and glyph indexing
+    std::unordered_map<uint32_t, GlyphInfo> glyphsByIndex;
+    mutable void* hbFont = nullptr;
+    mutable void* ftLibrary = nullptr;
+    mutable void* ftFace = nullptr;
+
+    FontData();
+    ~FontData();
+    FontData(FontData&& other) noexcept;
+    FontData& operator=(FontData&& other) noexcept;
+    FontData(const FontData& other);
+    FontData& operator=(const FontData& other);
+
+    void cleanupHarfbuzz() const;
+
     const GlyphInfo& getGlyph(uint32_t c) const {
         if (c < 1024) return glyphs[c];
         auto it = extendedGlyphs.find(c);
         if (it != extendedGlyphs.end()) return it->second;
         static GlyphInfo emptyGlyph = {};
         return emptyGlyph;
+    }
+
+    const GlyphInfo& getGlyphByIndex(uint32_t glyphIndex) const {
+        auto it = glyphsByIndex.find(glyphIndex);
+        if (it != glyphsByIndex.end()) return it->second;
+        return getGlyph(glyphIndex); // fallback if not indexed
     }
 
     float getKerning(uint32_t left, uint32_t right, float scale) const {
@@ -485,6 +506,19 @@ private:
     mutable std::vector<uint32_t> softwareBlurBuffer1_;
     mutable std::vector<uint32_t> softwareBlurBuffer2_;
     mutable std::vector<uint32_t> softwareBlurBuffer3_;
+
+public:
+    struct ShapedGlyph {
+        uint32_t glyphIndex;
+        uint32_t codepoint;
+        float xOffset;
+        float yOffset;
+        float xAdvance;
+    };
+    using ShapedRun = std::vector<ShapedGlyph>;
+
+    ShapedRun shapeTextWithHarfbuzz(const FontData& font, const std::string& text, Direction direction) const;
+    void ensureHarfbuzzFont(const FontData& font) const;
 };
 
 } // namespace FluxUI

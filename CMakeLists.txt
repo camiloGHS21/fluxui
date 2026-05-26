@@ -104,6 +104,7 @@ endif()
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
+find_package(harfbuzz CONFIG REQUIRED)
 
 option(DATALEAKGUARD_PREBAKE_UI_FONTS "Bake UI font atlases at build time for faster startup and stable text quality" ON)
 option(DATALEAKGUARD_EMBED_FONT_GENERATOR "Embed font atlas generator into build process (required for prebake)" ON)
@@ -112,7 +113,7 @@ if(DATALEAKGUARD_PREBAKE_UI_FONTS AND DATALEAKGUARD_EMBED_FONT_GENERATOR)
     add_executable(dataleakguard_font_atlas_generator
         tools/font_atlas_generator.cpp
     )
-    target_link_libraries(dataleakguard_font_atlas_generator PRIVATE Freetype::Freetype)
+    target_link_libraries(dataleakguard_font_atlas_generator PRIVATE Freetype::Freetype harfbuzz::harfbuzz)
     target_compile_features(dataleakguard_font_atlas_generator PRIVATE cxx_std_17)
     enable_release_lto(dataleakguard_font_atlas_generator)
 
@@ -273,6 +274,7 @@ function(configure_fluxui_target target_name)
     target_link_libraries(${target_name} PUBLIC
         glad
         Freetype::Freetype
+        harfbuzz::harfbuzz
     )
 
     if(WIN32)

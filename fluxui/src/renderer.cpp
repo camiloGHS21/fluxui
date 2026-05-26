@@ -27,6 +27,9 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include <hb.h>
+#include <hb-ft.h>
+
 #include <fstream>
 #include <iostream>
 #include <cstring>
@@ -4575,27 +4578,20 @@ void Renderer::drawSoftwareText(const std::string& text,
         }
     };
 
-    std::string processedText = substituteLigatures(text, font);
-    uint32_t prevCp = 0;
-    for (size_t i = 0; i < processedText.size();) {
-        uint32_t codepoint = softwareNextCodepoint(processedText, i);
-        const GlyphInfo& glyph = font.getGlyph(codepoint);
-        if (glyph.xadvance == 0.0f && codepoint != ' ') {
+    ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
+    for (const auto& sg : run) {
+        const GlyphInfo& glyph = font.getGlyphByIndex(sg.glyphIndex);
+        if (glyph.xadvance == 0.0f && sg.codepoint != ' ') {
             continue;
         }
 
-        if (prevCp != 0) {
-            cursorX += font.getKerning(prevCp, codepoint, glyphScale);
-        }
-
-        float x = std::floor(cursorX + glyph.xoff * glyphScale + 0.5f);
-        float y = std::floor(baselineY + glyph.yoff * glyphScale + 0.5f);
+        float x = std::floor(cursorX + (glyph.xoff + sg.xOffset) * glyphScale + 0.5f);
+        float y = std::floor(baselineY + (glyph.yoff + sg.yOffset) * glyphScale + 0.5f);
         drawGlyph(glyph, x, y);
         if (boldOffset > 0.0f) {
             drawGlyph(glyph, x + boldOffset, y);
         }
-        cursorX += glyph.xadvance * glyphScale;
-        prevCp = codepoint;
+        cursorX += sg.xAdvance * glyphScale;
     }
 }
 
@@ -4958,29 +4954,22 @@ void Renderer::drawVulkanText(const std::string& text,
         return (uint32_t)s[i++];
     };
 
-    std::string processedText = substituteLigatures(text, font);
-    uint32_t prevCp = 0;
-    for (size_t i = 0; i < processedText.size(); ) {
-        uint32_t c = getNextCodepoint(processedText, i);
-        const auto& g = font.getGlyph(c);
-        if (g.xadvance == 0 && c != ' ') continue;
-
-        if (prevCp != 0) {
-            cursorX += font.getKerning(prevCp, c, fontScale);
-        }
+    ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
+    for (const auto& sg : run) {
+        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         float w = g.width * fontScale;
         float h = g.height * fontScale;
         if (w > 0 && h > 0) {
-            float x = snap(cursorX + g.xoff * fontScale);
-            float y = snap(baselineY + g.yoff * fontScale);
+            float x = snap(cursorX + (g.xoff + sg.xOffset) * fontScale);
+            float y = snap(baselineY + (g.yoff + sg.yOffset) * fontScale);
             appendGlyph(x, y, w, h, g);
             if (boldOffset > 0.0f) {
                 appendGlyph(snap(x + boldOffset), y, w, h, g);
             }
         }
-        cursorX += g.xadvance * fontScale;
-        prevCp = c;
+        cursorX += sg.xAdvance * fontScale;
     }
 
     if (vertices.empty()) {
@@ -5838,6 +5827,8 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
                     gj.width = (float)reW;
                     gj.height = (float)reH;
 
+                    font.glyphsByIndex[reGlyphIndex] = gj;
+
                     currentX += reW + 1;
                 }
                 if (!packedOk) break;
@@ -5871,6 +5862,8 @@ bool Renderer::buildFontAtlas(FontData& font, const unsigned char* data, int dat
         gi.xadvance = (float)(slot->advance.x >> 6);
         gi.width = (float)w;
         gi.height = (float)h;
+
+        font.glyphsByIndex[glyphIndex] = gi;
 
         currentX += w + 1;
     }
@@ -6325,6 +6318,226 @@ void Renderer::drawBoxShadow(const Rect& rect, const BoxShadow& shadow,
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
+FontData::FontData() = default;
+
+FontData::~FontData() {
+    cleanupHarfbuzz();
+}
+
+FontData::FontData(FontData&& other) noexcept {
+    *this = std::move(other);
+}
+
+FontData::FontData(const FontData& other) {
+    *this = other;
+}
+
+FontData& FontData::operator=(const FontData& other) {
+    if (this != &other) {
+        cleanupHarfbuzz();
+
+        textureId = other.textureId;
+        atlasWidth = other.atlasWidth;
+        atlasHeight = other.atlasHeight;
+        fontSize = other.fontSize;
+        ascent = other.ascent;
+        descent = other.descent;
+        lineGap = other.lineGap;
+        std::copy(std::begin(other.glyphs), std::end(other.glyphs), std::begin(glyphs));
+        extendedGlyphs = other.extendedGlyphs;
+        kerningPairs = other.kerningPairs;
+        supportedLigatures = other.supportedLigatures;
+        glyphsByIndex = other.glyphsByIndex;
+
+        hbFont = nullptr;
+        ftLibrary = nullptr;
+        ftFace = nullptr;
+
+        sourceData = other.sourceData;
+        atlasPixels = other.atlasPixels;
+        loaded = other.loaded;
+        runLengths = other.runLengths;
+        runValues = other.runValues;
+        runCount = other.runCount;
+        pixelCount = other.pixelCount;
+    }
+    return *this;
+}
+
+FontData& FontData::operator=(FontData&& other) noexcept {
+    if (this != &other) {
+        cleanupHarfbuzz();
+        
+        textureId = other.textureId;
+        atlasWidth = other.atlasWidth;
+        atlasHeight = other.atlasHeight;
+        fontSize = other.fontSize;
+        ascent = other.ascent;
+        descent = other.descent;
+        lineGap = other.lineGap;
+        std::copy(std::begin(other.glyphs), std::end(other.glyphs), std::begin(glyphs));
+        extendedGlyphs = std::move(other.extendedGlyphs);
+        kerningPairs = std::move(other.kerningPairs);
+        supportedLigatures = std::move(other.supportedLigatures);
+        glyphsByIndex = std::move(other.glyphsByIndex);
+        
+        hbFont = other.hbFont;
+        ftLibrary = other.ftLibrary;
+        ftFace = other.ftFace;
+        
+        other.hbFont = nullptr;
+        other.ftLibrary = nullptr;
+        other.ftFace = nullptr;
+        
+        sourceData = std::move(other.sourceData);
+        atlasPixels = std::move(other.atlasPixels);
+        loaded = other.loaded;
+        runLengths = other.runLengths;
+        runValues = other.runValues;
+        runCount = other.runCount;
+        pixelCount = other.pixelCount;
+    }
+    return *this;
+}
+
+void FontData::cleanupHarfbuzz() const {
+    if (hbFont) {
+        hb_font_destroy((hb_font_t*)hbFont);
+        hbFont = nullptr;
+    }
+    if (ftFace) {
+        FT_Done_Face((FT_Face)ftFace);
+        ftFace = nullptr;
+    }
+    if (ftLibrary) {
+        FT_Done_FreeType((FT_Library)ftLibrary);
+        ftLibrary = nullptr;
+    }
+}
+
+void Renderer::ensureHarfbuzzFont(const FontData& font) const {
+    if (font.hbFont) return;
+
+    if (!font.ftLibrary) {
+        FT_Library library;
+        if (FT_Init_FreeType(&library) == 0) {
+            font.ftLibrary = library;
+        }
+    }
+
+    if (!font.ftLibrary) return;
+
+    if (!font.ftFace && !font.sourceData.empty()) {
+        FT_Face face;
+        if (FT_New_Memory_Face((FT_Library)font.ftLibrary, font.sourceData.data(), (long)font.sourceData.size(), 0, &face) == 0) {
+            float bakedSize = std::max(8.0f, font.fontSize);
+            float dpiScale = std::max(1.0f, dpiScale_);
+            float pixelSize = (float)std::max(8, (int)std::round(bakedSize * dpiScale));
+            FT_Set_Pixel_Sizes(face, 0, (FT_UInt)pixelSize);
+            font.ftFace = face;
+        }
+    }
+
+    if (!font.ftFace) return;
+
+    FT_Face face = (FT_Face)font.ftFace;
+    hb_font_t* hbFont = hb_ft_font_create(face, nullptr);
+    if (hbFont) {
+        hb_ft_font_set_funcs(hbFont);
+        font.hbFont = hbFont;
+    }
+}
+
+Renderer::ShapedRun Renderer::shapeTextWithHarfbuzz(const FontData& font, const std::string& text, Direction direction) const {
+    ShapedRun run;
+    if (text.empty()) return run;
+
+    ensureHarfbuzzFont(font);
+    if (!font.hbFont) {
+        // Fallback to simple manual codepoint-by-codepoint shaping if hbFont is not available
+        auto getNextCodepoint = [](const std::string& s, size_t& i) -> uint32_t {
+            unsigned char c = (unsigned char)s[i];
+            if (c < 0x80) return (uint32_t)s[i++];
+            if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
+                uint32_t cp = ((s[i++] & 0x1F) << 6) | (s[i++] & 0x3F);
+                return cp;
+            }
+            if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) {
+                uint32_t cp = ((s[i++] & 0x0F) << 12) | ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
+                return cp;
+            }
+            if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) {
+                uint32_t cp = ((s[i++] & 0x07) << 18) | ((s[i++] & 0x3F) << 12) |
+                              ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
+                return cp;
+            }
+            return (uint32_t)s[i++];
+        };
+
+        std::string processedText = substituteLigatures(text, font);
+        uint32_t prevCp = 0;
+        for (size_t i = 0; i < processedText.size(); ) {
+            uint32_t c = getNextCodepoint(processedText, i);
+            const auto& g = font.getGlyph(c);
+            if (g.xadvance == 0 && c != ' ') continue;
+
+            float kern = 0.0f;
+            if (prevCp != 0) {
+                kern = font.getKerning(prevCp, c, 1.0f);
+            }
+
+            ShapedGlyph sg;
+            sg.glyphIndex = c;
+            sg.codepoint = c;
+            sg.xOffset = kern;
+            sg.yOffset = 0.0f;
+            sg.xAdvance = g.xadvance;
+            run.push_back(sg);
+            prevCp = c;
+        }
+        return run;
+    }
+
+    // HarfBuzz path!
+    hb_font_t* hbFont = (hb_font_t*)font.hbFont;
+    hb_buffer_t* buf = hb_buffer_create();
+
+    hb_buffer_add_utf8(buf, text.c_str(), -1, 0, -1);
+    hb_buffer_guess_segment_properties(buf);
+    hb_buffer_set_direction(buf, direction == Direction::Rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
+
+    // Explicitly disable ligatures and contextual kerning as requested!
+    hb_feature_t features[5];
+    features[0].tag = HB_TAG('l', 'i', 'g', 'a'); features[0].value = 0; features[0].start = HB_FEATURE_GLOBAL_START; features[0].end = HB_FEATURE_GLOBAL_END;
+    features[1].tag = HB_TAG('c', 'l', 'i', 'g'); features[1].value = 0; features[1].start = HB_FEATURE_GLOBAL_START; features[1].end = HB_FEATURE_GLOBAL_END;
+    features[2].tag = HB_TAG('d', 'l', 'i', 'g'); features[2].value = 0; features[2].start = HB_FEATURE_GLOBAL_START; features[2].end = HB_FEATURE_GLOBAL_END;
+    features[3].tag = HB_TAG('h', 'l', 'i', 'g'); features[3].value = 0; features[3].start = HB_FEATURE_GLOBAL_START; features[3].end = HB_FEATURE_GLOBAL_END;
+    features[4].tag = HB_TAG('k', 'e', 'r', 'n'); features[4].value = 0; features[4].start = HB_FEATURE_GLOBAL_START; features[4].end = HB_FEATURE_GLOBAL_END;
+
+    hb_shape(hbFont, buf, features, 5);
+
+    unsigned int glyphCount = 0;
+    hb_glyph_info_t* glyphInfo = hb_buffer_get_glyph_infos(buf, &glyphCount);
+    hb_glyph_position_t* glyphPos = hb_buffer_get_glyph_positions(buf, &glyphCount);
+
+    run.reserve(glyphCount);
+    for (unsigned int i = 0; i < glyphCount; ++i) {
+        ShapedGlyph sg;
+        sg.glyphIndex = glyphInfo[i].codepoint;
+        sg.codepoint = glyphInfo[i].codepoint;
+
+        // hb-ft uses 26.6 fractional coordinates by default (1/64 of a pixel)
+        sg.xOffset = (float)glyphPos[i].x_offset / 64.0f;
+        sg.yOffset = (float)glyphPos[i].y_offset / 64.0f;
+        sg.xAdvance = (float)glyphPos[i].x_advance / 64.0f;
+
+        run.push_back(sg);
+    }
+
+    hb_buffer_destroy(buf);
+    return run;
+}
+
 static std::string substituteLigatures(const std::string& text, const FontData& font) {
     if (font.supportedLigatures.empty()) return text;
     std::string result = text;
@@ -6574,42 +6787,17 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
         : 0.0f;
     float italicSkew = style == FontStyle::Normal ? 0.0f : fontSize * 0.18f;
 
-    // Simple UTF-8 decoder
-    auto getNextCodepoint = [](const std::string& s, size_t& i) -> uint32_t {
-        unsigned char c = (unsigned char)s[i];
-        if (c < 0x80) return (uint32_t)s[i++];
-        if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x1F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x0F) << 12) | ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x07) << 18) | ((s[i++] & 0x3F) << 12) | ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        return (uint32_t)s[i++];
-    };
-
-    std::string finalProcessedText = substituteLigatures(processedText, font);
-    uint32_t prevCp = 0;
-    for (size_t i = 0; i < finalProcessedText.size(); ) {
-        uint32_t c = getNextCodepoint(finalProcessedText, i);
-        const auto& g = font.getGlyph(c);
-        if (g.xadvance == 0 && c != ' ') continue;
-
-        if (prevCp != 0) {
-            cursorX += font.getKerning(prevCp, c, scale);
-        }
+    ShapedRun run = shapeTextWithHarfbuzz(font, processedText, direction);
+    for (const auto& sg : run) {
+        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         float w = g.width * scale;
         float h = g.height * scale;
 
         if (w > 0 && h > 0) {
-            float x = snap(cursorX + g.xoff * scale);
-            float y = snap(baselineY + g.yoff * scale);
+            float x = snap(cursorX + (g.xoff + sg.xOffset) * scale);
+            float y = snap(baselineY + (g.yoff + sg.yOffset) * scale);
             float topSkew = snap(italicSkew);
 
             float data[] = {
@@ -6635,8 +6823,7 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
                 vertices.insert(vertices.end(), std::begin(boldData), std::end(boldData));
             }
         }
-        cursorX += g.xadvance * scale;
-        prevCp = c;
+        cursorX += sg.xAdvance * scale;
     }
 
     if (vertices.empty()) return;
@@ -6841,37 +7028,13 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
     } else {
         scale = fontSize / font.fontSize;
     }
-    float width = 0;
-    auto getNextCodepoint = [](const std::string& s, size_t& i) -> uint32_t {
-        unsigned char c = (unsigned char)s[i];
-        if (c < 0x80) return (uint32_t)s[i++];
-        if ((c & 0xE0) == 0xC0 && i + 1 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x1F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        if ((c & 0xF0) == 0xE0 && i + 2 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x0F) << 12) | ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        if ((c & 0xF8) == 0xF0 && i + 3 < s.size()) {
-            uint32_t cp = ((s[i++] & 0x07) << 18) | ((s[i++] & 0x3F) << 12) | ((s[i++] & 0x3F) << 6) | (s[i++] & 0x3F);
-            return cp;
-        }
-        return (uint32_t)s[i++];
-    };
+    float width = 0.0f;
+    ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
+    for (const auto& sg : run) {
+        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
-    std::string processedText = substituteLigatures(text, font);
-    uint32_t prevCp = 0;
-    for (size_t i = 0; i < processedText.size(); ) {
-        uint32_t c = getNextCodepoint(processedText, i);
-        const auto& g = font.getGlyph(c);
-        if (g.xadvance == 0 && c != ' ') continue;
-
-        if (prevCp != 0) {
-            width += font.getKerning(prevCp, c, scale);
-        }
-        width += g.xadvance * scale;
-        prevCp = c;
+        width += sg.xAdvance * scale;
     }
     Vec2 measured = {width, fontSize};
 #if FLUXUI_TEXT_MEASURE_CACHE_SIZE > 0
