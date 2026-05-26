@@ -149,6 +149,11 @@ struct RenderCommand {
 
     // Texture
     uint32_t textureId = 0;
+
+    // Property Tree node references (cc::PropertyTrees parity)
+    int transformNodeId = 0;
+    int clipNodeId = 0;
+    int effectNodeId = 0;
 };
 
 struct ImageData {
