@@ -3458,7 +3458,7 @@ void Widget::renderChildren(Renderer& renderer) {
 }
 void Widget::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-    bool hasScale = (renderScale != 1.0f);
+    bool hasScale = (renderScale != 1.0f && !layoutObject);
     if (hasScale) {
         renderer.pushScale(renderScale, bounds.center());
     }
@@ -3573,7 +3573,7 @@ void Button::layout(const Rect& parentBounds) {
 }
 void Button::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-    bool hasScale = (renderScale != 1.0f);
+    bool hasScale = (renderScale != 1.0f && !layoutObject);
     if (hasScale) {
         renderer.pushScale(renderScale, bounds.center());
     }
@@ -5596,7 +5596,10 @@ void VirtualList::rebuildVisibleItems() {
 void StatCard::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
     auto& s = computedStyle;
-    renderer.pushScale(renderScale, bounds.center());
+    bool hasScale = (renderScale != 1.0f && !layoutObject);
+    if (hasScale) {
+        renderer.pushScale(renderScale, bounds.center());
+    }
     if (s.boxShadow.blur > 0) {
         renderer.drawBoxShadow(bounds, s.boxShadow, s.borderRadius);
     }
@@ -5629,7 +5632,9 @@ void StatCard::render(Renderer& renderer) {
     renderer.drawText(subtitle, {bounds.x + px, bounds.y + bounds.h - 35},
                       accentColor, 12);
     renderChildren(renderer);
-    renderer.popScale();
+    if (hasScale) {
+        renderer.popScale();
+    }
 }
 #ifdef _WIN32
 #include <windows.h>
