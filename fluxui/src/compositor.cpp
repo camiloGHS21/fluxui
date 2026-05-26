@@ -1,5 +1,6 @@
 #include "fluxui/compositor.h"
 #include "fluxui/css_parser.h"
+#include "fluxui/widgets.h"
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -219,8 +220,11 @@ void CompositorEngine::threadLoop() {
 
 void CompositorEngine::tick(float dt) {
     std::lock_guard<std::mutex> lock(mutex_);
+    bool needsRepaint = false;
+
     for (auto& [key, anim] : animations_) {
         if (!anim.active) continue;
+        needsRepaint = true;
 
         anim.elapsed += dt;
         float progress = std::clamp(anim.elapsed / anim.duration, 0.0f, 1.0f);
@@ -263,6 +267,113 @@ void CompositorEngine::tick(float dt) {
             }
         }
     }
+
+    for (auto& [id, scroll] : scrolls_) {
+        if (!scroll.isScrollable) continue;
+        if (scroll.scrollY != scroll.targetScrollY) {
+            float previousScroll = scroll.scrollY;
+            float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
+            scroll.scrollY += (scroll.targetScrollY - scroll.scrollY) * scrollBlend;
+            if (std::abs(scroll.scrollY - scroll.targetScrollY) < 0.08f) {
+                scroll.scrollY = scroll.targetScrollY;
+            }
+            needsRepaint = true;
+        }
+    }
+
+    if (needsRepaint) {
+        if (auto* app = Application::instance()) {
+            app->requestRedraw();
+        }
+    }
+}
+
+void CompositorEngine::registerScrollableWidget(uintptr_t widgetId, const Rect& bounds, float contentHeight,
+                                              float scrollY, float targetScrollY, int depth, bool isScrollable) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& scroll = scrolls_[widgetId];
+    scroll.widgetId = widgetId;
+    scroll.bounds = bounds;
+    scroll.contentHeight = contentHeight;
+    scroll.depth = depth;
+    scroll.isScrollable = isScrollable;
+    scroll.maxScrollY = std::max(0.0f, contentHeight - bounds.h);
+
+    if (scroll.maxScrollY == 0.0f) {
+        scroll.scrollY = 0.0f;
+        scroll.targetScrollY = 0.0f;
+    } else {
+        scroll.scrollY = std::clamp(scroll.scrollY, 0.0f, scroll.maxScrollY);
+        scroll.targetScrollY = std::clamp(scroll.targetScrollY, 0.0f, scroll.maxScrollY);
+
+        if (std::abs(scroll.scrollY - scrollY) > scroll.maxScrollY * 0.5f) {
+            scroll.scrollY = scrollY;
+            scroll.targetScrollY = targetScrollY;
+        }
+    }
+}
+
+bool CompositorEngine::handleMouseWheel(float x, float y, float dy) {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    uintptr_t bestWidgetId = 0;
+    int bestDepth = -1;
+
+    for (const auto& [id, scroll] : scrolls_) {
+        if (!scroll.isScrollable) continue;
+        if (scroll.maxScrollY <= 0.0f) continue;
+
+        if (scroll.bounds.contains({x, y})) {
+            if (scroll.depth > bestDepth) {
+                bestDepth = scroll.depth;
+                bestWidgetId = id;
+            }
+        }
+    }
+
+    if (bestWidgetId != 0) {
+        auto& scroll = scrolls_[bestWidgetId];
+        scroll.targetScrollY -= dy * 72.0f;
+        scroll.targetScrollY = std::clamp(scroll.targetScrollY, 0.0f, scroll.maxScrollY);
+
+        if (auto* app = Application::instance()) {
+            app->requestRedraw();
+        }
+        return true;
+    }
+
+    return false;
+}
+
+float CompositorEngine::getScrollY(uintptr_t widgetId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = scrolls_.find(widgetId);
+    if (it != scrolls_.end()) {
+        return it->second.scrollY;
+    }
+    return 0.0f;
+}
+
+float CompositorEngine::getTargetScrollY(uintptr_t widgetId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = scrolls_.find(widgetId);
+    if (it != scrolls_.end()) {
+        return it->second.targetScrollY;
+    }
+    return 0.0f;
+}
+
+void CompositorEngine::setScrollY(uintptr_t widgetId, float scrollY, float targetScrollY) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto& scroll = scrolls_[widgetId];
+    scroll.widgetId = widgetId;
+    scroll.scrollY = scrollY;
+    scroll.targetScrollY = targetScrollY;
+}
+
+void CompositorEngine::unregisterWidget(uintptr_t widgetId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    scrolls_.erase(widgetId);
 }
 
 } // namespace FluxUI

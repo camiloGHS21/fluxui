@@ -674,6 +674,7 @@ static const char* textInputTypeSelector(TextInputType type) {
 }
 Widget::Widget() {}
 Widget::~Widget() {
+    CompositorEngine::instance().unregisterWidget(reinterpret_cast<uintptr_t>(this));
     if (auto* app = Application::instance()) {
         app->onWidgetDestroyed(this);
     }
@@ -2213,6 +2214,8 @@ void Widget::prePaint(const PaintProperties& parentProps) {
 
     bool scrollable = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
     if (scrollable) {
+        scrollY = CompositorEngine::instance().getScrollY(reinterpret_cast<uintptr_t>(this));
+        targetScrollY = CompositorEngine::instance().getTargetScrollY(reinterpret_cast<uintptr_t>(this));
         paintProperties.translation.y -= scrollY;
     }
 
@@ -2734,12 +2737,26 @@ void Widget::update(const InputState& input) {
         currentScale = computedStyle->activeScale;
     }
     renderScale = currentScale;
-    if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
+    bool isScrollableWidget = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
+    int depth = 0;
+    Widget* p = parent;
+    while (p) {
+        depth++;
+        p = p->parent;
+    }
+    if (isScrollableWidget) {
+        scrollY = CompositorEngine::instance().getScrollY(reinterpret_cast<uintptr_t>(this));
+        targetScrollY = CompositorEngine::instance().getTargetScrollY(reinterpret_cast<uintptr_t>(this));
+    }
+
+    if (isScrollableWidget) {
         clampScroll();
         Rect track, thumb;
         bool hasScrollbar = getScrollBarRects(track, thumb);
         scrollbarHovered = hasScrollbar && hovered &&
             (track.contains(input.mousePos) || thumb.contains(input.mousePos));
+        bool scrollChangedOnMainThread = false;
+
         if (hasScrollbar && hovered && input.mouseClicked[0]) {
             if (thumb.contains(input.mousePos)) {
                 scrollbarDragging = true;
@@ -2754,6 +2771,7 @@ void Widget::update(const InputState& input) {
                 scrollVelocity = 0.0f;
                 scrollbarDragging = true;
                 scrollbarDragOffset = thumb.h * 0.5f;
+                scrollChangedOnMainThread = true;
             }
         }
         if (scrollbarDragging) {
@@ -2764,56 +2782,66 @@ void Widget::update(const InputState& input) {
                 targetScrollY = std::clamp((requestedY / travel) * maxScroll, 0.0f, maxScroll);
                 scrollY = targetScrollY;
                 scrollVelocity = 0.0f;
+                scrollChangedOnMainThread = true;
             } else {
                 scrollbarDragging = false;
             }
         }
-        if (hovered && !scrollbarDragging && input.scroll.y != 0) {
-            targetScrollY -= input.scroll.y * 72.0f;
-            clampScroll();
-        }
+
+        // Note: Mouse wheel is handled off-main-thread by the CompositorEngine!
+
         int scrollKeyCode = normalizeTextEditingKey(input.keyCode);
         if (hovered && !scrollbarDragging && scrollKeyCode != 0) {
             float maxScroll = maxScrollY();
             switch (scrollKeyCode) {
             case 0x26:
                 targetScrollY -= 48.0f;
+                scrollChangedOnMainThread = true;
                 break;
             case 0x28:
                 targetScrollY += 48.0f;
+                scrollChangedOnMainThread = true;
                 break;
             case 0x21:
                 targetScrollY -= bounds.h * 0.88f;
+                scrollChangedOnMainThread = true;
                 break;
             case 0x22:
                 targetScrollY += bounds.h * 0.88f;
+                scrollChangedOnMainThread = true;
                 break;
             case 0x24:
                 targetScrollY = 0.0f;
+                scrollChangedOnMainThread = true;
                 break;
             case 0x23:
                 targetScrollY = maxScroll;
+                scrollChangedOnMainThread = true;
                 break;
             default:
                 break;
             }
             clampScroll();
         }
-        if (scrollY != targetScrollY || scrollVelocity != 0.0f) {
-            float previousScroll = scrollY;
-            float scrollBlend = 1.0f - std::exp(-dt * 22.0f);
-            scrollY += (targetScrollY - scrollY) * scrollBlend;
-            scrollVelocity = (scrollY - previousScroll) / std::max(dt, 0.001f);
-            if (std::abs(scrollY - targetScrollY) < 0.08f || std::abs(scrollVelocity) < 0.02f) {
-                scrollY = targetScrollY;
-                scrollVelocity = 0.0f;
-            }
-            clampScroll();
+
+        if (scrollChangedOnMainThread) {
+            CompositorEngine::instance().setScrollY(reinterpret_cast<uintptr_t>(this), scrollY, targetScrollY);
         }
     } else {
         scrollbarHovered = false;
         scrollbarDragging = false;
     }
+
+    // Always register/update our layout geometry with the CompositorEngine
+    CompositorEngine::instance().registerScrollableWidget(
+        reinterpret_cast<uintptr_t>(this),
+        bounds,
+        contentHeight,
+        scrollY,
+        targetScrollY,
+        depth,
+        isScrollableWidget
+    );
     InputState childInput = input;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         if (scrollbarHovered || scrollbarDragging) {
@@ -6107,6 +6135,10 @@ void Application::dispatchMouseMove(float x, float y, float dx, float dy) {
 }
 
 void Application::dispatchMouseWheel(float x, float y, float dx, float dy) {
+    if (CompositorEngine::instance().handleMouseWheel(x, y, dy)) {
+        input_.scroll = {0.0f, 0.0f};
+        return;
+    }
     Widget* target = nullptr;
     std::vector<Widget*> fixedWidgets;
     std::function<void(Widget*)> gatherFixed = [&](Widget* w) {

@@ -76,6 +76,15 @@ public:
     // Check if widget is currently being animated on the compositor
     bool hasAnimations(uintptr_t widgetId);
 
+    // Compositor thread off-main-thread scrolling interface (Blink style)
+    void registerScrollableWidget(uintptr_t widgetId, const Rect& bounds, float contentHeight,
+                                  float scrollY, float targetScrollY, int depth, bool isScrollable);
+    bool handleMouseWheel(float x, float y, float dy);
+    float getScrollY(uintptr_t widgetId);
+    float getTargetScrollY(uintptr_t widgetId);
+    void setScrollY(uintptr_t widgetId, float scrollY, float targetScrollY);
+    void unregisterWidget(uintptr_t widgetId);
+
 private:
     CompositorEngine();
     ~CompositorEngine();
@@ -87,6 +96,18 @@ private:
     std::atomic<bool> running_{false};
     std::mutex mutex_;
     std::unordered_map<std::string, CompositorAnimation> animations_; // Key: "widgetId:propName"
+    
+    struct CompositorScroll {
+        uintptr_t widgetId = 0;
+        Rect bounds;
+        float contentHeight = 0.0f;
+        float scrollY = 0.0f;
+        float targetScrollY = 0.0f;
+        float maxScrollY = 0.0f;
+        int depth = 0;
+        bool isScrollable = false;
+    };
+    std::unordered_map<uintptr_t, CompositorScroll> scrolls_;
 };
 
 } // namespace FluxUI
