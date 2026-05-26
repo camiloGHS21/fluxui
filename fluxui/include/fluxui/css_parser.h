@@ -127,7 +127,7 @@ public:
                   const Widget* widget = nullptr,
                   std::string_view targetPseudo = "") const;
     template <typename F>
-    const Style& resolveLazy(std::string_view className,
+    std::shared_ptr<const Style> resolveLazy(std::string_view className,
                              std::string_view id,
                              std::string_view type,
                              uint64_t ancestorH1,
@@ -163,19 +163,20 @@ public:
 
 #if FLUXUI_STYLE_CACHE_SIZE > 0
         size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
-        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key) {
+        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key && resolvedCache_[cacheIdx].style) {
             return resolvedCache_[cacheIdx].style;
         }
 #endif
 
         const auto& ancestors = getAncestors();
-        resolve(className, id, type, ancestors, parentStyle, widget);
+        Style resolved = resolve(className, id, type, ancestors, parentStyle, widget);
+        auto sharedStyle = std::make_shared<const Style>(std::move(resolved));
 #if FLUXUI_STYLE_CACHE_SIZE > 0
-        return resolvedCache_[cacheIdx].style;
-#else
-        static Style fallback;
-        return fallback;
+        resolvedCache_[cacheIdx].key = key;
+        resolvedCache_[cacheIdx].style = sharedStyle;
+        resolvedCache_[cacheIdx].epoch = currentEpoch_;
 #endif
+        return sharedStyle;
     }
     std::string resolveValue(const std::string& value,
                              const std::unordered_map<std::string, std::string>& customProperties,
@@ -231,7 +232,7 @@ private:
     std::unordered_map<std::string, CSSPropertyDefinition> propertyDefinitions_;
     struct StyleCacheEntry {
         StyleCacheKey key;
-        Style style;
+        std::shared_ptr<const Style> style;
         uint32_t epoch = 0;
     };
     mutable std::vector<StyleCacheEntry> resolvedCache_;

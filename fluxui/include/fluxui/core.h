@@ -785,6 +785,75 @@ struct Style {
 };
 
 // ============================================================
+//  ComputedStyle Copy-on-Write Wrapper
+// ============================================================
+
+class ComputedStyle {
+public:
+    ComputedStyle() : m_style(std::make_shared<Style>()) {}
+    ComputedStyle(const Style& style) : m_style(std::make_shared<Style>(style)) {}
+    ComputedStyle(std::shared_ptr<const Style> style) : m_style(std::move(style)) {}
+
+    ComputedStyle(const ComputedStyle& other) = default;
+    ComputedStyle& operator=(const ComputedStyle& other) = default;
+    ComputedStyle(ComputedStyle&& other) noexcept = default;
+    ComputedStyle& operator=(ComputedStyle&& other) noexcept = default;
+
+    const Style* operator->() const { return m_style.get(); }
+    Style* operator->() { return &ensureMutable(); }
+
+    const Style& operator*() const { return *m_style; }
+    Style& operator*() { return ensureMutable(); }
+
+    operator const Style&() const { return *m_style; }
+
+    explicit operator bool() const { return m_style != nullptr; }
+
+    const Style* get() const { return m_style.get(); }
+
+    Style& ensureMutable() {
+        if (!m_style) {
+            m_style = std::make_shared<Style>();
+        } else if (m_style.use_count() > 1) {
+            m_style = std::make_shared<Style>(*m_style);
+        }
+        return const_cast<Style&>(*m_style);
+    }
+
+    ComputedStyle& operator=(std::shared_ptr<const Style> other) {
+        m_style = std::move(other);
+        return *this;
+    }
+
+    ComputedStyle& operator=(const Style& other) {
+        m_style = std::make_shared<Style>(other);
+        return *this;
+    }
+
+    ComputedStyle& operator=(std::nullptr_t) {
+        m_style = nullptr;
+        return *this;
+    }
+
+    bool operator==(const ComputedStyle& other) const {
+        return m_style == other.m_style;
+    }
+    bool operator!=(const ComputedStyle& other) const {
+        return m_style != other.m_style;
+    }
+    bool operator==(std::nullptr_t) const {
+        return m_style == nullptr;
+    }
+    bool operator!=(std::nullptr_t) const {
+        return m_style != nullptr;
+    }
+
+private:
+    std::shared_ptr<const Style> m_style;
+};
+
+
+// ============================================================
 //  Events
 // ============================================================
 

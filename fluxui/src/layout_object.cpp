@@ -197,7 +197,7 @@ namespace FluxUI {
             }
 
             // Draw FBO texture at widget bounds
-            renderer.drawTexture(paintLayer_->textureId(), bounds_, node_->computedStyle.opacity);
+            renderer.drawTexture(paintLayer_->textureId(), bounds_, node_->computedStyle->opacity);
             return;
         }
 
@@ -275,7 +275,7 @@ namespace FluxUI {
 
         // Paint all children recursively via the LayoutObject tree
         for (auto* child : children_) {
-            if (child->node() && child->node()->computedStyle.position == Position::Fixed) {
+            if (child->node() && child->node()->computedStyle->position == Position::Fixed) {
                 continue;
             }
             child->paint(renderer);

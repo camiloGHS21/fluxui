@@ -21,26 +21,26 @@ int main() {
     
     auto root = std::make_shared<FluxUI::Widget>();
     root->className = "root";
-    root->computedStyle.display = FluxUI::Display::Flex;
-    root->computedStyle.visibility = FluxUI::Visibility::Visible;
-    root->computedStyle.width = FluxUI::CSSValue::px(300.0f);
-    root->computedStyle.height = FluxUI::CSSValue::px(300.0f);
+    root->computedStyle->display = FluxUI::Display::Flex;
+    root->computedStyle->visibility = FluxUI::Visibility::Visible;
+    root->computedStyle->width = FluxUI::CSSValue::px(300.0f);
+    root->computedStyle->height = FluxUI::CSSValue::px(300.0f);
     
     auto layered = std::make_shared<FluxUI::Widget>();
     layered->className = "layered";
-    layered->computedStyle.display = FluxUI::Display::Flex;
-    layered->computedStyle.visibility = FluxUI::Visibility::Visible;
-    layered->computedStyle.width = FluxUI::CSSValue::px(200.0f);
-    layered->computedStyle.height = FluxUI::CSSValue::px(200.0f);
+    layered->computedStyle->display = FluxUI::Display::Flex;
+    layered->computedStyle->visibility = FluxUI::Visibility::Visible;
+    layered->computedStyle->width = FluxUI::CSSValue::px(200.0f);
+    layered->computedStyle->height = FluxUI::CSSValue::px(200.0f);
     layered->useGPUCompositing = true;
     root->addChild(layered);
     
     auto grandchild = std::make_shared<FluxUI::Widget>();
     grandchild->className = "grandchild";
-    grandchild->computedStyle.display = FluxUI::Display::Flex;
-    grandchild->computedStyle.visibility = FluxUI::Visibility::Visible;
-    grandchild->computedStyle.width = FluxUI::CSSValue::px(100.0f);
-    grandchild->computedStyle.height = FluxUI::CSSValue::px(100.0f);
+    grandchild->computedStyle->display = FluxUI::Display::Flex;
+    grandchild->computedStyle->visibility = FluxUI::Visibility::Visible;
+    grandchild->computedStyle->width = FluxUI::CSSValue::px(100.0f);
+    grandchild->computedStyle->height = FluxUI::CSSValue::px(100.0f);
     layered->addChild(grandchild);
 
     root->attachLayoutTree();

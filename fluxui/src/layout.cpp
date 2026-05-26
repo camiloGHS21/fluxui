@@ -11,13 +11,13 @@ namespace FluxUI {
     // File-local helper functions replicating Blink Layout helper APIs
     namespace {
         bool isDisplayNone(const Widget* widget) {
-            return widget && widget->computedStyle.display == Display::None;
+            return widget && widget->computedStyle->display == Display::None;
         }
 
         bool isOutOfFlow(const Widget* widget) {
             if (!widget) return false;
-            return widget->computedStyle.position == Position::Absolute ||
-                   widget->computedStyle.position == Position::Fixed;
+            return widget->computedStyle->position == Position::Absolute ||
+                   widget->computedStyle->position == Position::Fixed;
         }
 
         bool clipsOverflow(Overflow overflow) {
@@ -88,7 +88,7 @@ namespace FluxUI {
     // ============================================================
     LayoutResult FlexLayoutAlgorithm::layout(Widget* widget, const LayoutConstraints& constraints) {
         LayoutResult result;
-        auto& s = widget->computedStyle;
+        auto& s = *widget->computedStyle;
         bool isRow = (s.flexDirection == FlexDirection::Row ||
                       s.flexDirection == FlexDirection::RowReverse);
 
@@ -114,7 +114,7 @@ namespace FluxUI {
                     auto& child = children[i];
                     if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
                     visibleCount++;
-                    auto& cs = child->computedStyle;
+                    auto& cs = *child->computedStyle;
                     totalFlexGrow += cs.flexGrow;
                     float childW = cs.width.isSet() ? cs.width.resolve(contentW, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : contentW;
                     if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
@@ -135,7 +135,7 @@ namespace FluxUI {
                     auto& child = children[i];
                     if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
                     visibleCount++;
-                    auto& cs = child->computedStyle;
+                    auto& cs = *child->computedStyle;
                     totalFlexGrow += cs.flexGrow;
                     if (cs.flexBasis.isSet() && !cs.flexBasis.isAuto()) {
                         measuredMain[i] = cs.flexBasis.resolve(contentW, constraints.parentWidth, constraints.parentHeight, constraints.emBase);
@@ -208,7 +208,7 @@ namespace FluxUI {
             for (size_t i = 0; i < children.size(); i++) {
                 auto& child = children[i];
                 if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-                auto& cs = child->computedStyle;
+                auto& cs = *child->computedStyle;
                 float nextGap = (++laidOut < visibleCount) ? gapOffset : 0.0f;
                 float childW = 0.0f, childH = 0.0f;
 
@@ -338,7 +338,7 @@ namespace FluxUI {
             if (isRow) {
                 for (auto& child : children) {
                     if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-                    auto& cs = child->computedStyle;
+                    auto& cs = *child->computedStyle;
                     FlexItem item;
                     item.widget = child.get();
                     item.flexGrow = cs.flexGrow;
@@ -363,7 +363,7 @@ namespace FluxUI {
             } else {
                 for (auto& child : children) {
                     if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-                    auto& cs = child->computedStyle;
+                    auto& cs = *child->computedStyle;
                     FlexItem item;
                     item.widget = child.get();
                     item.flexGrow = cs.flexGrow;
@@ -470,8 +470,8 @@ namespace FluxUI {
                         childH = item.crossSize;
 
                         AlignItems effectiveAlign = s.alignItems;
-                        if (item.widget->computedStyle.alignSelf != AlignSelf::Auto) {
-                            switch (item.widget->computedStyle.alignSelf) {
+                        if (item.widget->computedStyle->alignSelf != AlignSelf::Auto) {
+                            switch (item.widget->computedStyle->alignSelf) {
                                 case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
                                 case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
                                 case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
@@ -487,7 +487,7 @@ namespace FluxUI {
                             cy = crossCursor + line.crossSize - (childH + item.crossMargin);
                         }
 
-                        Rect childArea = {mainCursor + item.widget->computedStyle.margin.left, cy + item.widget->computedStyle.margin.top,
+                        Rect childArea = {mainCursor + item.widget->computedStyle->margin.left, cy + item.widget->computedStyle->margin.top,
                                           std::max(0.0f, childW), std::max(0.0f, childH)};
                         item.widget->layout(childArea);
                         mainCursor += childW + item.mainMargin + nextGap;
@@ -500,8 +500,8 @@ namespace FluxUI {
                         childW = item.crossSize;
 
                         AlignItems effectiveAlign = s.alignItems;
-                        if (item.widget->computedStyle.alignSelf != AlignSelf::Auto) {
-                            switch (item.widget->computedStyle.alignSelf) {
+                        if (item.widget->computedStyle->alignSelf != AlignSelf::Auto) {
+                            switch (item.widget->computedStyle->alignSelf) {
                                 case AlignSelf::FlexStart: effectiveAlign = AlignItems::FlexStart; break;
                                 case AlignSelf::FlexEnd: effectiveAlign = AlignItems::FlexEnd; break;
                                 case AlignSelf::Center: effectiveAlign = AlignItems::Center; break;
@@ -517,7 +517,7 @@ namespace FluxUI {
                             cx = crossCursor + line.crossSize - (childW + item.crossMargin);
                         }
 
-                        Rect childArea = {cx + item.widget->computedStyle.margin.left, mainCursor + item.widget->computedStyle.margin.top,
+                        Rect childArea = {cx + item.widget->computedStyle->margin.left, mainCursor + item.widget->computedStyle->margin.top,
                                           std::max(0.0f, childW), std::max(0.0f, childH)};
                         item.widget->layout(childArea);
                         mainCursor += childH + item.mainMargin + nextGap;
@@ -550,7 +550,7 @@ namespace FluxUI {
     // ============================================================
     LayoutResult GridLayoutAlgorithm::layout(Widget* widget, const LayoutConstraints& constraints) {
         LayoutResult result;
-        auto& s = widget->computedStyle;
+        auto& s = *widget->computedStyle;
         auto& children = widget->children;
 
         float contentX = widget->bounds.x + s.padding.left;
@@ -593,7 +593,7 @@ namespace FluxUI {
             auto& child = children[i];
             if (!child->visible || isDisplayNone(child.get())) continue;
             
-            auto& cs = child->computedStyle;
+            auto& cs = *child->computedStyle;
             int col = activeIdx % cols;
             float cx = contentX + col * (colW + mainGap);
             float childH = cs.height.isSet() ? cs.height.resolve(0, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : 100.0f;

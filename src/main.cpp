@@ -944,16 +944,16 @@ static void runStyleResolutionBenchmark(Application& app) {
     bool correctness = true;
     for (Widget* w : allWidgets) {
         if (w->type == "button") {
-            if (!w->computedStyle.hasColor ||
-                w->computedStyle.color.r != 1.0f ||
-                w->computedStyle.color.g != 1.0f ||
-                w->computedStyle.color.b != 1.0f ||
-                w->computedStyle.color.a != 1.0f) {
-                std::cout << "Button id=" << w->id << " failed color verification. hasColor=" << w->computedStyle.hasColor
-                          << " r=" << w->computedStyle.color.r
-                          << " g=" << w->computedStyle.color.g
-                          << " b=" << w->computedStyle.color.b
-                          << " a=" << w->computedStyle.color.a << std::endl;
+            if (!w->computedStyle->hasColor ||
+                w->computedStyle->color.r != 1.0f ||
+                w->computedStyle->color.g != 1.0f ||
+                w->computedStyle->color.b != 1.0f ||
+                w->computedStyle->color.a != 1.0f) {
+                std::cout << "Button id=" << w->id << " failed color verification. hasColor=" << w->computedStyle->hasColor
+                          << " r=" << w->computedStyle->color.r
+                          << " g=" << w->computedStyle->color.g
+                          << " b=" << w->computedStyle->color.b
+                          << " a=" << w->computedStyle->color.a << std::endl;
                 correctness = false;
             }
         }

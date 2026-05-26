@@ -10,19 +10,19 @@ int main() {
     // Create widgets manually
     auto root = std::make_shared<FluxUI::Widget>();
     root->className = "root";
-    root->computedStyle.display = FluxUI::Display::Flex;
-    root->computedStyle.visibility = FluxUI::Visibility::Visible;
-    root->computedStyle.backgroundColor = FluxUI::Color(1.0f, 0.0f, 0.0f, 1.0f); // red
-    root->computedStyle.width = FluxUI::CSSValue::px(100.0f);
-    root->computedStyle.height = FluxUI::CSSValue::px(100.0f);
+    root->computedStyle->display = FluxUI::Display::Flex;
+    root->computedStyle->visibility = FluxUI::Visibility::Visible;
+    root->computedStyle->backgroundColor = FluxUI::Color(1.0f, 0.0f, 0.0f, 1.0f); // red
+    root->computedStyle->width = FluxUI::CSSValue::px(100.0f);
+    root->computedStyle->height = FluxUI::CSSValue::px(100.0f);
     
     auto child = std::make_shared<FluxUI::Widget>();
     child->className = "child";
-    child->computedStyle.display = FluxUI::Display::Flex;
-    child->computedStyle.visibility = FluxUI::Visibility::Visible;
-    child->computedStyle.backgroundColor = FluxUI::Color(0.0f, 1.0f, 0.0f, 1.0f); // green
-    child->computedStyle.width = FluxUI::CSSValue::px(50.0f);
-    child->computedStyle.height = FluxUI::CSSValue::px(50.0f);
+    child->computedStyle->display = FluxUI::Display::Flex;
+    child->computedStyle->visibility = FluxUI::Visibility::Visible;
+    child->computedStyle->backgroundColor = FluxUI::Color(0.0f, 1.0f, 0.0f, 1.0f); // green
+    child->computedStyle->width = FluxUI::CSSValue::px(50.0f);
+    child->computedStyle->height = FluxUI::CSSValue::px(50.0f);
     root->addChild(child);
 
     // Build layout tree manually

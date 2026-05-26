@@ -1726,8 +1726,8 @@ Style StyleSheet::resolve(std::string_view className,
 #if FLUXUI_STYLE_CACHE_SIZE > 0
     {
         size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
-        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key) {
-            return resolvedCache_[cacheIdx].style;
+        if (resolvedCache_[cacheIdx].epoch == currentEpoch_ && resolvedCache_[cacheIdx].key == key && resolvedCache_[cacheIdx].style) {
+            return *resolvedCache_[cacheIdx].style;
         }
     }
 #endif
@@ -1963,7 +1963,7 @@ Style StyleSheet::resolve(std::string_view className,
     {
         size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
         resolvedCache_[cacheIdx].key = key;
-        resolvedCache_[cacheIdx].style = style;
+        resolvedCache_[cacheIdx].style = std::make_shared<const Style>(style);
         resolvedCache_[cacheIdx].epoch = currentEpoch_;
     }
 #endif

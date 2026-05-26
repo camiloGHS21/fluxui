@@ -264,7 +264,7 @@ public:
     AtomicString type = "widget";
     AtomicString dir;
     Style style;
-    Style computedStyle;
+    ComputedStyle computedStyle;
     std::vector<CSSProperty> inlineProperties;
     Rect bounds;
     bool visible = true;
