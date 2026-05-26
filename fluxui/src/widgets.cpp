@@ -2,6 +2,7 @@
 #include "fluxui/compositor.h"
 #include "fluxui/layout.h"
 #include "fluxui/layout_object.h"
+#include "fluxui/accessibility.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -108,6 +109,9 @@ void Application::unregisterResizeObserver(ResizeObserver* observer) {
 }
 void Application::onWidgetDestroyed(Widget* w) {
     if (!w) return;
+    if (axObjectCache_) {
+        axObjectCache_->remove(w);
+    }
     for (auto* obs : resizeObservers_) {
         obs->unobserve(w);
     }
@@ -5795,6 +5799,7 @@ bool Application::init(const std::string& title, int width, int height) {
     root_->reserveChildren(FLUXUI_PREALLOC_ROOT_CHILDREN);
     root_->computedStyle.ensureMutable().display = Display::Flex;
     root_->computedStyle.ensureMutable().flexDirection = FlexDirection::Row;
+    axObjectCache_ = std::make_unique<AXObjectCache>();
     input_.windowSize = {(float)width, (float)height};
     return true;
 }
@@ -6511,6 +6516,10 @@ void Application::updateStyleAndLayout() {
         root_->layout({0, 0, (float)w, (float)h});
     }
     documentLifecycle = DocumentLifecycle::LayoutClean;
+
+    if (axObjectCache_) {
+        axObjectCache_->update(root_.get());
+    }
 }
 
 #ifdef _WIN32
@@ -6607,6 +6616,10 @@ void Application::renderFrame() {
     rootProps.opacity = 1.0f;
     root_->prePaint(rootProps);
     documentLifecycle = DocumentLifecycle::PrePaintClean;
+
+    if (axObjectCache_) {
+        axObjectCache_->update(root_.get());
+    }
     int documentKeyCode = normalizeTextEditingKey(input_.keyCode);
     if (documentKeyCode == 0x09) {
         bool backwards = (input_.modifiers & MOD_SHIFT) != 0;

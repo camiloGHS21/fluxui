@@ -2,6 +2,7 @@
 #include "core.h"
 #include "css_parser.h"
 #include "renderer.h"
+#include "fluxui/accessibility.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -1471,7 +1472,22 @@ public:
     const char* activeBackendName() const { return renderer_.activeBackendName(); }
     bool loadStylesheet(const std::string& path);
     void addStylesheet(const std::string& css);
-    Widget* root() { return root_.get(); }
+    Widget* root() {
+        if (!root_) {
+            root_ = std::make_shared<Panel>();
+            root_->id = "root";
+            root_->className = "root";
+            root_->computedStyle.ensureMutable().display = Display::Flex;
+            root_->computedStyle.ensureMutable().flexDirection = FlexDirection::Row;
+        }
+        return root_.get();
+    }
+    AXObjectCache* axObjectCache() {
+        if (!axObjectCache_) {
+            axObjectCache_ = std::make_unique<AXObjectCache>();
+        }
+        return axObjectCache_.get();
+    }
     Renderer& renderer() { return renderer_; }
     StyleSheet& stylesheet() { return stylesheet_; }
     InputState& input() { return input_; }
@@ -1527,6 +1543,7 @@ private:
     StyleSheet stylesheet_;
     InputState input_;
     std::shared_ptr<Widget> root_;
+    std::unique_ptr<AXObjectCache> axObjectCache_;
     std::chrono::high_resolution_clock::time_point lastTime_;
     std::unordered_map<std::string, RouteBuilder> routes_;
     RouteBuilder notFoundRoute_;

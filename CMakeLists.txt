@@ -214,6 +214,7 @@ set(FLUXUI_SOURCES
     fluxui/src/layout.cpp
     fluxui/src/layout_object.cpp
     fluxui/src/gc.cpp
+    fluxui/src/accessibility.cpp
 )
 
 if(WIN32)
@@ -484,6 +485,22 @@ target_include_directories(gpu_composited_layer_test PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(gpu_composited_layer_test)
+
+# ============================================================
+#  Accessibility Tree C++ Unit Test
+# ============================================================
+add_executable(accessibility_tree_test
+    examples/cpp/accessibility_tree_test.cpp
+)
+
+target_link_libraries(accessibility_tree_test PRIVATE
+    fluxui
+)
+
+target_include_directories(accessibility_tree_test PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(accessibility_tree_test)
 
 
 
