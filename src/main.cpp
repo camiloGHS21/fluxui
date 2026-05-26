@@ -968,6 +968,130 @@ static void runStyleResolutionBenchmark(Application& app) {
     log_print("==================================================\n");
 }
 
+static void validateStyleInvalidationSets(Application& app) {
+    std::cout << "\n==================================================" << std::endl;
+    std::cout << "    VALIDATING STYLE INVALIDATION SETS (BLINK PARITY)" << std::endl;
+    std::cout << "==================================================" << std::endl;
+
+    StyleSheet oldSheet = app.stylesheet();
+    
+    StyleSheet sheet;
+    sheet.parse(R"(
+        .container .descendant { color: red; }
+        .container > .child { color: green; }
+        .active + .adjacent { color: blue; }
+        .active ~ .sibling { color: yellow; }
+        .simple-btn { color: white; }
+    )");
+
+    app.stylesheet() = sheet;
+
+    Widget* root = app.root();
+    root->clearChildren(true);
+    root->type = "div";
+    root->className = "container";
+    root->id = "app-root";
+
+    // Create children and descendants
+    Widget* child1 = root->add<Widget>();
+    child1->id = "child-1";
+    child1->className = "child";
+    
+    Widget* child2 = root->add<Widget>();
+    child2->id = "child-2";
+    child2->className = "not-a-child";
+
+    Widget* desc1 = child2->add<Widget>();
+    desc1->id = "desc-1";
+    desc1->className = "descendant";
+
+    Widget* desc2 = child2->add<Widget>();
+    desc2->id = "desc-2";
+    desc2->className = "not-a-descendant";
+
+    // Sibling chain
+    Widget* active = root->add<Widget>();
+    active->id = "active-node";
+    active->className = "active";
+
+    Widget* adj = root->add<Widget>();
+    adj->id = "adj-node";
+    adj->className = "adjacent";
+
+    Widget* sib = root->add<Widget>();
+    sib->id = "sib-node";
+    sib->className = "sibling";
+
+    // Simple button
+    Widget* btn = root->add<Widget>();
+    btn->id = "simple-btn-node";
+    btn->className = "simple-btn";
+
+    // Initial style resolution to clean dirty flags
+    root->resolveStyles(sheet);
+
+    auto resetAllFlags = [&]() {
+        std::function<void(Widget*)> reset = [&](Widget* w) {
+            w->styleDirty = false;
+            w->subtreeStyleDirty = false;
+            w->layoutDirty = false;
+            w->lifecycleState = WidgetLifecycle::StyleClean;
+            for (auto& child : w->children) {
+                reset(child.get());
+            }
+        };
+        reset(root);
+    };
+
+    // Test Case 1: Modifying simple-btn (which only has simple rules)
+    resetAllFlags();
+    std::cout << "[Test 1] Modifying simple button class name..." << std::endl;
+    btn->invalidateStyleOnClassListChange("simple-btn", "simple-btn active-state");
+    
+    bool t1_ok = btn->styleDirty;
+    bool t1_clean = !child1->styleDirty && !child2->styleDirty && !desc1->styleDirty && !desc2->styleDirty && !active->styleDirty && !adj->styleDirty && !sib->styleDirty;
+    std::cout << "  - Button marked dirty: " << (t1_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Subtree/Siblings remained clean: " << (t1_clean ? "PASS" : "FAIL") << std::endl;
+
+    // Test Case 2: Modifying container (triggers descendant and child invalidation)
+    resetAllFlags();
+    std::cout << "[Test 2] Modifying container class list (triggers child and descendant invalidation)..." << std::endl;
+    root->invalidateStyleOnClassListChange("container", "modified-container");
+
+    bool t2_root_ok = root->styleDirty;
+    bool t2_child1_ok = child1->styleDirty;
+    bool t2_child2_ok = !child2->styleDirty;
+    bool t2_desc1_ok = desc1->styleDirty;
+    bool t2_desc2_ok = !desc2->styleDirty;
+
+    std::cout << "  - Root marked dirty: " << (t2_root_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Direct child (.child) marked dirty: " << (t2_child1_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Direct child (non-matching) remained clean: " << (t2_child2_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Deep descendant (.descendant) marked dirty: " << (t2_desc1_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Deep descendant (non-matching) remained clean: " << (t2_desc2_ok ? "PASS" : "FAIL") << std::endl;
+
+    // Test Case 3: Sibling invalidation (modifying active triggers adjacent and sibling invalidations)
+    resetAllFlags();
+    std::cout << "[Test 3] Modifying active node class list (triggers sibling and adjacent sibling invalidation)..." << std::endl;
+    active->invalidateStyleOnClassListChange("active", "modified-active");
+
+    bool t3_active_ok = active->styleDirty;
+    bool t3_adj_ok = adj->styleDirty;
+    bool t3_sib_ok = sib->styleDirty;
+    bool t3_desc_clean = !child1->styleDirty && !child2->styleDirty && !desc1->styleDirty && !desc2->styleDirty;
+
+    std::cout << "  - Active node marked dirty: " << (t3_active_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Adjacent sibling (.adjacent) marked dirty: " << (t3_adj_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - General sibling (.sibling) marked dirty: " << (t3_sib_ok ? "PASS" : "FAIL") << std::endl;
+    std::cout << "  - Non-sibling nodes remained clean: " << (t3_desc_clean ? "PASS" : "FAIL") << std::endl;
+
+    bool overall_pass = t1_ok && t1_clean && t2_root_ok && t2_child1_ok && t2_child2_ok && t2_desc1_ok && t2_desc2_ok && t3_active_ok && t3_adj_ok && t3_sib_ok && t3_desc_clean;
+    std::cout << "STYLE INVALIDATION SET VERIFICATION: " << (overall_pass ? "PASS" : "FAIL") << std::endl;
+    std::cout << "==================================================" << std::endl;
+    
+    app.stylesheet() = oldSheet;
+}
+
 static bool parseBackendArg(const std::string& value, RenderBackendType& backend) {
     std::string normalized = value;
     std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c) {
@@ -1052,6 +1176,7 @@ int main(int argc, char** argv) {
     if (runBenchmark) {
         runKeymapBenchmark(app);
         runStyleResolutionBenchmark(app);
+        validateStyleInvalidationSets(app);
         app.shutdown();
         return 0;
     }

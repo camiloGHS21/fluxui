@@ -198,14 +198,25 @@ public:
 
     struct InvalidationSet {
         bool invalidateAllDescendants = false;
+        bool invalidateAllChildren = false;
         bool invalidateAllSiblings = false;
+        bool invalidateAllAdjacentSiblings = false;
+
         std::unordered_set<std::string> descendantClasses;
         std::unordered_set<std::string> descendantIds;
         std::unordered_set<std::string> descendantTypes;
 
+        std::unordered_set<std::string> childClasses;
+        std::unordered_set<std::string> childIds;
+        std::unordered_set<std::string> childTypes;
+
         std::unordered_set<std::string> siblingClasses;
         std::unordered_set<std::string> siblingIds;
         std::unordered_set<std::string> siblingTypes;
+
+        std::unordered_set<std::string> adjacentSiblingClasses;
+        std::unordered_set<std::string> adjacentSiblingIds;
+        std::unordered_set<std::string> adjacentSiblingTypes;
     };
 
     const InvalidationSet* getClassInvalidationSet(const std::string& className) const;

@@ -5138,32 +5138,52 @@ void StyleSheet::buildInvalidationSets() {
     classInvalidationSets_.clear();
     idInvalidationSets_.clear();
     typeInvalidationSets_.clear();
-    
+
     for (const auto& rule : rules) {
         if (rule.parts.size() <= 1) continue;
-        
+
         size_t K = rule.parts.size() - 1;
         for (size_t i = 0; i < K; ++i) {
             std::vector<std::string> srcClasses, srcIds, srcTypes;
             extractSelectorFeatures(rule.parts[i], srcClasses, srcIds, srcTypes);
-            
+
             for (size_t j = i + 1; j <= K; ++j) {
-                bool isDescendant = false;
-                for (size_t c = i; c < j; ++c) {
-                    if (rule.combinators[c] == ' ' || rule.combinators[c] == '>') {
-                        isDescendant = true;
-                        break;
+                // Determine the relationship between i and j
+                char relationship = ' '; // default to descendant
+                
+                if (j == i + 1) {
+                    relationship = rule.combinators[i];
+                } else {
+                    bool hasSibling = false;
+                    bool hasDescendant = false;
+                    for (size_t c = i; c < j; ++c) {
+                        if (rule.combinators[c] == '+' || rule.combinators[c] == '~') {
+                            hasSibling = true;
+                        } else if (rule.combinators[c] == ' ') {
+                            hasDescendant = true;
+                        }
+                    }
+                    if (hasSibling) {
+                        relationship = '~';
+                    } else if (hasDescendant) {
+                        relationship = ' ';
+                    } else {
+                        relationship = ' '; // treat general multi-child combinator paths as descendant
                     }
                 }
-                
+
                 std::vector<std::string> tgtClasses, tgtIds, tgtTypes;
                 extractSelectorFeatures(rule.parts[j], tgtClasses, tgtIds, tgtTypes);
-                
+
                 if (tgtClasses.empty() && tgtIds.empty() && tgtTypes.empty()) {
                     auto addAllToInvalidationSet = [&](InvalidationSet& set) {
-                        if (isDescendant) {
+                        if (relationship == ' ') {
                             set.invalidateAllDescendants = true;
-                        } else {
+                        } else if (relationship == '>') {
+                            set.invalidateAllChildren = true;
+                        } else if (relationship == '+') {
+                            set.invalidateAllAdjacentSiblings = true;
+                        } else if (relationship == '~') {
                             set.invalidateAllSiblings = true;
                         }
                     };
@@ -5172,17 +5192,25 @@ void StyleSheet::buildInvalidationSets() {
                     for (const auto& t : srcTypes) addAllToInvalidationSet(typeInvalidationSets_[t]);
                 } else {
                     auto addToInvalidationSet = [&](InvalidationSet& set) {
-                        if (isDescendant) {
+                        if (relationship == ' ') {
                             for (const auto& c : tgtClasses) set.descendantClasses.insert(c);
                             for (const auto& idVal : tgtIds) set.descendantIds.insert(idVal);
                             for (const auto& t : tgtTypes) set.descendantTypes.insert(t);
-                        } else {
+                        } else if (relationship == '>') {
+                            for (const auto& c : tgtClasses) set.childClasses.insert(c);
+                            for (const auto& idVal : tgtIds) set.childIds.insert(idVal);
+                            for (const auto& t : tgtTypes) set.childTypes.insert(t);
+                        } else if (relationship == '+') {
+                            for (const auto& c : tgtClasses) set.adjacentSiblingClasses.insert(c);
+                            for (const auto& idVal : tgtIds) set.adjacentSiblingIds.insert(idVal);
+                            for (const auto& t : tgtTypes) set.adjacentSiblingTypes.insert(t);
+                        } else if (relationship == '~') {
                             for (const auto& c : tgtClasses) set.siblingClasses.insert(c);
                             for (const auto& idVal : tgtIds) set.siblingIds.insert(idVal);
                             for (const auto& t : tgtTypes) set.siblingTypes.insert(t);
                         }
                     };
-                    
+
                     for (const auto& c : srcClasses) addToInvalidationSet(classInvalidationSets_[c]);
                     for (const auto& idVal : srcIds) addToInvalidationSet(idInvalidationSets_[idVal]);
                     for (const auto& t : srcTypes) addToInvalidationSet(typeInvalidationSets_[t]);
