@@ -107,8 +107,8 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     wc.hInstance = hInst;
     wc.lpszClassName = L"FluxUIWindowClass";
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = nullptr;
-    wc.style = CS_OWNDC;
+    wc.hbrBackground = initialBackgroundBrush();
+    wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     RegisterClassExW(&wc);
 
     int x = CW_USEDEFAULT;
@@ -204,6 +204,7 @@ NativeCursorHandle Platform::createSystemCursor(CursorType type) {
         case CursorType::Pointer: id = (LPCWSTR)32649; break; // IDC_HAND
         case CursorType::Text: id = (LPCWSTR)32513; break;    // IDC_IBEAM
         case CursorType::ResizeNWSE: id = (LPCWSTR)32642; break; // IDC_SIZENWSE
+        case CursorType::ResizeNS: id = (LPCWSTR)32645; break;   // IDC_SIZENS
         default: id = (LPCWSTR)32512; break;                  // IDC_ARROW
     }
     return (NativeCursorHandle)LoadCursorW(nullptr, id);

@@ -1,6 +1,7 @@
 #include "fluxui/widgets.h"
 #include "fluxui/compositor.h"
 #include "fluxui/layout.h"
+#include "fluxui/layout_object.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -671,10 +672,58 @@ static const char* textInputTypeSelector(TextInputType type) {
     default: return "text";
     }
 }
+Widget::Widget() {}
 Widget::~Widget() {
     if (auto* app = Application::instance()) {
         app->onWidgetDestroyed(this);
     }
+}
+void Widget::attachLayoutTree() {
+    if (computedStyle.display == Display::None) {
+        layoutObject.reset();
+        return;
+    }
+
+    layoutObject = createLayoutObject();
+    if (!layoutObject) return;
+
+    layoutObject->clearChildren();
+
+    if (beforePseudoNode) {
+        beforePseudoNode->attachLayoutTree();
+        if (beforePseudoNode->layoutObject) {
+            layoutObject->addChild(beforePseudoNode->layoutObject.get());
+        }
+    }
+
+    for (auto& child : children) {
+        child->attachLayoutTree();
+        if (child->layoutObject) {
+            layoutObject->addChild(child->layoutObject.get());
+        }
+    }
+
+    if (afterPseudoNode) {
+        afterPseudoNode->attachLayoutTree();
+        if (afterPseudoNode->layoutObject) {
+            layoutObject->addChild(afterPseudoNode->layoutObject.get());
+        }
+    }
+}
+std::unique_ptr<LayoutObject> Widget::createLayoutObject() {
+    if (type == "text") {
+        auto* textWidget = static_cast<Text*>(this);
+        return std::make_unique<LayoutText>(this, textWidget->content);
+    }
+    if (computedStyle.display == Display::Flex) {
+        return std::make_unique<LayoutFlexibleBox>(this);
+    } else if (computedStyle.display == Display::Grid) {
+        return std::make_unique<LayoutGrid>(this);
+    } else if (computedStyle.display == Display::Block || 
+               computedStyle.display == Display::InlineBlock) {
+        return std::make_unique<LayoutBlock>(this);
+    }
+    return std::make_unique<LayoutBox>(this);
 }
 const std::string& Widget::selectorType() const {
     if (!cachedSelectorType.empty()) {
@@ -758,6 +807,12 @@ static bool scrollsOverflowY(const Style& style, float contentHeight, float boun
     if (overflow == Overflow::Scroll) return contentHeight > boundsHeight + 1.0f;
     if (overflow == Overflow::Auto) return contentHeight > boundsHeight + 1.0f;
     return false;
+}
+bool Widget::isScrollableY() const {
+    return scrollsOverflowY(computedStyle, contentHeight, bounds.h);
+}
+bool Widget::isClippingOverflow() const {
+    return clipsOverflow(computedStyle);
 }
 static float usedBorderTopWidth(const Style& style) {
     return style.hasBorderTop ? style.borderTop.width : style.border.width;
@@ -1838,6 +1893,89 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         styleDirty = false;
         }
     }
+
+    // Inline C++ style overrides: Programmatic style changes set in C++ should always override the matched stylesheet styles
+    if (style.width.isSet()) computedStyle.width = style.width;
+    if (style.height.isSet()) computedStyle.height = style.height;
+    if (style.minWidth.isSet()) computedStyle.minWidth = style.minWidth;
+    if (style.minHeight.isSet()) computedStyle.minHeight = style.minHeight;
+    if (style.maxWidth.isSet()) computedStyle.maxWidth = style.maxWidth;
+    if (style.maxHeight.isSet()) computedStyle.maxHeight = style.maxHeight;
+    if (style.top.isSet()) computedStyle.top = style.top;
+    if (style.right.isSet()) computedStyle.right = style.right;
+    if (style.bottom.isSet()) computedStyle.bottom = style.bottom;
+    if (style.left.isSet()) computedStyle.left = style.left;
+    if (style.position != Position::Static) computedStyle.position = style.position;
+    if (style.overflow != Overflow::Visible) computedStyle.overflow = style.overflow;
+    if (style.overflowX != Overflow::Visible) computedStyle.overflowX = style.overflowX;
+    if (style.overflowY != Overflow::Visible) computedStyle.overflowY = style.overflowY;
+    if (style.fontSize > 0 && style.fontSize != 14.0f) computedStyle.fontSize = style.fontSize;
+    if (style.hasFontStyle) {
+        computedStyle.fontStyle = style.fontStyle;
+        computedStyle.hasFontStyle = true;
+    }
+    if (style.padding.top > 0 || style.padding.right > 0 ||
+        style.padding.bottom > 0 || style.padding.left > 0)
+        computedStyle.padding = style.padding;
+    if (style.margin.top > 0 || style.margin.right > 0 ||
+        style.margin.bottom > 0 || style.margin.left > 0)
+        computedStyle.margin = style.margin;
+    if (style.gap > 0) computedStyle.gap = style.gap;
+    if (style.rowGap > 0) computedStyle.rowGap = style.rowGap;
+    if (style.columnGap > 0) computedStyle.columnGap = style.columnGap;
+    if (style.aspectRatio > 0) computedStyle.aspectRatio = style.aspectRatio;
+    if (style.hasObjectFit) {
+        computedStyle.objectFit = style.objectFit;
+        computedStyle.hasObjectFit = true;
+    }
+    if (style.hasAppearance) {
+        computedStyle.appearance = style.appearance;
+        computedStyle.hasAppearance = true;
+    }
+    if (style.hasObjectPosition) {
+        computedStyle.objectPosition = style.objectPosition;
+        computedStyle.objectPositionOffset = style.objectPositionOffset;
+        computedStyle.hasObjectPosition = true;
+    }
+    if (style.hasVerticalAlign) {
+        computedStyle.verticalAlign = style.verticalAlign;
+        computedStyle.hasVerticalAlign = true;
+    }
+    if (style.hasBoxSizing || style.boxSizing != BoxSizing::ContentBox) {
+        computedStyle.boxSizing = style.boxSizing;
+        computedStyle.hasBoxSizing = true;
+    }
+    if (style.flexGrow > 0) computedStyle.flexGrow = style.flexGrow;
+    if (style.flexBasis.isSet()) computedStyle.flexBasis = style.flexBasis;
+    if (style.borderRadius.maxRadius() > 0) computedStyle.borderRadius = style.borderRadius;
+    if (style.hasBackdropFilterBlur) {
+        computedStyle.backdropFilterBlur = style.backdropFilterBlur;
+        computedStyle.hasBackdropFilterBlur = true;
+    }
+    if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
+    if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;
+    if (style.hasHoverBg) {
+        computedStyle.hoverBackgroundColor = style.hoverBackgroundColor;
+        computedStyle.hasHoverBg = true;
+    }
+    if (style.hasHoverColor) {
+        computedStyle.hoverColor = style.hoverColor;
+        computedStyle.hasHoverColor = true;
+    }
+    if (style.hasHoverBorder) {
+        computedStyle.hoverBorderColor = style.hoverBorderColor;
+        computedStyle.hasHoverBorder = true;
+    }
+    if (style.hoverScale >= 0) computedStyle.hoverScale = style.hoverScale;
+    if (style.hoverOpacity >= 0) computedStyle.hoverOpacity = style.hoverOpacity;
+    if (style.scale != 1.0f) computedStyle.scale = style.scale;
+
+    size_t nextLayoutSignature = layoutStyleSignature(computedStyle);
+    if (nextLayoutSignature != layoutSignature) {
+        layoutSignature = nextLayoutSignature;
+        markLayoutDirty();
+    }
+
     for (auto& child : children) {
         if (child->subtreeStyleDirty) {
             child->resolveStyles(sheet);
@@ -3029,6 +3167,12 @@ Widget* Widget::hitTest(Vec2 point, bool interactiveOnly) {
     if (!canHitTestWidget(this) || !bounds.contains(point)) {
         return nullptr;
     }
+    if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
+        Rect track, thumb;
+        if (getScrollBarRects(track, thumb) && (track.contains(point) || thumb.contains(point))) {
+            return this;
+        }
+    }
     Vec2 childPoint = point;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         childPoint.y += scrollY;
@@ -3249,6 +3393,7 @@ void Widget::renderBackground(Renderer& renderer) {
     }
 }
 void Widget::renderChildren(Renderer& renderer) {
+    if (skipDOMChildrenPaint) return;
     bool scrollable = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
     bool clip = clipsOverflow(computedStyle);
     Rect visibleContent = bounds;
@@ -4019,7 +4164,11 @@ void TextArea::layout(const Rect& parentBounds) {
     contentHeight = lines.size() * lineH + s.padding.vertical();
     
     float requiredHeight = contentHeight + s.margin.vertical();
-    bounds.h = std::max(minHeight, requiredHeight);
+    if (s.height.isSet()) {
+        bounds.h = minHeight;
+    } else {
+        bounds.h = std::max(minHeight, requiredHeight);
+    }
 }
 
 bool TextArea::isOverResizeHandle(Vec2 point) const {
@@ -4140,10 +4289,26 @@ void TextArea::update(const InputState& input) {
 
     if (resizing_) {
         if (input.mouseDown[0]) {
+            float minW = 50.0f;
+            float minH = 30.0f;
+            float maxW = 9999.0f;
+            float maxH = 9999.0f;
+            if (computedStyle.minWidth.isSet()) {
+                minW = std::max(minW, computedStyle.minWidth.resolve(bounds.w));
+            }
+            if (computedStyle.minHeight.isSet()) {
+                minH = std::max(minH, computedStyle.minHeight.resolve(bounds.h));
+            }
+            if (computedStyle.maxWidth.isSet()) {
+                maxW = computedStyle.maxWidth.resolve(bounds.w);
+            }
+            if (computedStyle.maxHeight.isSet()) {
+                maxH = computedStyle.maxHeight.resolve(bounds.h);
+            }
             float newWidth = resizeStartSize_.x + (input.mousePos.x - resizeStartMousePos_.x);
             float newHeight = resizeStartSize_.y + (input.mousePos.y - resizeStartMousePos_.y);
-            newWidth = std::max(50.0f, newWidth);
-            newHeight = std::max(30.0f, newHeight);
+            newWidth = std::clamp(newWidth, minW, maxW);
+            newHeight = std::clamp(newHeight, minH, maxH);
             style.width = CSSValue::px(newWidth);
             style.height = CSSValue::px(newHeight);
             markStyleDirty();
@@ -4466,15 +4631,29 @@ void TextArea::render(Renderer& renderer) {
         ? Color(0.459f, 0.459f, 0.459f, 1.0f)
         : Color(0.604f, 0.627f, 0.659f, 0.92f);
     if (value.empty()) {
-        Rect textRect = {
-            clipRect.x,
-            clipRect.y,
-            clipRect.w,
-            lineHeight
-        };
-        renderer.drawTextInRect(placeholder, textRect, placeholderColor,
-                                s.fontSize, TextAlign::Left, s.fontWeight, fontName,
-                                s.fontStyle, s.direction, s.unicodeBidi);
+        size_t start = 0;
+        int lineIdx = 0;
+        while (start < placeholder.size()) {
+            size_t nextNewline = placeholder.find('\n', start);
+            size_t lineEnd = (nextNewline == std::string::npos) ? placeholder.size() : nextNewline;
+            std::string lineStr = placeholder.substr(start, lineEnd - start);
+            
+            float lineY = bounds.y + s.padding.top + lineIdx * lineHeight - scrollY;
+            if (lineY + lineHeight >= bounds.y && lineY <= bounds.y + bounds.h) {
+                Rect textRect = {
+                    clipRect.x - scrollX_,
+                    lineY,
+                    clipRect.w + scrollX_,
+                    lineHeight
+                };
+                renderer.drawTextInRect(lineStr, textRect, placeholderColor,
+                                        s.fontSize, TextAlign::Left, s.fontWeight, fontName,
+                                        s.fontStyle, s.direction, s.unicodeBidi);
+            }
+            
+            start = lineEnd + 1;
+            lineIdx++;
+        }
     } else {
         Color textColor = s.color;
         for (size_t i = 0; i < lines.size(); ++i) {
@@ -6078,7 +6257,18 @@ void Application::dispatchMouseUp(int button, float x, float y) {
     target->dispatchEvent(ev);
     if (button == 1) {
         Widget* downTarget = (button >= 1 && button <= 3) ? lastMouseDownTarget_[button - 1] : nullptr;
-        if (downTarget && (downTarget == target || downTarget->hitTest({x, y}, true) == target)) {
+        bool clickMatched = false;
+        if (downTarget) {
+            Widget* p = target;
+            while (p) {
+                if (p == downTarget) {
+                    clickMatched = true;
+                    break;
+                }
+                p = p->parent;
+            }
+        }
+        if (clickMatched) {
             Event clickEv;
             clickEv.type = "click";
             clickEv.target = target;
@@ -6420,8 +6610,21 @@ void Application::renderFrame() {
     root_->resolveStyles(stylesheet_);
     documentLifecycle = DocumentLifecycle::StyleClean;
 
+    // Attach / Rebuild decoupled Blink-style Layout Object tree
+    root_->attachLayoutTree();
+
     documentLifecycle = DocumentLifecycle::InLayout;
-    root_->layout({0, 0, (float)w, (float)h});
+    if (root_->layoutObject) {
+        LayoutConstraints constraints;
+        constraints.availableWidth = (float)w;
+        constraints.availableHeight = (float)h;
+        constraints.parentWidth = (float)w;
+        constraints.parentHeight = (float)h;
+        constraints.emBase = 16.0f;
+        root_->layoutObject->layout(constraints);
+    } else {
+        root_->layout({0, 0, (float)w, (float)h});
+    }
     documentLifecycle = DocumentLifecycle::LayoutClean;
 
     // ResizeObserver processing cycle (matches Chromium Blink high-fidelity resize observations)
@@ -6447,8 +6650,21 @@ void Application::renderFrame() {
             root_->resolveStyles(stylesheet_);
             documentLifecycle = DocumentLifecycle::StyleClean;
 
+            // Rebuild Layout Tree
+            root_->attachLayoutTree();
+
             documentLifecycle = DocumentLifecycle::InLayout;
-            root_->layout({0, 0, (float)w, (float)h});
+            if (root_->layoutObject) {
+                LayoutConstraints constraints;
+                constraints.availableWidth = (float)w;
+                constraints.availableHeight = (float)h;
+                constraints.parentWidth = (float)w;
+                constraints.parentHeight = (float)h;
+                constraints.emBase = 16.0f;
+                root_->layoutObject->layout(constraints);
+            } else {
+                root_->layout({0, 0, (float)w, (float)h});
+            }
             documentLifecycle = DocumentLifecycle::LayoutClean;
 
             sizeChanged = true;
@@ -6533,13 +6749,28 @@ void Application::renderFrame() {
 
     documentLifecycle = DocumentLifecycle::InPaint;
     renderer_.beginFrame(w, h);
-    root_->render(renderer_);
+    if (root_->layoutObject) {
+        root_->layoutObject->paint(renderer_);
+    } else {
+        root_->render(renderer_);
+    }
     for (auto* fw : fixedWidgets) {
-        fw->render(renderer_);
+        if (fw->layoutObject) {
+            fw->layoutObject->paint(renderer_);
+        } else {
+            fw->render(renderer_);
+        }
     }
     if (onRender) onRender();
     renderer_.endFrame();
     documentLifecycle = DocumentLifecycle::PaintClean;
+
+    // If the Vulkan swapchain was marked dirty during presentation (e.g.
+    // VK_SUBOPTIMAL_KHR), schedule another redraw so the main loop does not
+    // stall inside WaitMessage() with a stale/mismatched swapchain.
+    if (renderer_.needsRepaint()) {
+        needsRedraw_ = true;
+    }
 }
 
 void Application::run() {

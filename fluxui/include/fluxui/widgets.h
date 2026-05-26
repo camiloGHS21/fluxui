@@ -107,6 +107,7 @@ class Meter;
 class Progress;
 class Hr;
 class Br;
+class LayoutObject;
 enum class VirtualListScrollStrategy {
     Start = 0,
     Center = 1,
@@ -148,6 +149,13 @@ struct PaintProperties {
 
 class Widget {
 public:
+    friend class LayoutObject;
+    friend class LayoutBox;
+    friend class LayoutBlock;
+    friend class LayoutFlexibleBox;
+    friend class LayoutGrid;
+    friend class LayoutText;
+
     AtomicString id;
     AtomicString className;
     AtomicString type = "widget";
@@ -191,10 +199,14 @@ public:
     std::vector<std::shared_ptr<Widget>> children;
     std::shared_ptr<Widget> beforePseudoNode;
     std::shared_ptr<Widget> afterPseudoNode;
+    std::unique_ptr<LayoutObject> layoutObject;
+    bool skipDOMChildrenPaint = false;
+    void attachLayoutTree();
+    virtual std::unique_ptr<LayoutObject> createLayoutObject();
     std::function<void()> onClick;
     std::function<void()> onHover;
     const std::string& selectorType() const;
-    Widget() = default;
+    Widget();
     virtual ~Widget();
     Widget* addChild(std::shared_ptr<Widget> child) {
         child->parent = this;
@@ -346,6 +358,9 @@ public:
     virtual CursorType cursorAt(Vec2 point) const;
     virtual Widget* hitTest(Vec2 point, bool interactiveOnly = false);
     virtual void render(Renderer& renderer);
+    bool isScrollableY() const;
+    bool isClippingOverflow() const;
+    bool getScrollBarRects(Rect& track, Rect& thumb) const;
 protected:
     void layoutFlexChildren();
     void layoutPositionedChildren();
@@ -353,7 +368,6 @@ protected:
     void renderListMarker(Renderer& renderer);
     void renderChildren(Renderer& renderer);
     float maxScrollY() const;
-    bool getScrollBarRects(Rect& track, Rect& thumb) const;
     void clampScroll();
 };
 class Panel : public Widget {

@@ -2432,8 +2432,8 @@ bool createVulkanSwapchain(VulkanRendererState& state, int width, int height) {
         }
     }
 
-    state.logicalWidth = width;
-    state.logicalHeight = height;
+    state.logicalWidth = extent.width;
+    state.logicalHeight = extent.height;
     state.swapchainDirty = false;
     return true;
 }
@@ -4019,7 +4019,7 @@ bool Renderer::beginVulkanFrame(int w, int h) {
     (void)h;
     return false;
 #else
-    if (!vulkan_ || !vulkan_->device || vulkan_->frames.empty()) {
+    if (!vulkan_ || !vulkan_->device) {
         return false;
     }
 
@@ -4028,6 +4028,7 @@ bool Renderer::beginVulkanFrame(int w, int h) {
     windowHeight_ = std::max(1, h);
 
     if (state.swapchainDirty ||
+        state.frames.empty() ||
         state.logicalWidth != windowWidth_ ||
         state.logicalHeight != windowHeight_) {
         vkDeviceWaitIdle(state.device);
@@ -4035,6 +4036,10 @@ bool Renderer::beginVulkanFrame(int w, int h) {
         if (!createVulkanSwapchain(state, windowWidth_, windowHeight_)) {
             return false;
         }
+    }
+
+    if (state.frames.empty()) {
+        return false;
     }
 
     dpiScale_ = static_cast<float>(state.swapchainExtent.width) /
@@ -5259,6 +5264,15 @@ void Renderer::endFrame() {
 
     // In Vulkan, endFrame handles presentation.
     // In Win32/GDI it would be SwapBuffers((HDC)window_);
+}
+
+bool Renderer::needsRepaint() const {
+#if FLUXUI_HAS_VULKAN_SDK
+    if (activeBackend_ == RenderBackendType::Vulkan && vulkan_) {
+        return vulkan_->swapchainDirty;
+    }
+#endif
+    return false;
 }
 
 // ============================================================

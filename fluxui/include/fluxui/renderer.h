@@ -187,6 +187,7 @@ public:
     // Frame management
     void beginFrame(int windowWidth, int windowHeight);
     void endFrame();
+    bool needsRepaint() const;
 
     // Font loading
     bool loadDefaultFont(float size, const std::string& name = "default");

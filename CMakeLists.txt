@@ -211,6 +211,7 @@ set(FLUXUI_SOURCES
     fluxui/src/fluxui_c.cpp
     fluxui/src/compositor.cpp
     fluxui/src/layout.cpp
+    fluxui/src/layout_object.cpp
 )
 
 if(WIN32)
