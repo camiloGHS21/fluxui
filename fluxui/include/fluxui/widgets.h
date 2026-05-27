@@ -1657,8 +1657,11 @@ private:
 
 class QuickApp {
 public:
-    QuickApp(const std::string& title = "FluxUI App", int width = 960, int height = 640) {
-        if (!app_.init(title, width, height)) {
+    QuickApp(const std::string& title = "FluxUI App",
+             int width = 960,
+             int height = 640,
+             RenderBackendType backend = RenderBackendType::Auto) {
+        if (!app_.init(title, width, height, backend)) {
             std::cerr << "Failed to initialize FluxUI QuickApp." << std::endl;
             return;
         }
@@ -1695,6 +1698,46 @@ public:
 
     void addStylesheet(const std::string& css) {
         app_.addStylesheet(css);
+    }
+
+    Panel* div(const std::string& cls = "", size_t reserve = 0) {
+        return root()->div(cls, reserve);
+    }
+
+    Text* h1(const std::string& content, const std::string& cls = "") {
+        return root()->h1(content, cls);
+    }
+
+    Text* h2(const std::string& content, const std::string& cls = "") {
+        return root()->h2(content, cls);
+    }
+
+    Text* h3(const std::string& content, const std::string& cls = "") {
+        return root()->h3(content, cls);
+    }
+
+    Text* h4(const std::string& content, const std::string& cls = "") {
+        return root()->h4(content, cls);
+    }
+
+    Text* h5(const std::string& content, const std::string& cls = "") {
+        return root()->h5(content, cls);
+    }
+
+    Text* h6(const std::string& content, const std::string& cls = "") {
+        return root()->h6(content, cls);
+    }
+
+    Text* p(const std::string& content, const std::string& cls = "") {
+        return root()->p(content, cls);
+    }
+
+    Button* button(const std::string& label = "", const std::string& cls = "", std::function<void()> onClick = {}) {
+        return root()->button(label, cls, onClick);
+    }
+
+    TextInput* input(const std::string& placeholder = "", const std::string& cls = "") {
+        return root()->input(placeholder, cls);
     }
 
     int run(std::function<void(QuickApp&)> buildCallback = nullptr) {

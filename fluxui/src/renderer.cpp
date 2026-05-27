@@ -509,6 +509,16 @@ RenderBackendType chooseAutoBackend() {
 }
 
 RenderBackendType chooseBackend(RenderBackendType preference) {
+    if (const char* envBackend = std::getenv("FLUXUI_BACKEND")) {
+        std::string envStr(envBackend);
+        for (char& c : envStr) c = std::tolower(c);
+        if (envStr == "compatibility" || envStr == "software" || envStr == "cpu") {
+            return RenderBackendType::Compatibility;
+        } else if (envStr == "vulkan" || envStr == "gpu") {
+            return RenderBackendType::Vulkan;
+        }
+    }
+
     if (preference == RenderBackendType::Auto) {
         return chooseAutoBackend();
     }
@@ -1723,6 +1733,31 @@ void softwareBlendPixel(std::vector<uint32_t>& pixels,
     uint32_t dstR = (dst >> 16) & 0xffu;
     uint32_t dstG = (dst >> 8) & 0xffu;
     uint32_t dstB = dst & 0xffu;
+
+    uint32_t outR = (srcR * a_int + dstR * (255u - a_int)) / 255u;
+    uint32_t outG = (srcG * a_int + dstG * (255u - a_int)) / 255u;
+    uint32_t outB = (srcB * a_int + dstB * (255u - a_int)) / 255u;
+
+    dst = 0xff000000u | (outR << 16) | (outG << 8) | outB;
+}
+
+inline void softwareBlendPixelFast(uint32_t& dst,
+                                   uint32_t srcR,
+                                   uint32_t srcG,
+                                   uint32_t srcB,
+                                   uint32_t a_int) {
+    if (a_int == 0) {
+        return;
+    }
+    if (a_int >= 255u) {
+        dst = 0xff000000u | (srcR << 16) | (srcG << 8) | srcB;
+        return;
+    }
+
+    uint32_t dstVal = dst;
+    uint32_t dstR = (dstVal >> 16) & 0xffu;
+    uint32_t dstG = (dstVal >> 8) & 0xffu;
+    uint32_t dstB = dstVal & 0xffu;
 
     uint32_t outR = (srcR * a_int + dstR * (255u - a_int)) / 255u;
     uint32_t outG = (srcG * a_int + dstG * (255u - a_int)) / 255u;
@@ -4418,26 +4453,62 @@ void Renderer::drawSoftwareRoundedRect(const Rect& rect,
                drawRect.h - scaledBorder * 2.0f);
     float innerRadius = std::max(0.0f, scaledRadius - scaledBorder);
 
+    uint32_t srcR = 0, srcG = 0, srcB = 0;
+    float baseAlpha = 0.0f;
+    if (drawFill && !hasGradient) {
+        srcR = static_cast<uint32_t>(std::clamp(color.r, 0.0f, 1.0f) * 255.0f);
+        srcG = static_cast<uint32_t>(std::clamp(color.g, 0.0f, 1.0f) * 255.0f);
+        srcB = static_cast<uint32_t>(std::clamp(color.b, 0.0f, 1.0f) * 255.0f);
+        baseAlpha = color.a * opacity;
+    }
+
+    uint32_t borderR = 0, borderG = 0, borderB = 0;
+    float borderAlpha = 0.0f;
+    if (drawBorder) {
+        borderR = static_cast<uint32_t>(std::clamp(borderColor.r, 0.0f, 1.0f) * 255.0f);
+        borderG = static_cast<uint32_t>(std::clamp(borderColor.g, 0.0f, 1.0f) * 255.0f);
+        borderB = static_cast<uint32_t>(std::clamp(borderColor.b, 0.0f, 1.0f) * 255.0f);
+        borderAlpha = borderColor.a * opacity;
+    }
+
+    float safeMargin = std::max(0.5f, scaledRadius);
+    float safeX0 = safeMargin;
+    float safeX1 = drawRect.w - safeMargin;
+    float safeY0 = safeMargin;
+    float safeY1 = drawRect.h - safeMargin;
+
     for (int y = y0; y < y1; ++y) {
         float py = static_cast<float>(y) + 0.5f;
+        float ly = py - drawRect.y;
+        size_t rowOffset = static_cast<size_t>(y) * softwareWidth_;
         for (int x = x0; x < x1; ++x) {
             float px = static_cast<float>(x) + 0.5f;
-            float coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
-            if (coverage <= 0.0f) {
-                continue;
+            float lx = px - drawRect.x;
+
+            float coverage;
+            if (lx >= safeX0 && lx <= safeX1 && ly >= safeY0 && ly <= safeY1) {
+                coverage = 1.0f;
+            } else {
+                coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
+                if (coverage <= 0.0f) {
+                    continue;
+                }
             }
 
+            uint32_t& dst = softwarePixels_[rowOffset + x];
+
             if (drawFill) {
-                Color fill = hasGradient
-                    ? softwareGradientColor(color, color2, drawRect, px, py, gradientAngle)
-                    : color;
-                softwareBlendPixel(softwarePixels_,
-                                   softwareWidth_,
-                                   softwareHeight_,
-                                   x,
-                                   y,
-                                   fill,
-                                   opacity * coverage);
+                if (hasGradient) {
+                    Color fill = softwareGradientColor(color, color2, drawRect, px, py, gradientAngle);
+                    uint32_t fR = static_cast<uint32_t>(std::clamp(fill.r, 0.0f, 1.0f) * 255.0f);
+                    uint32_t fG = static_cast<uint32_t>(std::clamp(fill.g, 0.0f, 1.0f) * 255.0f);
+                    uint32_t fB = static_cast<uint32_t>(std::clamp(fill.b, 0.0f, 1.0f) * 255.0f);
+                    uint32_t a_int = static_cast<uint32_t>(fill.a * opacity * coverage * 255.0f);
+                    softwareBlendPixelFast(dst, fR, fG, fB, a_int);
+                } else {
+                    uint32_t a_int = static_cast<uint32_t>(baseAlpha * coverage * 255.0f);
+                    softwareBlendPixelFast(dst, srcR, srcG, srcB, a_int);
+                }
             }
 
             if (drawBorder) {
@@ -4447,13 +4518,8 @@ void Renderer::drawSoftwareRoundedRect(const Rect& rect,
                 }
                 float borderCoverage = coverage * (1.0f - innerCoverage);
                 if (borderCoverage > 0.0f) {
-                    softwareBlendPixel(softwarePixels_,
-                                       softwareWidth_,
-                                       softwareHeight_,
-                                       x,
-                                       y,
-                                       borderColor,
-                                       borderCoverage);
+                    uint32_t a_int = static_cast<uint32_t>(borderAlpha * borderCoverage * 255.0f);
+                    softwareBlendPixelFast(dst, borderR, borderG, borderB, a_int);
                 }
             }
         }
@@ -4547,6 +4613,11 @@ void Renderer::drawSoftwareText(const std::string& text,
                                         softwareHeight_,
                                         dpiScale_);
 
+    uint32_t srcR = static_cast<uint32_t>(std::clamp(color.r, 0.0f, 1.0f) * 255.0f);
+    uint32_t srcG = static_cast<uint32_t>(std::clamp(color.g, 0.0f, 1.0f) * 255.0f);
+    uint32_t srcB = static_cast<uint32_t>(std::clamp(color.b, 0.0f, 1.0f) * 255.0f);
+    float baseAlpha = color.a;
+
     auto drawGlyph = [&](const GlyphInfo& glyph, float originX, float originY) {
         int drawW = std::max(0, static_cast<int>(std::ceil(glyph.width * glyphScale)));
         int drawH = std::max(0, static_cast<int>(std::ceil(glyph.height * glyphScale)));
@@ -4570,6 +4641,7 @@ void Renderer::drawSoftwareText(const std::string& text,
             float rowSkew = italicSkew * (1.0f - localY / std::max(1.0f, static_cast<float>(drawH)));
             int x0 = std::max(clip.x0, static_cast<int>(std::floor(originX + rowSkew)));
             int x1 = std::min(clip.x1, static_cast<int>(std::ceil(originX + rowSkew + drawW)));
+            size_t rowOffset = static_cast<size_t>(y) * softwareWidth_;
             for (int x = x0; x < x1; ++x) {
                 float localX = static_cast<float>(x) + 0.5f - originX - rowSkew;
                 float alpha = softwareSampleFontAlpha(font,
@@ -4582,13 +4654,8 @@ void Renderer::drawSoftwareText(const std::string& text,
                 if (alpha <= 0.001f) {
                     continue;
                 }
-                softwareBlendPixel(softwarePixels_,
-                                   softwareWidth_,
-                                   softwareHeight_,
-                                   x,
-                                   y,
-                                   color,
-                                   alpha);
+                uint32_t a_int = static_cast<uint32_t>(baseAlpha * alpha * 255.0f);
+                softwareBlendPixelFast(softwarePixels_[rowOffset + x], srcR, srcG, srcB, a_int);
             }
         }
     };
@@ -4649,12 +4716,19 @@ void Renderer::drawSoftwareImage(const std::string& key,
     float u1 = std::clamp(sourceUv.x + sourceUv.w, 0.0f, 1.0f);
     float v1 = std::clamp(sourceUv.y + sourceUv.h, 0.0f, 1.0f);
 
+    uint32_t tintR = static_cast<uint32_t>(std::clamp(tint.r, 0.0f, 1.0f) * 255.0f);
+    uint32_t tintG = static_cast<uint32_t>(std::clamp(tint.g, 0.0f, 1.0f) * 255.0f);
+    uint32_t tintB = static_cast<uint32_t>(std::clamp(tint.b, 0.0f, 1.0f) * 255.0f);
+    uint32_t tintA = static_cast<uint32_t>(std::clamp(tint.a, 0.0f, 1.0f) * 255.0f);
+    uint32_t opacityInt = static_cast<uint32_t>(std::clamp(opacity, 0.0f, 1.0f) * 255.0f);
+
     for (int y = y0; y < y1; ++y) {
         float fy = (static_cast<float>(y) + 0.5f - drawRect.y) / drawRect.h;
         int sy = std::clamp(static_cast<int>((v0 + fy * (v1 - v0)) *
                                              static_cast<float>(image.height)),
                             0,
                             image.height - 1);
+        size_t rowOffset = static_cast<size_t>(y) * softwareWidth_;
         for (int x = x0; x < x1; ++x) {
             float fx = (static_cast<float>(x) + 0.5f - drawRect.x) / drawRect.w;
             int sx = std::clamp(static_cast<int>((u0 + fx * (u1 - u0)) *
@@ -4662,17 +4736,19 @@ void Renderer::drawSoftwareImage(const std::string& key,
                                 0,
                                 image.width - 1);
             size_t index = (static_cast<size_t>(sy) * image.width + sx) * 4u;
-            Color sample(image.pixels[index + 0] / 255.0f * tint.r,
-                         image.pixels[index + 1] / 255.0f * tint.g,
-                         image.pixels[index + 2] / 255.0f * tint.b,
-                         image.pixels[index + 3] / 255.0f * tint.a);
-            softwareBlendPixel(softwarePixels_,
-                               softwareWidth_,
-                               softwareHeight_,
-                               x,
-                               y,
-                               sample,
-                               opacity);
+            uint32_t imgR = image.pixels[index + 0];
+            uint32_t imgG = image.pixels[index + 1];
+            uint32_t imgB = image.pixels[index + 2];
+            uint32_t imgA = image.pixels[index + 3];
+
+            uint32_t srcR = (imgR * tintR) / 255u;
+            uint32_t srcG = (imgG * tintG) / 255u;
+            uint32_t srcB = (imgB * tintB) / 255u;
+            uint32_t srcA = (imgA * tintA) / 255u;
+
+            uint32_t finalAlpha = (srcA * opacityInt) / 255u;
+
+            softwareBlendPixelFast(softwarePixels_[rowOffset + x], srcR, srcG, srcB, finalAlpha);
         }
     }
 }
@@ -7220,18 +7296,19 @@ void Renderer::applySoftwareBackdropBlur(const Rect& rect, float blurRadius, con
 
     // 3. Horizontal Pass
     for (int y = 0; y < h; ++y) {
+        size_t rowStart = static_cast<size_t>(y) * w;
         for (int x = 0; x < w; ++x) {
             float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
             for (int k = -kSize; k <= kSize; ++k) {
                 int px = std::clamp(x + k, 0, w - 1);
-                uint32_t pixel = softwareBlurBuffer1_[y * w + px];
+                uint32_t pixel = softwareBlurBuffer1_[rowStart + px];
                 float weight = kernel[std::abs(k)];
 
                 rSum += static_cast<float>((pixel >> 16) & 0xffu) * weight;
                 gSum += static_cast<float>((pixel >> 8) & 0xffu) * weight;
                 bSum += static_cast<float>(pixel & 0xffu) * weight;
             }
-            softwareBlurBuffer2_[y * w + x] = 0xff000000u |
+            softwareBlurBuffer2_[rowStart + x] = 0xff000000u |
                 (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(rSum)), 0, 255)) << 16) |
                 (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(gSum)), 0, 255)) << 8) |
                 static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(bSum)), 0, 255));
@@ -7240,18 +7317,19 @@ void Renderer::applySoftwareBackdropBlur(const Rect& rect, float blurRadius, con
 
     // 4. Vertical Pass
     for (int y = 0; y < h; ++y) {
+        size_t rowStart = static_cast<size_t>(y) * w;
         for (int x = 0; x < w; ++x) {
             float rSum = 0.0f, gSum = 0.0f, bSum = 0.0f;
             for (int k = -kSize; k <= kSize; ++k) {
                 int py = std::clamp(y + k, 0, h - 1);
-                uint32_t pixel = softwareBlurBuffer2_[py * w + x];
+                uint32_t pixel = softwareBlurBuffer2_[static_cast<size_t>(py) * w + x];
                 float weight = kernel[std::abs(k)];
 
                 rSum += static_cast<float>((pixel >> 16) & 0xffu) * weight;
                 gSum += static_cast<float>((pixel >> 8) & 0xffu) * weight;
                 bSum += static_cast<float>(pixel & 0xffu) * weight;
             }
-            softwareBlurBuffer3_[y * w + x] = 0xff000000u |
+            softwareBlurBuffer3_[rowStart + x] = 0xff000000u |
                 (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(rSum)), 0, 255)) << 16) |
                 (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(gSum)), 0, 255)) << 8) |
                 static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(bSum)), 0, 255));
@@ -7260,39 +7338,52 @@ void Renderer::applySoftwareBackdropBlur(const Rect& rect, float blurRadius, con
 
     // 5. Blending & Write-back
     float scaledRadius = radius.maxRadius() * scale_;
+    float safeMargin = std::max(0.5f, scaledRadius);
+    float safeX0 = drawRect.x + safeMargin;
+    float safeX1 = drawRect.x + drawRect.w - safeMargin;
+    float safeY0 = drawRect.y + safeMargin;
+    float safeY1 = drawRect.y + drawRect.h - safeMargin;
+
     for (int y = 0; y < h; ++y) {
         int dstY = y0 + y;
         float py = (float)dstY;
+        size_t dstRowOffset = static_cast<size_t>(dstY) * softwareWidth_;
+        size_t srcRowOffset = static_cast<size_t>(y) * w;
         for (int x = 0; x < w; ++x) {
             int dstX = x0 + x;
             float px = (float)dstX;
 
-            float coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
-            if (coverage <= 0.0f) continue;
+            float coverage = 1.0f;
+            if (scaledRadius > 0.05f) {
+                if (px >= safeX0 && px <= safeX1 && py >= safeY0 && py <= safeY1) {
+                    coverage = 1.0f;
+                } else {
+                    coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
+                    if (coverage <= 0.0f) continue;
+                }
+            }
 
-            size_t dstIdx = static_cast<size_t>(dstY) * softwareWidth_ + dstX;
-            uint32_t blurredPixel = softwareBlurBuffer3_[y * w + x];
+            size_t dstIdx = dstRowOffset + dstX;
+            uint32_t blurredPixel = softwareBlurBuffer3_[srcRowOffset + x];
 
             if (coverage >= 0.999f) {
                 softwarePixels_[dstIdx] = blurredPixel;
             } else {
                 uint32_t bgPixel = softwarePixels_[dstIdx];
-                float bgR = (float)((bgPixel >> 16) & 0xffu);
-                float bgG = (float)((bgPixel >> 8) & 0xffu);
-                float bgB = (float)(bgPixel & 0xffu);
+                uint32_t bgR = (bgPixel >> 16) & 0xffu;
+                uint32_t bgG = (bgPixel >> 8) & 0xffu;
+                uint32_t bgB = bgPixel & 0xffu;
 
-                float fgR = (float)((blurredPixel >> 16) & 0xffu);
-                float fgG = (float)((blurredPixel >> 8) & 0xffu);
-                float fgB = (float)(blurredPixel & 0xffu);
+                uint32_t fgR = (blurredPixel >> 16) & 0xffu;
+                uint32_t fgG = (blurredPixel >> 8) & 0xffu;
+                uint32_t fgB = blurredPixel & 0xffu;
 
-                float outR = fgR * coverage + bgR * (1.0f - coverage);
-                float outG = fgG * coverage + bgG * (1.0f - coverage);
-                float outB = fgB * coverage + bgB * (1.0f - coverage);
+                uint32_t covInt = static_cast<uint32_t>(coverage * 255.0f);
+                uint32_t outR = (fgR * covInt + bgR * (255u - covInt)) / 255u;
+                uint32_t outG = (fgG * covInt + bgG * (255u - covInt)) / 255u;
+                uint32_t outB = (fgB * covInt + bgB * (255u - covInt)) / 255u;
 
-                softwarePixels_[dstIdx] = 0xff000000u |
-                    (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outR)), 0, 255)) << 16) |
-                    (static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outG)), 0, 255)) << 8) |
-                    static_cast<uint32_t>(std::clamp(static_cast<int>(std::round(outB)), 0, 255));
+                softwarePixels_[dstIdx] = 0xff000000u | (outR << 16) | (outG << 8) | outB;
             }
         }
     }
