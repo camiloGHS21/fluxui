@@ -1186,14 +1186,14 @@ int main(int argc, char** argv) {
 #endif
     constexpr float baseFontAtlasSize = 13.0f;
     bool fontsLoaded = false;
-    if (DataLeakGuardEmbeddedFonts::loadEmbeddedUiFontAtlases(app.renderer())) {
-#if !FLUXUI_SILENT_STARTUP
-        std::cout << "Loaded precompiled UI font atlases" << std::endl;
-#endif
-        fontsLoaded = true;
-    } else if (app.renderer().loadDefaultFont(baseFontAtlasSize)) {
+    if (app.renderer().loadDefaultFont(baseFontAtlasSize)) {
 #if !FLUXUI_SILENT_STARTUP
         std::cout << "Loaded default UI font" << std::endl;
+#endif
+        fontsLoaded = true;
+    } else if (DataLeakGuardEmbeddedFonts::loadEmbeddedUiFontAtlases(app.renderer())) {
+#if !FLUXUI_SILENT_STARTUP
+        std::cout << "Loaded precompiled UI font atlases" << std::endl;
 #endif
         fontsLoaded = true;
     } else {
@@ -1207,7 +1207,7 @@ int main(int argc, char** argv) {
         app.renderer().warmFontCache(std::vector<float>{
             11.0f, 12.0f, 13.0f, 14.0f, 16.0f, 20.0f, 28.0f, 29.0f, 32.0f
         });
-        app.renderer().releaseFontSources();
+        // Retain font.sourceData to keep HarfBuzz active for dynamically sized fonts at runtime.
     }
     app.addStylesheet(dataleakguardEmbeddedThemeCss());
     app.addRoute("/dashboard", [](Application& appRef, Widget* content) {

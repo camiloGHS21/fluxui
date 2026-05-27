@@ -683,9 +683,21 @@ Widget::~Widget() {
         app->onWidgetDestroyed(this);
     }
 }
+void Widget::detachLayoutTree() {
+    layoutObject.reset();
+    if (beforePseudoNode) {
+        beforePseudoNode->detachLayoutTree();
+    }
+    for (auto& child : children) {
+        child->detachLayoutTree();
+    }
+    if (afterPseudoNode) {
+        afterPseudoNode->detachLayoutTree();
+    }
+}
 void Widget::attachLayoutTree() {
     if (computedStyle->display == Display::None) {
-        layoutObject.reset();
+        detachLayoutTree();
         return;
     }
 
@@ -1028,6 +1040,9 @@ void Widget::dispatchEvent(Event& event) {
     event.phase = EventPhase::Capture;
     for (size_t i = 0; i < path.size() - 1; ++i) {
         Widget* w = path[i];
+        if (!w || !w->visible || w->style.display == Display::None) {
+            continue;
+        }
         event.currentTarget = w;
         auto listenersCopy = w->domEventListeners;
         for (auto& entry : listenersCopy) {
@@ -1040,23 +1055,29 @@ void Widget::dispatchEvent(Event& event) {
     }
     if (!event.propagationStopped && !path.empty()) {
         Widget* w = path.back();
-        event.phase = EventPhase::AtTarget;
-        event.currentTarget = w;
-        auto listenersCopy = w->domEventListeners;
-        for (auto& entry : listenersCopy) {
-            if (entry.type == event.type) {
-                entry.callback(event);
-                if (event.propagationStopped) break;
+        if (w && w->visible && w->style.display != Display::None) {
+            event.phase = EventPhase::AtTarget;
+            event.currentTarget = w;
+            auto listenersCopy = w->domEventListeners;
+            for (auto& entry : listenersCopy) {
+                if (entry.type == event.type) {
+                    entry.callback(event);
+                    if (event.propagationStopped) break;
+                }
             }
-        }
-        if (event.type == "click" && !event.defaultPrevented && w->onClick) {
-            w->onClick();
+            if (event.type == "click" && !event.defaultPrevented && w->onClick) {
+                w->onClick();
+                event.stopPropagation();
+            }
         }
     }
     if (event.bubbles && !event.propagationStopped && path.size() > 1) {
         event.phase = EventPhase::Bubble;
         for (int i = static_cast<int>(path.size()) - 2; i >= 0; --i) {
             Widget* w = path[i];
+            if (!w || !w->visible || w->style.display == Display::None) {
+                continue;
+            }
             event.currentTarget = w;
             auto listenersCopy = w->domEventListeners;
             for (auto& entry : listenersCopy) {

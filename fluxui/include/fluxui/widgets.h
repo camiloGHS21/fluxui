@@ -324,6 +324,7 @@ public:
     std::unique_ptr<LayoutObject> layoutObject;
     bool skipDOMChildrenPaint = false;
     void attachLayoutTree();
+    void detachLayoutTree();
     virtual std::unique_ptr<LayoutObject> createLayoutObject();
     std::function<void()> onClick;
     std::function<void()> onHover;
@@ -1653,4 +1654,61 @@ private:
     void updateCursor(CursorType cursor);
     std::vector<ResizeObserver*> resizeObservers_;
 };
+
+class QuickApp {
+public:
+    QuickApp(const std::string& title = "FluxUI App", int width = 960, int height = 640) {
+        if (!app_.init(title, width, height)) {
+            std::cerr << "Failed to initialize FluxUI QuickApp." << std::endl;
+            return;
+        }
+
+        // Auto-load high-quality font
+        if (!app_.renderer().loadDefaultFont(16.0f)) {
+            app_.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
+        }
+        app_.renderer().warmFontCache(std::vector<float>{12.0f, 14.0f, 16.0f, 18.0f, 24.0f, 28.0f});
+        app_.renderer().releaseFontSources();
+
+        // Add a premium dark-themed default stylesheet out-of-the-box (wow factors, smooth animations, elegant colors)
+        app_.addStylesheet(
+            ".root { display: flex; flex-direction: column; background: radial-gradient(circle at top, #141923 0%, #0b0d13 100%); padding: 40px; gap: 20px; font-family: 'Segoe UI', system-ui; color: #edf3f8; }"
+            "h1 { font-size: 32px; font-weight: 800; color: #ffffff; margin: 0; background: linear-gradient(135deg, #ffffff 0%, #b0c4de 100%); -webkit-background-clip: text; }"
+            "h2 { font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; }"
+            "p { font-size: 14px; color: rgba(237, 243, 248, 0.7); line-height: 1.6; margin: 0; }"
+            ".btn { display: flex; justify-content: center; align-items: center; padding: 12px 24px; border-radius: 8px; background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%); color: #ffffff; font-weight: 600; cursor: pointer; transition: all 0.2s ease; border: none; min-width: 120px; box-shadow: 0 4px 15px rgba(108, 92, 231, 0.25); }"
+            ".btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108, 92, 231, 0.4); background: linear-gradient(135deg, #7d6df3 0%, #b3adff 100%); }"
+            ".btn:active { transform: translateY(1px); }"
+            ".card { display: flex; flex-direction: column; padding: 24px; border-radius: 12px; background-color: rgba(20, 26, 38, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); gap: 12px; backdrop-filter: blur(10px); }"
+            ".input { padding: 12px 16px; border-radius: 8px; background-color: #161b26; border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; font-size: 14px; transition: border-color 0.2s ease; }"
+            ".input:focus { border-color: #6c5ce7; outline: none; }"
+        );
+    }
+
+    Widget* root() {
+        return app_.root();
+    }
+
+    Application& app() {
+        return app_;
+    }
+
+    void addStylesheet(const std::string& css) {
+        app_.addStylesheet(css);
+    }
+
+    int run(std::function<void(QuickApp&)> buildCallback = nullptr) {
+        if (buildCallback) {
+            buildCallback(*this);
+        }
+        app_.run();
+        app_.shutdown();
+        return 0;
+    }
+
+private:
+    Application app_;
+};
+
 }
+

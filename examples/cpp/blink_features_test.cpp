@@ -124,6 +124,44 @@ int main() {
     EXPECT_TRUE(offscreen.commands[1].type == RenderCommandType::Text, "Second command is Text");
     EXPECT_TRUE(offscreen.commands[2].type == RenderCommandType::TexturedQuad, "Third command is TexturedQuad");
 
+    // =========================================================================
+    // 5. Dialog Close Click Event Bubbling Verification
+    // =========================================================================
+    std::cout << "\n--- Testing Dialog Close & Click Bubbling ---" << std::endl;
+    auto mainPanel = std::make_shared<Panel>("main-panel");
+    auto dl = mainPanel->add<Dialog>("dialog");
+    auto dialogButtons = dl->add<Panel>("dialog-buttons");
+    auto declineBtn = dialogButtons->add<Button>("Decline", "btn btn-danger btn-small");
+    
+    bool dialogClosed = false;
+    declineBtn->onClick = [&]() {
+        std::cout << "[Test] Decline button clicked! Closing dialog..." << std::endl;
+        dl->close();
+        dialogClosed = true;
+    };
+    
+    // Check initial state
+    dl->showModal();
+    EXPECT_TRUE(dl->open, "Dialog is open initially");
+    EXPECT_TRUE(dl->style.display == Display::Block, "Dialog style display is Block");
+    
+    // Simulate click
+    Event clickEv;
+    clickEv.type = "click";
+    clickEv.target = declineBtn;
+    clickEv.bubbles = true;
+    
+    declineBtn->dispatchEvent(clickEv);
+    
+    // Resolve styles and layout after dialog is closed to ensure no layout/styling crashes
+    mainPanel->resolveStyles(sheet);
+    mainPanel->layout({0, 0, 800, 600});
+    
+    EXPECT_TRUE(dialogClosed, "Decline button onClick handler executed");
+    EXPECT_TRUE(!dl->open, "Dialog is closed after click");
+    EXPECT_TRUE(dl->style.display == Display::None, "Dialog style display is None");
+
     std::cout << "\n[SUCCESS] All Chromium Blink features verified successfully!" << std::endl;
     return 0;
 }
+

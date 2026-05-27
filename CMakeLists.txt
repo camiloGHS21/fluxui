@@ -41,20 +41,20 @@ function(enable_release_lto target_name)
 
     if(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS)
         if(MSVC)
-            target_compile_options(${target_name} PRIVATE
+            target_compile_options(${target_name} PUBLIC
                 $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /Gw /Gy /Gs /Zi>
                 $<$<CONFIG:RelWithDebInfo>:/O2 /Oi /Ot /GL /Gw /Gy /Gs /Zi>
             )
-            target_link_options(${target_name} PRIVATE
+            target_link_options(${target_name} PUBLIC
                 $<$<CONFIG:Release>:/OPT:REF /OPT:ICF /LTCG /DEBUG>
                 $<$<CONFIG:RelWithDebInfo>:/OPT:REF /OPT:ICF /LTCG /DEBUG>
             )
         else()
-            target_compile_options(${target_name} PRIVATE
+            target_compile_options(${target_name} PUBLIC
                 $<$<CONFIG:Release>:-O3 -flto -ffunction-sections -fdata-sections>
                 $<$<CONFIG:RelWithDebInfo>:-O3 -flto -ffunction-sections -fdata-sections>
             )
-            target_link_options(${target_name} PRIVATE
+            target_link_options(${target_name} PUBLIC
                 $<$<CONFIG:Release>:-flto -Wl,--gc-sections>
                 $<$<CONFIG:RelWithDebInfo>:-flto -Wl,--gc-sections>
             )
@@ -453,6 +453,22 @@ target_include_directories(minimal_example PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(minimal_example)
+
+# ============================================================
+#  Zero-Boilerplate QuickApp Example
+# ============================================================
+add_executable(quick_minimal
+    examples/cpp/quick_minimal.cpp
+)
+
+target_link_libraries(quick_minimal PRIVATE
+    fluxui
+)
+
+target_include_directories(quick_minimal PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(quick_minimal)
 
 # ============================================================
 #  Paint Invalidation C++ Unit Test

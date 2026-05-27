@@ -1660,10 +1660,26 @@ float softwareRoundedCoverage(float px, float py, const Rect& rect, float radius
 
     float lx = px - rect.x;
     float ly = py - rect.y;
+
+    if (lx < -0.5f || lx > rect.w + 0.5f || ly < -0.5f || ly > rect.h + 0.5f) {
+        return 0.0f;
+    }
+
     float cx = std::clamp(lx, radius, rect.w - radius);
     float cy = std::clamp(ly, radius, rect.h - radius);
     float dx = lx - cx;
     float dy = ly - cy;
+
+    if (dx == 0.0f && dy == 0.0f) {
+        return 1.0f;
+    }
+    if (dx == 0.0f) {
+        return std::clamp(radius + 0.5f - std::abs(dy), 0.0f, 1.0f);
+    }
+    if (dy == 0.0f) {
+        return std::clamp(radius + 0.5f - std::abs(dx), 0.0f, 1.0f);
+    }
+
     float distance = std::sqrt(dx * dx + dy * dy);
     return std::clamp(radius + 0.5f - distance, 0.0f, 1.0f);
 }
@@ -1694,30 +1710,25 @@ void softwareBlendPixel(std::vector<uint32_t>& pixels,
         return;
     }
     float srcA = std::clamp(color.a * alphaScale, 0.0f, 1.0f);
-    if (srcA <= 0.0f) {
+    uint32_t a_int = static_cast<uint32_t>(srcA * 255.0f);
+    if (a_int == 0) {
         return;
     }
 
+    uint32_t srcR = static_cast<uint32_t>(std::clamp(color.r, 0.0f, 1.0f) * 255.0f);
+    uint32_t srcG = static_cast<uint32_t>(std::clamp(color.g, 0.0f, 1.0f) * 255.0f);
+    uint32_t srcB = static_cast<uint32_t>(std::clamp(color.b, 0.0f, 1.0f) * 255.0f);
+
     uint32_t& dst = pixels[static_cast<size_t>(y) * width + x];
-    float dstR = static_cast<float>((dst >> 16) & 0xffu);
-    float dstG = static_cast<float>((dst >> 8) & 0xffu);
-    float dstB = static_cast<float>(dst & 0xffu);
+    uint32_t dstR = (dst >> 16) & 0xffu;
+    uint32_t dstG = (dst >> 8) & 0xffu;
+    uint32_t dstB = dst & 0xffu;
 
-    auto blendChannel = [srcA](float src, float dst) {
-        return static_cast<uint8_t>(std::clamp(
-            static_cast<int>(std::round(std::clamp(src, 0.0f, 1.0f) * 255.0f * srcA +
-                                        dst * (1.0f - srcA))),
-            0,
-            255));
-    };
-    uint8_t outR = blendChannel(color.r, dstR);
-    uint8_t outG = blendChannel(color.g, dstG);
-    uint8_t outB = blendChannel(color.b, dstB);
+    uint32_t outR = (srcR * a_int + dstR * (255u - a_int)) / 255u;
+    uint32_t outG = (srcG * a_int + dstG * (255u - a_int)) / 255u;
+    uint32_t outB = (srcB * a_int + dstB * (255u - a_int)) / 255u;
 
-    dst = 0xff000000u |
-          (static_cast<uint32_t>(outR) << 16) |
-          (static_cast<uint32_t>(outG) << 8) |
-          static_cast<uint32_t>(outB);
+    dst = 0xff000000u | (outR << 16) | (outG << 8) | outB;
 }
 
 float softwareSampleFontAlpha(const FontData& font,
@@ -4584,7 +4595,7 @@ void Renderer::drawSoftwareText(const std::string& text,
 
     ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
     for (const auto& sg : run) {
-        const GlyphInfo& glyph = font.getGlyphByIndex(sg.glyphIndex);
+        const GlyphInfo& glyph = (font.hbFont) ? font.getGlyphByIndex(sg.glyphIndex) : font.getGlyph(sg.codepoint);
         if (glyph.xadvance == 0.0f && sg.codepoint != ' ') {
             continue;
         }
@@ -4960,7 +4971,7 @@ void Renderer::drawVulkanText(const std::string& text,
 
     ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
     for (const auto& sg : run) {
-        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        const auto& g = (font.hbFont) ? font.getGlyphByIndex(sg.glyphIndex) : font.getGlyph(sg.codepoint);
         if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         float w = g.width * fontScale;
@@ -6510,13 +6521,13 @@ Renderer::ShapedRun Renderer::shapeTextWithHarfbuzz(const FontData& font, const 
     hb_buffer_guess_segment_properties(buf);
     hb_buffer_set_direction(buf, direction == Direction::Rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
 
-    // Explicitly disable ligatures and contextual kerning as requested!
+    // Explicitly enable ligatures and contextual kerning for premium rendering!
     hb_feature_t features[5];
-    features[0].tag = HB_TAG('l', 'i', 'g', 'a'); features[0].value = 0; features[0].start = HB_FEATURE_GLOBAL_START; features[0].end = HB_FEATURE_GLOBAL_END;
-    features[1].tag = HB_TAG('c', 'l', 'i', 'g'); features[1].value = 0; features[1].start = HB_FEATURE_GLOBAL_START; features[1].end = HB_FEATURE_GLOBAL_END;
-    features[2].tag = HB_TAG('d', 'l', 'i', 'g'); features[2].value = 0; features[2].start = HB_FEATURE_GLOBAL_START; features[2].end = HB_FEATURE_GLOBAL_END;
-    features[3].tag = HB_TAG('h', 'l', 'i', 'g'); features[3].value = 0; features[3].start = HB_FEATURE_GLOBAL_START; features[3].end = HB_FEATURE_GLOBAL_END;
-    features[4].tag = HB_TAG('k', 'e', 'r', 'n'); features[4].value = 0; features[4].start = HB_FEATURE_GLOBAL_START; features[4].end = HB_FEATURE_GLOBAL_END;
+    features[0].tag = HB_TAG('l', 'i', 'g', 'a'); features[0].value = 1; features[0].start = HB_FEATURE_GLOBAL_START; features[0].end = HB_FEATURE_GLOBAL_END;
+    features[1].tag = HB_TAG('c', 'l', 'i', 'g'); features[1].value = 1; features[1].start = HB_FEATURE_GLOBAL_START; features[1].end = HB_FEATURE_GLOBAL_END;
+    features[2].tag = HB_TAG('d', 'l', 'i', 'g'); features[2].value = 1; features[2].start = HB_FEATURE_GLOBAL_START; features[2].end = HB_FEATURE_GLOBAL_END;
+    features[3].tag = HB_TAG('h', 'l', 'i', 'g'); features[3].value = 1; features[3].start = HB_FEATURE_GLOBAL_START; features[3].end = HB_FEATURE_GLOBAL_END;
+    features[4].tag = HB_TAG('k', 'e', 'r', 'n'); features[4].value = 1; features[4].start = HB_FEATURE_GLOBAL_START; features[4].end = HB_FEATURE_GLOBAL_END;
 
     hb_shape(hbFont, buf, features, 5);
 
@@ -6793,7 +6804,7 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
 
     ShapedRun run = shapeTextWithHarfbuzz(font, processedText, direction);
     for (const auto& sg : run) {
-        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        const auto& g = (font.hbFont) ? font.getGlyphByIndex(sg.glyphIndex) : font.getGlyph(sg.codepoint);
         if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         float w = g.width * scale;
@@ -7035,7 +7046,7 @@ Vec2 Renderer::measureText(const std::string& text, float fontSize,
     float width = 0.0f;
     ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
     for (const auto& sg : run) {
-        const auto& g = font.getGlyphByIndex(sg.glyphIndex);
+        const auto& g = (font.hbFont) ? font.getGlyphByIndex(sg.glyphIndex) : font.getGlyph(sg.codepoint);
         if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         width += sg.xAdvance * scale;
