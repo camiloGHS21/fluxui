@@ -2,6 +2,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
+#include <objbase.h>
+#pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "ole32.lib")
 #endif
 #include "fluxui/compositor.h"
 #include "fluxui/layout.h"
@@ -3950,8 +3953,11 @@ void TextInput::update(const InputState& input) {
         selectionFocus_ = caretIndex_;
         auto spawnPicker = [&]() {
 #ifdef _WIN32
+            // Initialize COM to ensure shell extensions and file dialogs work correctly
+            HRESULT hrCoInit = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+
             if (inputType == TextInputType::Color) {
-                CHOOSECOLOR cc;
+                CHOOSECOLORA cc;
                 static COLORREF acrCustClr[16];
                 HWND hwnd = NULL;
                 if (auto* app = Application::instance()) {
@@ -3968,7 +3974,7 @@ void TextInput::update(const InputState& input) {
                 );
                 cc.lpCustColors = (LPDWORD) acrCustClr;
                 cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-                if (ChooseColor(&cc) == TRUE) {
+                if (ChooseColorA(&cc) == TRUE) {
                     char hex[8];
                     sprintf_s(hex, "#%02x%02x%02x", 
                               GetRValue(cc.rgbResult), 
@@ -3979,9 +3985,14 @@ void TextInput::update(const InputState& input) {
                     if (auto* app = Application::instance()) {
                         app->requestRedraw();
                     }
+                } else {
+                    DWORD err = CommDlgExtendedError();
+                    if (err != 0) {
+                        std::cerr << "[FluxUI Error] ChooseColorA failed with extended error: 0x" << std::hex << err << std::dec << std::endl;
+                    }
                 }
             } else if (inputType == TextInputType::File) {
-                OPENFILENAME ofn;
+                OPENFILENAMEA ofn;
                 char szFile[260] = {0};
                 HWND hwnd = NULL;
                 if (auto* app = Application::instance()) {
@@ -3997,14 +4008,23 @@ void TextInput::update(const InputState& input) {
                 ofn.lpstrFileTitle = NULL;
                 ofn.nMaxFileTitle = 0;
                 ofn.lpstrInitialDir = NULL;
-                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-                if (GetOpenFileName(&ofn) == TRUE) {
+                ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+                if (GetOpenFileNameA(&ofn) == TRUE) {
                     value = szFile;
                     markStyleDirtyRecursive();
                     if (auto* app = Application::instance()) {
                         app->requestRedraw();
                     }
+                } else {
+                    DWORD err = CommDlgExtendedError();
+                    if (err != 0) {
+                        std::cerr << "[FluxUI Error] GetOpenFileNameA failed with extended error: 0x" << std::hex << err << std::dec << std::endl;
+                    }
                 }
+            }
+
+            if (SUCCEEDED(hrCoInit)) {
+                CoUninitialize();
             }
 #endif
         };
