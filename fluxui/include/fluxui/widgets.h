@@ -287,6 +287,7 @@ public:
     bool hovered = false;
     bool pressed = false;
     bool focused = false;
+    bool lastFrameFocused = false;
     bool useGPUCompositing = false;
     float hoverAnim = 0;
     float hoverVelocity = 0;
@@ -490,6 +491,7 @@ public:
     void updatePaintProperties(const PaintProperties& parentProps);
     void invalidatePaintIfNeeded();
     void translateLayout(float dx, float dy);
+    void checkFocusChanges();
     bool hasActiveAnimations() const;
     void resetTransientMotion();
     virtual void update(const InputState& input);

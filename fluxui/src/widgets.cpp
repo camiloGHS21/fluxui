@@ -1200,6 +1200,22 @@ void Widget::markSubtreeStyleDirty() {
     }
     if (parent) parent->markSubtreeStyleDirty();
 }
+void Widget::checkFocusChanges() {
+    if (focused != lastFrameFocused) {
+        lastFrameFocused = focused;
+        markStyleDirty();
+        Widget* p = parent;
+        while (p) {
+            p->markStyleDirty();
+            p = p->parent;
+        }
+    }
+    for (auto& child : children) {
+        if (child) {
+            child->checkFocusChanges();
+        }
+    }
+}
 void Widget::markStyleDirty() {
     styleDirty = true;
     subtreeStyleDirty = true;
@@ -2920,6 +2936,18 @@ void Widget::layoutPositionedChildren() {
             cy = cb->bounds.y;
             cw = cb->bounds.w;
             ch = cb->bounds.h;
+        } else if (child->computedStyle->position == Position::Absolute) {
+            Widget* cb = this;
+            while (cb->parent) {
+                if (cb->computedStyle->position != Position::Static) {
+                    break;
+                }
+                cb = cb->parent;
+            }
+            cx = cb->bounds.x + usedBorderLeftWidth(*cb->computedStyle);
+            cy = cb->bounds.y + usedBorderTopWidth(*cb->computedStyle);
+            cw = std::max(0.0f, cb->bounds.w - usedBorderHorizontal(*cb->computedStyle));
+            ch = std::max(0.0f, cb->bounds.h - usedBorderVertical(*cb->computedStyle));
         }
         
         const Style& cs = *(child->computedStyle);
@@ -6919,6 +6947,10 @@ void Application::updateStyleAndLayout() {
     Platform::getWindowSize(window_, w, h);
     if (w <= 0 || h <= 0) {
         w = 1920; h = 1080;
+    }
+
+    if (root_) {
+        root_->checkFocusChanges();
     }
 
     documentLifecycle = DocumentLifecycle::InStyleRecalc;

@@ -667,12 +667,29 @@ static bool selectorAttributeMatches(const std::string& selector,
 }
 
 static bool selectorPseudoMatches(std::string_view pseudoName,
-                                  std::string_view actualType) {
+                                  std::string_view actualType,
+                                  const Widget* widget = nullptr) {
     if (pseudoName == "checked") return selectorHasFlag(actualType, "checked");
     if (pseudoName == "open") return selectorHasFlag(actualType, "open");
     if (pseudoName == "indeterminate") return selectorHasFlag(actualType, "indeterminate");
     if (pseudoName == "enabled") return true;
     if (pseudoName == "disabled") return false;
+    if (pseudoName == "hover") return widget && widget->hovered;
+    if (pseudoName == "focus" || pseudoName == "focus-visible") return widget && widget->focused;
+    if (pseudoName == "active") return widget && widget->pressed;
+    if (pseudoName == "focus-within") {
+        if (!widget) return false;
+        struct FocusCheck {
+            static bool check(const Widget* w) {
+                if (w->focused) return true;
+                for (const auto& child : w->children) {
+                    if (child && check(child.get())) return true;
+                }
+                return false;
+            }
+        };
+        return FocusCheck::check(widget);
+    }
     if (pseudoName == "read-write" || pseudoName == "read-only") {
         std::string_view baseType = selectorBaseType(actualType);
         std::string_view inputType = selectorAttributeValue(actualType, "type");
@@ -875,7 +892,7 @@ static bool matchCompoundSelector(std::string_view compound,
                     }
                     if (hasChild) return false;
                 } else {
-                    if (!selectorPseudoMatches(pseudoName, type)) return false;
+                    if (!selectorPseudoMatches(pseudoName, type, widget)) return false;
                 }
                 hasAnySelector = true;
                 continue;
