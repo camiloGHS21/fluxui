@@ -1,10 +1,12 @@
 // FluxUI Blink-style Decoupled Layout Solver Implementations
 #include "fluxui/layout.h"
 #include "fluxui/widgets.h"
+#include "fluxui/layout_object.h"
 #include <algorithm>
 #include <sstream>
 #include <vector>
 #include <future>
+#include <iostream>
 
 namespace FluxUI {
 
@@ -648,6 +650,26 @@ namespace FluxUI {
     //  TableLayoutAlgorithm Implementation (Blink parity)
     // ============================================================
     LayoutResult TableLayoutAlgorithm::layout(Widget* widget, const LayoutConstraints& constraints) {
+        // Global Table Invalidation: whenever the table layout algorithm executes,
+        // we must recursively invalidate the layout object caches of all descendants
+        // in the table's subtree (row groups, rows, and cells). Because a table's matrix
+        // layout has global dependencies, any cell visibility/span/size change affects
+        // the resolved positions of all other cells in the matrix. Failing to invalidate
+        // their caches will cause LayoutBox::layout to apply cached, stale physical fragments,
+        // which overwrites the newly calculated W3C matrix positions with old bounds.
+        std::function<void(Widget*)> invalidateTableSubtreeCache = [&](Widget* w) {
+            if (!w) return;
+            if (w->layoutObject) {
+                w->layoutObject->invalidateCache();
+            }
+            for (auto& child : w->children) {
+                invalidateTableSubtreeCache(child.get());
+            }
+        };
+        for (auto& child : widget->children) {
+            invalidateTableSubtreeCache(child.get());
+        }
+
         LayoutResult result;
         auto& s = *widget->computedStyle;
 
@@ -743,6 +765,7 @@ namespace FluxUI {
                 rowSlots.resize(maxCols, nullptr);
             }
         }
+
 
         // 3. Pass 1: Measure preferred column widths
         std::vector<float> colMinWidths(maxCols, 0.0f);
@@ -939,7 +962,6 @@ namespace FluxUI {
                 float cellW = snappedX[c + colSpan] - cellX;
                 float cellY = snappedY[r];
                 float cellH = snappedY[r + rowSpan] - cellY;
-
                 Rect cellArea = {cellX, cellY, cellW, cellH};
                 cell->layout(cellArea);
             }
