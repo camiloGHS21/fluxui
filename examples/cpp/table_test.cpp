@@ -24,14 +24,14 @@ int main() {
         ".table-container { display: flex; flex-direction: column; background-color: #111827; border-radius: 16px; padding: 24px; border: 1px solid #1f2937; width: 900px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }"
         
         // CSS rules setting up the Display types for each tabular component
-        ".my-table { display: table; width: 100%; border-collapse: collapse; }"
+        ".my-table { display: table; width: 100%; border-collapse: collapse; border-top: 1px solid #1f2937; border-left: 1px solid #1f2937; }"
         ".my-thead { display: table-header-group; background-color: #1f2937; }"
         ".my-tbody { display: table-row-group; }"
         ".my-tfoot { display: table-footer-group; background-color: #111827; border-top: 2px solid #374151; }"
-        ".my-tr { display: table-row; border-bottom: 1px solid #1f2937; }"
+        ".my-tr { display: table-row; }"
         ".my-tr:hover { background-color: #1e293b; }"
-        ".my-th { display: table-cell; font-weight: 700; color: #f1f5f9; padding: 14px 16px; text-align: left; font-size: 14px; }"
-        ".my-td { display: table-cell; color: #cbd5e1; padding: 14px 16px; font-size: 14px; vertical-align: middle; }"
+        ".my-th { display: table-cell; font-weight: 700; color: #f1f5f9; padding: 14px 16px; text-align: left; font-size: 14px; border-bottom: 2px solid #374151; border-right: 1px solid #1f2937; }"
+        ".my-td { display: table-cell; color: #cbd5e1; padding: 14px 16px; font-size: 14px; vertical-align: middle; border-bottom: 1px solid #1f2937; border-right: 1px solid #1f2937; }"
         
         // Utility colors and designs
         ".text-right { text-align: right; }"
