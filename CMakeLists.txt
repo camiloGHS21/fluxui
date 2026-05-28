@@ -434,6 +434,17 @@ add_executable(test_dynamic
     examples/cpp/test_dynamic.cpp
 )
 
+add_executable(svg_test
+    examples/cpp/svg_test.cpp
+)
+target_link_libraries(svg_test PRIVATE
+    fluxui
+)
+target_include_directories(svg_test PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(svg_test)
+
 
 
 

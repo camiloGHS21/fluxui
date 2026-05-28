@@ -14,6 +14,7 @@
 #endif
 
 namespace FluxUI {
+class Widget;
 
 // ============================================================
 //  Render Backend Selection
@@ -248,6 +249,8 @@ public:
     bool loadImageFromMemory(const unsigned char* data, int dataSize,
                              const std::string& name, bool svg = false);
     Vec2 imageSize(const std::string& nameOrPath);
+    bool updateDynamicTexture(const std::string& name, const ImageData& image);
+    bool rasterizeSvgWidget(Widget* svgWidget, ImageData& image);
 
     // Drawing primitives
     void drawRoundedRect(const Rect& rect, const Color& color, const BorderRadius& radius,
