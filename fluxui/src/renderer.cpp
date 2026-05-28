@@ -6139,9 +6139,67 @@ FontData* Renderer::getFontForSize(const std::string& fontName, float fontSize) 
     return &it->second;
 }
 
+#ifdef _WIN32
+static std::string getWindowsFontPath(const std::string& filename) {
+    const char* windir = std::getenv("WINDIR");
+    std::string fontDir = windir ? (std::string(windir) + "\\Fonts\\") : "C:\\Windows\\Fonts\\";
+    return fontDir + filename;
+}
+#endif
+
 const std::string& Renderer::resolveFontName(const std::string& fontName, FontWeight weight) const {
     static const std::string s_defaultFont = "default";
     const std::string* baseName = fontName.empty() ? &s_defaultFont : &fontName;
+
+    std::string lowerName = lowerSvgString(*baseName);
+    std::string systemFontName;
+    std::string regFile;
+    std::string boldFile;
+
+    if (lowerName == "sans-serif" || lowerName == "sans" || lowerName == "segoe ui" || lowerName == "segoeui") {
+        systemFontName = "Segoe UI";
+        regFile = "segoeui.ttf";
+        boldFile = "segoeuib.ttf";
+    } else if (lowerName == "monospace" || lowerName == "mono" || lowerName == "consolas") {
+        systemFontName = "Consolas";
+        regFile = "consola.ttf";
+        boldFile = "consolab.ttf";
+    } else if (lowerName == "serif" || lowerName == "times new roman" || lowerName == "times") {
+        systemFontName = "Times New Roman";
+        regFile = "times.ttf";
+        boldFile = "timesbd.ttf";
+    }
+
+    if (!systemFontName.empty()) {
+        Renderer* nonConstThis = const_cast<Renderer*>(this);
+        auto it = nonConstThis->fonts_.find(systemFontName);
+        if (it == nonConstThis->fonts_.end() || !it->second.loaded) {
+#ifdef _WIN32
+            std::string regPath = getWindowsFontPath(regFile);
+            nonConstThis->loadFont(regPath, 16.0f, systemFontName);
+#endif
+        }
+        
+        if (weight == FontWeight::Bold) {
+            std::string boldName = systemFontName + "-bold";
+            auto boldIt = nonConstThis->fonts_.find(boldName);
+            if (boldIt == nonConstThis->fonts_.end() || !boldIt->second.loaded) {
+#ifdef _WIN32
+                std::string boldPath = getWindowsFontPath(boldFile);
+                nonConstThis->loadFont(boldPath, 16.0f, boldName);
+#endif
+            }
+            boldIt = nonConstThis->fonts_.find(boldName);
+            if (boldIt != nonConstThis->fonts_.end() && boldIt->second.loaded) {
+                return boldIt->first;
+            }
+        }
+        
+        it = nonConstThis->fonts_.find(systemFontName);
+        if (it != nonConstThis->fonts_.end() && it->second.loaded) {
+            return it->first;
+        }
+    }
 
     auto customIt = const_cast<Renderer*>(this)->customFontRegistry_.find(*baseName);
     if (customIt != const_cast<Renderer*>(this)->customFontRegistry_.end()) {
