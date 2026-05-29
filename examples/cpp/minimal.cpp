@@ -1,11 +1,10 @@
 #include "fluxui/FluxUI.h"
-
 #include <iostream>
 #include <vector>
 
 int main() {
     FluxUI::Application app;
-    if (!app.init("FluxUI C++ Example", 900, 600)) {
+    if (!app.init("FluxUI Multimedia Engine - Parity Sandbox", 960, 640)) {
         return 1;
     }
 
@@ -14,86 +13,94 @@ int main() {
     }
     app.renderer().warmFontCache(std::vector<float>{14.0f, 16.0f, 26.0f});
     app.renderer().releaseFontSources();
+    
     app.addStylesheet(
-        ".root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 12px; }"
-        ".title { font-size: 26px; font-weight: 700; color: #edf3f8; }"
-        ".body { font-size: 14px; color: rgba(237, 243, 248, 0.68); }"
-        "ul, ol { display: flex; flex-direction: column; gap: 4px; padding-inline-start: 40px; }"
-        "li { font-size: 15px; color: #edf3f8; }"
-        ".square-list { list-style-type: square; }"
-        ".circle-list { list-style-type: circle; }"
-        ".roman-list { list-style-type: upper-roman; }"
-        ".alpha-list { list-style-type: lower-alpha; }"
-        ".none-list { list-style-type: none; }"
-        ".button { width: 140px; height: 44px; border-radius: 8px; background-color: #37c6a3; color: #06100d; margin-top: 12px; }"
-        ".my-textarea { width: 450px; height: 120px; font-size: 14px; color: #edf3f8; background-color: #1c232b; border: 1px solid #3d4a57; border-radius: 6px; padding: 8px; }"
-        ".wrap-container { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; width: 450px; background-color: #1c232b; border: 1px solid #3d4a57; border-radius: 6px; padding: 12px; }"
-        ".wrap-item { display: flex; width: 100px; height: 32px; background-color: #37c6a3; color: #06100d; border-radius: 4px; justify-content: center; align-items: center; font-size: 13px; font-weight: 600; }"
+        ".root { display: flex; flex-direction: column; background-color: #0c0f12; padding: 40px; gap: 20px; align-items: center; justify-content: center; }"
+        ".header-container { display: flex; flex-direction: column; align-items: center; gap: 6px; }"
+        ".title { font-size: 28px; font-weight: 700; color: #ffffff; letter-spacing: 0.5px; }"
+        ".subtitle { font-size: 14px; color: #a0aec0; text-align: center; max-width: 600px; }"
+        ".video-container { display: flex; flex-direction: column; align-items: center; padding: 16px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; box-shadow: 0 20px 40px rgba(0,0,0,0.6); }"
+        ".video-player { width: 480px; height: 270px; border-radius: 8px; overflow: hidden; }"
+        ".api-controls { display: flex; flex-direction: row; gap: 12px; margin-top: 16px; }"
+        ".btn { padding: 8px 18px; height: 38px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }"
+        ".btn-primary { background-color: #6c5ce7; color: #ffffff; }"
+        ".btn-secondary { background-color: rgba(255, 255, 255, 0.08); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); }"
+        ".btn-danger { background-color: #ff7675; color: #ffffff; }"
+        ".status-text { font-size: 13px; color: #718096; margin-top: 10px; }"
     );
 
     auto* root = app.root();
-    root->add<FluxUI::Text>("List Style Type Parity Test", "title");
-    root->add<FluxUI::Text>("Testing cascaded list-style-type in FluxUI:", "body");
-
-    // Standard Unordered List (default disc)
-    auto* ul = root->element("ul");
-    ul->element("li", "Default disc bullet 1");
-    ul->element("li", "Default disc bullet 2");
-
-    // Standard Ordered List (default decimal)
-    auto* ol = root->element("ol");
-    ol->element("li", "First decimal item");
-    ol->element("li", "Second decimal item");
-
-    // Custom Bullet: Square
-    auto* ulSquare = root->element("ul", "", "square-list");
-    ulSquare->element("li", "Square bullet item");
-
-    // Custom Bullet: Circle
-    auto* ulCircle = root->element("ul", "", "circle-list");
     
-    // Register DOM Event Listeners for capture/bubble testing
-    ulCircle->addEventListener("click", [](FluxUI::Event& ev) {
-        std::cout << "[Capture Phase] Clicked on ulCircle container! Phase=" << (int)ev.phase << std::endl;
-    }, true);
-    ulCircle->addEventListener("click", [](FluxUI::Event& ev) {
-        std::cout << "[Bubbling Phase] Clicked on ulCircle container! Phase=" << (int)ev.phase << std::endl;
-    }, false);
+    // Header
+    auto* header = root->element("div", "", "header-container");
+    header->add<FluxUI::Text>("Blink Multimedia Engine Parity Sandbox", "title");
+    header->add<FluxUI::Text>("Procedural frame renderer, real-time waveOut audio synthesis, and interactive controls matching HTML5 <video> behavior.", "subtitle");
 
-    auto* liCircle = ulCircle->element("li", "Circle bullet item");
-    liCircle->addEventListener("click", [](FluxUI::Event& ev) {
-        std::cout << "[At Target] Clicked on liCircle target! Phase=" << (int)ev.phase << std::endl;
-    });
+    // Video Player Box
+    auto* videoContainer = root->element("div", "", "video-container");
+    auto* player = videoContainer->add<FluxUI::Video>();
+    player->className = "video-player";
+    player->source = "high_fidelity_demo_stream.mp4";
+    player->duration = 120.0f; // 2 minutes duration
+    player->volume = 0.8f;
+    player->paused = true;
+    player->controls = true; // Enable overlay controls
 
-    // Custom Numeric: Upper Roman
-    auto* olRoman = root->element("ol", "", "roman-list");
-    olRoman->element("li", "Roman numeral item I");
-    olRoman->element("li", "Roman numeral item II");
+    // API Controls
+    auto* controlsBox = videoContainer->element("div", "", "api-controls");
+    auto* playBtn = controlsBox->add<FluxUI::Button>("Play", "btn btn-primary");
+    auto* pauseBtn = controlsBox->add<FluxUI::Button>("Pause", "btn btn-secondary");
+    auto* toggleMuteBtn = controlsBox->add<FluxUI::Button>("Toggle Mute", "btn btn-secondary");
+    auto* volUpBtn = controlsBox->add<FluxUI::Button>("Vol +", "btn btn-secondary");
+    auto* volDownBtn = controlsBox->add<FluxUI::Button>("Vol -", "btn btn-secondary");
+    
+    // Live Info
+    auto* status = videoContainer->add<FluxUI::Text>("State: Paused | Vol: 80% | Muted: No", "status-text");
 
-    // Custom Numeric: Lower Alpha
-    auto* olAlpha = root->element("ol", "", "alpha-list");
-    olAlpha->element("li", "Alpha character item a");
-    olAlpha->element("li", "Alpha character item b");
+    // Interactivity logic
+    auto updateStatus = [=]() {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "State: %s | Vol: %d%% | Muted: %s | Time: %.1f / %.1f",
+                 player->paused ? "Paused" : "Playing",
+                 (int)(player->volume * 100),
+                 player->muted ? "Yes" : "No",
+                 player->currentTime,
+                 player->duration);
+        status->content = buf;
+    };
 
-    // List Style Type: None
-    auto* ulNone = root->element("ul", "", "none-list");
-    ulNone->element("li", "No bullet item 1");
-    ulNone->element("li", "No bullet item 2");
+    playBtn->onClick = [=, &app]() {
+        player->play();
+        updateStatus();
+    };
 
-    root->add<FluxUI::Text>("TextArea Multiline Input Widget:", "body");
-    auto* textarea = root->add<FluxUI::TextArea>("Type something here...\nLine 2\nLine 3", "my-textarea");
+    pauseBtn->onClick = [=, &app]() {
+        player->pause();
+        updateStatus();
+    };
 
-    root->add<FluxUI::Text>("CSS Flexbox Wrapping Test (width limit 450px):", "body");
-    auto* wrapContainer = root->element("div", "", "wrap-container");
-    wrapContainer->element("div", "Item 1", "wrap-item");
-    wrapContainer->element("div", "Item 2", "wrap-item");
-    wrapContainer->element("div", "Item 3", "wrap-item");
-    wrapContainer->element("div", "Item 4", "wrap-item");
-    wrapContainer->element("div", "Item 5", "wrap-item");
-    wrapContainer->element("div", "Item 6", "wrap-item");
+    toggleMuteBtn->onClick = [=, &app]() {
+        player->setMuted(!player->muted);
+        updateStatus();
+    };
 
-    auto* button = root->add<FluxUI::Button>("Close", "button");
-    button->onClick = [&]() { app.running = false; };
+    volUpBtn->onClick = [=, &app]() {
+        player->setVolume(player->volume + 0.1f);
+        updateStatus();
+    };
+
+    volDownBtn->onClick = [=, &app]() {
+        player->setVolume(player->volume - 0.1f);
+        updateStatus();
+    };
+
+    // Keep status updated periodically
+    player->onTimeUpdate = [=]() {
+        updateStatus();
+    };
+
+    auto* closeBtn = root->add<FluxUI::Button>("Exit Sandbox", "btn btn-danger");
+    closeBtn->onClick = [&]() { app.running = false; };
 
     app.run();
     app.shutdown();

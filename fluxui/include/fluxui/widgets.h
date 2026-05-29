@@ -96,6 +96,7 @@ class Select;
 class Option;
 class Icon;
 class Image;
+class Video;
 class ProgressBar;
 class Placeholder;
 class Canvas;
@@ -403,6 +404,7 @@ public:
     Icon* icon(const std::string& glyph, const std::string& cls = "");
     Image* image(const std::string& source, const std::string& cls = "");
     Image* img(const std::string& source, const std::string& cls = "");
+    Video* video(const std::string& source, const std::string& cls = "");
     ProgressBar* progress(float value,
                           const std::string& cls = "",
                           const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f));
@@ -779,6 +781,58 @@ public:
     void layout(const Rect& parentBounds) override;
     void render(Renderer& renderer) override;
 };
+class Video : public Widget {
+public:
+    std::string source;
+    bool autoplay = false;
+    bool controls = true;
+    bool loop = false;
+    bool muted = false;
+    float volume = 1.0f;
+    float currentTime = 0.0f;
+    float duration = 60.0f;
+    float playbackRate = 1.0f;
+    bool paused = true;
+
+    // Callbacks
+    std::function<void()> onPlay;
+    std::function<void()> onPause;
+    std::function<void()> onTimeUpdate;
+    std::function<void()> onEnded;
+
+    Video();
+    virtual ~Video() override;
+
+    void play();
+    void pause();
+    void setMuted(bool m);
+    void setVolume(float v);
+    void setCurrentTime(float t);
+    
+    void layout(const Rect& parentBounds) override;
+    void update(const InputState& input) override;
+    void render(Renderer& renderer) override;
+    void setAttribute(const std::string& name, const std::string& value) override;
+
+private:
+    std::chrono::high_resolution_clock::time_point lastUpdateTime_;
+    bool hasInitializedAudio_ = false;
+    bool audioThreadRunning_ = false;
+    std::thread audioThread_;
+    std::mutex audioMutex_;
+    
+    // Internal interactive control state
+    bool playButtonHovered_ = false;
+    bool volumeButtonHovered_ = false;
+    bool progressBarHovered_ = false;
+    bool volumeSliderHovered_ = false;
+    bool draggingProgress_ = false;
+    bool draggingVolume_ = false;
+    float controlsTimer_ = 0.0f; // fade out controls if mouse inactive
+
+    void startAudioThread();
+    void stopAudioThread();
+};
 class ProgressBar : public Widget {
 public:
     float progress = 0;
@@ -1119,6 +1173,7 @@ inline Widget* Widget::element(const std::string& tag,
     if (lower == "option") return option(content, "", cls);
     if (lower == "a") return anchor(content, "", cls);
     if (lower == "img" || lower == "image") return image(content, cls);
+    if (lower == "video") return video(content, cls);
     if (lower == "canvas") return canvas(cls);
     if (lower == "details") return details(cls);
     if (lower == "summary") return summary(content, cls);
@@ -1279,6 +1334,12 @@ inline Image* Widget::image(const std::string& source, const std::string& cls) {
 }
 inline Image* Widget::img(const std::string& source, const std::string& cls) {
     return image(source, cls);
+}
+inline Video* Widget::video(const std::string& source, const std::string& cls) {
+    auto* widget = add<Video>();
+    widget->source = source;
+    widget->className = cls;
+    return widget;
 }
 inline ProgressBar* Widget::progress(float value,
                                      const std::string& cls,
