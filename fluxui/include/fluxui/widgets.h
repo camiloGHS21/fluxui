@@ -643,7 +643,7 @@ private:
         size_t end;
         float width;
     };
-    std::vector<LineInfo> layoutLines(float fontSize, float maxWidth) const;
+    std::vector<LineInfo> layoutLines(float fontSize, float maxWidth, const std::string& fontName = "default") const;
     void getLineAndColumnOfOffset(const std::vector<LineInfo>& lines, size_t offset, size_t& outLine, size_t& outCol) const;
     
     bool hasSelection() const;

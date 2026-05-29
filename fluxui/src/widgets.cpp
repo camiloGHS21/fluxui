@@ -305,7 +305,15 @@ static float approximateTextWidth(const std::string& text, float fontSize) {
     }
     return width;
 }
-static std::vector<std::string> wrapText(const std::string& text, float fontSize, float maxWidth) {
+
+static float measureTextWidthExact(const std::string& text, float fontSize, const std::string& fontName = "default") {
+    if (auto* app = Application::instance()) {
+        return app->renderer().measureText(text, fontSize, fontName).x;
+    }
+    return approximateTextWidth(text, fontSize);
+}
+
+static std::vector<std::string> wrapText(const std::string& text, float fontSize, float maxWidth, const std::string& fontName = "default") {
     std::vector<std::string> lines;
     if (maxWidth <= 0.0f || text.empty()) {
         lines.push_back(text);
@@ -333,7 +341,7 @@ static std::vector<std::string> wrapText(const std::string& text, float fontSize
             }
         }
         std::string chunk = text.substr(start, i - start);
-        float chunkWidth = approximateTextWidth(chunk, fontSize);
+        float chunkWidth = measureTextWidthExact(chunk, fontSize, fontName);
         if (currentLine.empty()) {
             currentLine = chunk;
             currentWidth = chunkWidth;
@@ -357,6 +365,7 @@ static std::vector<std::string> wrapText(const std::string& text, float fontSize
     }
     return lines;
 }
+
 static std::vector<std::string> splitPreservedLines(const std::string& text) {
     std::vector<std::string> lines;
     size_t start = 0;
@@ -372,17 +381,19 @@ static std::vector<std::string> splitPreservedLines(const std::string& text) {
     if (lines.empty()) lines.push_back("");
     return lines;
 }
+
 static std::vector<std::string> layoutTextLines(const std::string& text,
                                                 float fontSize,
                                                 float maxWidth,
-                                                WhiteSpace whiteSpace) {
+                                                WhiteSpace whiteSpace,
+                                                const std::string& fontName = "default") {
     if (whiteSpace == WhiteSpace::Pre) {
         return splitPreservedLines(text);
     }
     if (whiteSpace == WhiteSpace::PreWrap || whiteSpace == WhiteSpace::PreLine) {
         std::vector<std::string> lines;
         for (const auto& preservedLine : splitPreservedLines(text)) {
-            std::vector<std::string> wrapped = wrapText(preservedLine, fontSize, maxWidth);
+            std::vector<std::string> wrapped = wrapText(preservedLine, fontSize, maxWidth, fontName);
             lines.insert(lines.end(), wrapped.begin(), wrapped.end());
         }
         if (lines.empty()) lines.push_back("");
@@ -391,19 +402,21 @@ static std::vector<std::string> layoutTextLines(const std::string& text,
     if (whiteSpace == WhiteSpace::NoWrap) {
         return {text};
     }
-    return wrapText(text, fontSize, maxWidth);
+    return wrapText(text, fontSize, maxWidth, fontName);
 }
+
 static float intrinsicTextWidth(const std::string& text,
                                 float fontSize,
-                                WhiteSpace whiteSpace) {
+                                WhiteSpace whiteSpace,
+                                const std::string& fontName = "default") {
     float width = 0.0f;
     if (whiteSpace == WhiteSpace::Pre || whiteSpace == WhiteSpace::PreWrap ||
         whiteSpace == WhiteSpace::PreLine) {
         for (const auto& line : splitPreservedLines(text)) {
-            width = std::max(width, approximateTextWidth(line, fontSize));
+            width = std::max(width, measureTextWidthExact(line, fontSize, fontName));
         }
     } else {
-        width = approximateTextWidth(text, fontSize);
+        width = measureTextWidthExact(text, fontSize, fontName);
     }
     return width;
 }
@@ -515,6 +528,95 @@ static size_t passwordTextIndexAtX(const std::string& text, float x, float fontS
         i = next;
     }
     return text.size();
+}
+static size_t getTextIndexAtXExact(const std::string& text, float x, float fontSize, const std::string& fontName = "default", bool isPassword = false) {
+    if (x <= 0 || text.empty()) return 0;
+
+    std::string measureTextStr;
+    if (isPassword) {
+        size_t cpCount = 0;
+        size_t tempIdx = 0;
+        while (tempIdx < text.size()) {
+            tempIdx = nextCodepoint(text, tempIdx);
+            cpCount++;
+        }
+        measureTextStr = std::string(cpCount, '*');
+    } else {
+        measureTextStr = text;
+    }
+
+    auto* app = Application::instance();
+    if (!app) {
+        if (isPassword) return passwordTextIndexAtX(text, x, fontSize);
+        return approximateTextIndexAtX(text, x, fontSize);
+    }
+
+    std::vector<size_t> boundaries;
+    boundaries.push_back(0);
+    size_t idx = 0;
+    while (idx < measureTextStr.size()) {
+        idx = nextCodepoint(measureTextStr, idx);
+        boundaries.push_back(idx);
+    }
+
+    size_t low = 0;
+    size_t high = boundaries.size() - 1;
+    size_t bestIdx = 0;
+    float bestDiff = std::abs(x);
+
+    auto getWidth = [&](size_t bIdx) -> float {
+        size_t byteOffset = boundaries[bIdx];
+        std::string prefix = measureTextStr.substr(0, byteOffset);
+        return app->renderer().measureText(prefix, fontSize, fontName).x;
+    };
+
+    while (low <= high) {
+        size_t mid = low + (high - low) / 2;
+        float cursorX = getWidth(mid);
+        float diff = std::abs(x - cursorX);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIdx = boundaries[mid];
+        }
+
+        if (cursorX < x) {
+            low = mid + 1;
+        } else if (cursorX > x) {
+            if (mid == 0) break;
+            high = mid - 1;
+        } else {
+            return boundaries[mid];
+        }
+    }
+
+    auto it = std::find(boundaries.begin(), boundaries.end(), bestIdx);
+    if (it != boundaries.end()) {
+        size_t bIdx = std::distance(boundaries.begin(), it);
+        if (bIdx > 0) {
+            float prevX = getWidth(bIdx - 1);
+            if (std::abs(x - prevX) < bestDiff) {
+                bestIdx = boundaries[bIdx - 1];
+                bestDiff = std::abs(x - prevX);
+            }
+        }
+        if (bIdx + 1 < boundaries.size()) {
+            float nextX = getWidth(bIdx + 1);
+            if (std::abs(x - nextX) < bestDiff) {
+                bestIdx = boundaries[bIdx + 1];
+            }
+        }
+    }
+
+    if (isPassword) {
+        size_t targetCp = bestIdx;
+        size_t textByteIdx = 0;
+        for (size_t cp = 0; cp < targetCp && textByteIdx < text.size(); ++cp) {
+            textByteIdx = nextCodepoint(text, textByteIdx);
+        }
+        return textByteIdx;
+    }
+
+    return bestIdx;
 }
 static size_t codepointCountInRange(const std::string& text, size_t start, size_t end) {
     start = clampToUtf8Boundary(text, start);
@@ -3581,13 +3683,13 @@ void Text::layout(const Rect& parentBounds) {
             }
             bounds.w = std::max(1.0f, maxChildRight + s.padding.horizontal() + usedBorderHorizontal(s));
         } else {
-            bounds.w = std::max(1.0f, intrinsicTextWidth(content, s.fontSize, s.whiteSpace) +
+            bounds.w = std::max(1.0f, intrinsicTextWidth(content, s.fontSize, s.whiteSpace, renderFontName(s)) +
                 s.padding.horizontal() + usedBorderHorizontal(s));
         }
     }
     if (!s.height.isSet() && !hasOnlyChildContent && (s.display != Display::TableCell || parentBounds.h >= 9999.0f)) {
         float availableW = std::max(0.0f, bounds.w - s.padding.horizontal());
-        std::vector<std::string> lines = layoutTextLines(content, s.fontSize, availableW, s.whiteSpace);
+        std::vector<std::string> lines = layoutTextLines(content, s.fontSize, availableW, s.whiteSpace, renderFontName(s));
         float lineCount = static_cast<float>(std::max<size_t>(1, lines.size()));
         bounds.h = std::max(1.0f, lineCount * (s.fontSize * s.lineHeight) +
             s.padding.vertical() + usedBorderVertical(s));
@@ -3639,7 +3741,8 @@ void Text::render(Renderer& renderer) {
         std::vector<std::string> lines = layoutTextLines(*displayTextPtr,
                                                          computedStyle->fontSize,
                                                          textRect.w,
-                                                         computedStyle->whiteSpace);
+                                                         computedStyle->whiteSpace,
+                                                         fontName);
         float lineHeight = computedStyle->fontSize * computedStyle->lineHeight;
         float totalTextH = lines.size() * lineHeight;
         float startY = textRect.y;
@@ -3687,7 +3790,8 @@ void Button::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
     const Style& s = *computedStyle;
     if (!s.width.isSet() && isInlineFlowItem(this)) {
-        bounds.w = std::max(16.0f, approximateTextWidth(label, s.fontSize) +
+        std::string fontName = renderFontName(s);
+        bounds.w = std::max(16.0f, measureTextWidthExact(label, s.fontSize, fontName) +
             s.padding.horizontal() + usedBorderHorizontal(s));
     }
     if (!s.height.isSet()) {
@@ -4025,10 +4129,11 @@ void TextInput::update(const InputState& input) {
     };
     auto indexAtMouse = [&]() {
         float localX = input.mousePos.x - bounds.x - computedStyle->padding.left + scrollX_;
+        std::string fontName = renderFontName(*computedStyle);
         if (inputType == TextInputType::Password) {
-            return passwordTextIndexAtX(value, localX, computedStyle->fontSize);
+            return getTextIndexAtXExact(value, localX, computedStyle->fontSize, fontName, true);
         }
-        return approximateTextIndexAtX(value, localX, computedStyle->fontSize);
+        return getTextIndexAtXExact(value, localX, computedStyle->fontSize, fontName, false);
     };
     bool shift = (input.modifiers & MOD_SHIFT) != 0;
     bool ctrl = (input.modifiers & MOD_CTRL) != 0;
@@ -4357,7 +4462,8 @@ void TextInput::render(Renderer& renderer) {
 void TextArea::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
     const Style& s = *computedStyle;
-    float charW = approximateGlyphAdvance('m', s.fontSize);
+    std::string fontName = renderFontName(s);
+    float charW = measureTextWidthExact("m", s.fontSize, fontName);
     float lineH = s.fontSize * 1.2f;
     
     float minHeight = bounds.h;
@@ -4370,7 +4476,7 @@ void TextArea::layout(const Rect& parentBounds) {
     }
     
     float clipW = std::max(0.0f, bounds.w - s.padding.horizontal());
-    auto lines = layoutLines(s.fontSize, clipW);
+    auto lines = layoutLines(s.fontSize, clipW, fontName);
     contentHeight = lines.size() * lineH + s.padding.vertical();
     
     float requiredHeight = contentHeight + s.margin.vertical();
@@ -4405,7 +4511,7 @@ size_t TextArea::selectionEnd() const {
     return std::max(selectionAnchor_, selectionFocus_);
 }
 
-std::vector<TextArea::LineInfo> TextArea::layoutLines(float fontSize, float maxWidth) const {
+std::vector<TextArea::LineInfo> TextArea::layoutLines(float fontSize, float maxWidth, const std::string& fontName) const {
     std::vector<LineInfo> lines;
     if (value.empty()) {
         lines.push_back({0, 0, 0.0f});
@@ -4424,14 +4530,14 @@ std::vector<TextArea::LineInfo> TextArea::layoutLines(float fontSize, float maxW
                 while (step < paragraphEnd) {
                     size_t nextCp = clampToUtf8Boundary(value, step + 1);
                     if (nextCp <= step) nextCp = step + 1;
-                    float advance = 0.0f;
-                    for (size_t k = step; k < nextCp; ++k) {
-                        advance += approximateGlyphAdvance(static_cast<unsigned char>(value[k]), fontSize);
-                    }
-                    if (accumulatedWidth + advance > maxWidth) {
+                    
+                    std::string runStr = value.substr(curr, nextCp - curr);
+                    float runWidth = measureTextWidthExact(runStr, fontSize, fontName);
+                    
+                    if (runWidth > maxWidth) {
                         break;
                     }
-                    accumulatedWidth += advance;
+                    accumulatedWidth = runWidth;
                     if (value[step] == ' ' || value[step] == '\t') {
                         lastSpace = step;
                     }
@@ -4445,18 +4551,12 @@ std::vector<TextArea::LineInfo> TextArea::layoutLines(float fontSize, float maxW
                     lineEnd = clampToUtf8Boundary(value, curr + 1);
                     if (lineEnd <= curr) lineEnd = curr + 1;
                 }
-                float finalW = 0.0f;
-                for (size_t k = curr; k < lineEnd; ++k) {
-                    finalW += approximateGlyphAdvance(static_cast<unsigned char>(value[k]), fontSize);
-                }
+                float finalW = measureTextWidthExact(value.substr(curr, lineEnd - curr), fontSize, fontName);
                 lines.push_back({curr, lineEnd, finalW});
                 curr = lineEnd;
             }
         } else {
-            float finalW = 0.0f;
-            for (size_t k = start; k < paragraphEnd; ++k) {
-                finalW += approximateGlyphAdvance(static_cast<unsigned char>(value[k]), fontSize);
-            }
+            float finalW = measureTextWidthExact(value.substr(start, paragraphEnd - start), fontSize, fontName);
             lines.push_back({start, paragraphEnd, finalW});
         }
         start = paragraphEnd + 1;
@@ -4573,14 +4673,15 @@ void TextArea::update(const InputState& input) {
         float localY = input.mousePos.y - bounds.y - computedStyle->padding.top + scrollY;
         float lineHeight = computedStyle->fontSize * 1.2f;
         float maxWidth = std::max(0.0f, bounds.w - computedStyle->padding.horizontal());
-        auto lines = layoutLines(computedStyle->fontSize, maxWidth);
+        std::string fontName = renderFontName(*computedStyle);
+        auto lines = layoutLines(computedStyle->fontSize, maxWidth, fontName);
         int lineIdx = static_cast<int>(localY / lineHeight);
         if (lineIdx < 0) lineIdx = 0;
         if (lineIdx >= static_cast<int>(lines.size())) lineIdx = static_cast<int>(lines.size()) - 1;
         if (lines.empty()) return static_cast<size_t>(0);
         const auto& line = lines[lineIdx];
         std::string lineStr = value.substr(line.start, line.end - line.start);
-        size_t relativeIndex = approximateTextIndexAtX(lineStr, localX, computedStyle->fontSize);
+        size_t relativeIndex = getTextIndexAtXExact(lineStr, localX, computedStyle->fontSize, fontName, false);
         return line.start + relativeIndex;
     };
     
@@ -4695,7 +4796,8 @@ void TextArea::update(const InputState& input) {
         case 0x26: // Up Arrow
         {
             float maxWidth = std::max(0.0f, bounds.w - computedStyle->padding.horizontal());
-            auto lines = layoutLines(computedStyle->fontSize, maxWidth);
+            std::string fontName = renderFontName(*computedStyle);
+            auto lines = layoutLines(computedStyle->fontSize, maxWidth, fontName);
             size_t currLine = 0, currCol = 0;
             getLineAndColumnOfOffset(lines, caretIndex_, currLine, currCol);
             if (currLine > 0) {
@@ -4710,7 +4812,8 @@ void TextArea::update(const InputState& input) {
         case 0x28: // Down Arrow
         {
             float maxWidth = std::max(0.0f, bounds.w - computedStyle->padding.horizontal());
-            auto lines = layoutLines(computedStyle->fontSize, maxWidth);
+            std::string fontName = renderFontName(*computedStyle);
+            auto lines = layoutLines(computedStyle->fontSize, maxWidth, fontName);
             size_t currLine = 0, currCol = 0;
             getLineAndColumnOfOffset(lines, caretIndex_, currLine, currCol);
             if (currLine + 1 < lines.size()) {
@@ -4745,7 +4848,8 @@ void TextArea::update(const InputState& input) {
         insertText(input.text);
     }
     float maxWidth = std::max(0.0f, bounds.w - computedStyle->padding.horizontal());
-    auto lines = layoutLines(computedStyle->fontSize, maxWidth);
+    std::string fontName = renderFontName(*computedStyle);
+    auto lines = layoutLines(computedStyle->fontSize, maxWidth, fontName);
     size_t caretLine = 0, caretCol = 0;
     getLineAndColumnOfOffset(lines, caretIndex_, caretLine, caretCol);
     float lineHeight = computedStyle->fontSize * 1.2f;
@@ -4802,7 +4906,7 @@ void TextArea::render(Renderer& renderer) {
     };
     std::string fontName = renderFontName(s);
     float lineHeight = s.fontSize * 1.2f;
-    auto lines = layoutLines(s.fontSize, clipRect.w);
+    auto lines = layoutLines(s.fontSize, clipRect.w, fontName);
     renderer.pushScissor(clipRect);
     if (hasSelection() && !value.empty()) {
         size_t start = selectionStart();
@@ -4822,7 +4926,7 @@ void TextArea::render(Renderer& renderer) {
                 float startX = renderer.measureText(prefix, s.fontSize, fontName).x;
                 float width = renderer.measureText(selectionText, s.fontSize, fontName).x;
                 if (e_in_line == line.end && e_in_line < end) {
-                    width += approximateGlyphAdvance(' ', s.fontSize);
+                    width += renderer.measureText(" ", s.fontSize, fontName).x;
                 }
                 Rect selectionRect = {
                     clipRect.x + startX,
@@ -5242,9 +5346,10 @@ void Select::layout(const Rect& parentBounds) {
     Widget::layout(parentBounds);
     const Style& s = *computedStyle;
     if (!s.width.isSet() && isInlineFlowItem(this)) {
-        float widest = approximateTextWidth(selectedLabel(), s.fontSize);
+        std::string fontName = renderFontName(s);
+        float widest = measureTextWidthExact(selectedLabel(), s.fontSize, fontName);
         for (auto* option : selectOptions(this)) {
-            widest = std::max(widest, approximateTextWidth(option->label, s.fontSize));
+            widest = std::max(widest, measureTextWidthExact(option->label, s.fontSize, fontName));
         }
         float intrinsicW = widest + s.padding.horizontal() +
             usedBorderHorizontal(s) + 20.0f;
