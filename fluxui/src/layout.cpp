@@ -125,7 +125,7 @@ namespace FluxUI {
                     } else if (cs.height.isSet()) {
                         measuredMain[i] = cs.height.resolve(contentH, constraints.parentWidth, constraints.parentHeight, constraints.emBase);
                         fixedSize += measuredMain[i] + cs.margin.vertical();
-                    } else {
+                    } else if (cs.flexGrow <= 0) {
                         Rect measureArea = {contentX, contentY, childW, 0};
                         child->layout(measureArea);
                         measuredMain[i] = child->bounds.h;
@@ -153,41 +153,6 @@ namespace FluxUI {
             }
 
             float totalGap = mainGap * std::max(0, visibleCount - 1);
-
-            float computedContentW = 0.0f;
-            if (isRow) {
-                if (totalFlexGrow > 0.0f) {
-                    computedContentW = contentW;
-                } else {
-                    computedContentW = fixedSize + totalGap;
-                }
-            } else {
-                float tempMaxCross = 0.0f;
-                for (size_t i = 0; i < children.size(); i++) {
-                    auto& child = children[i];
-                    if (!child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) continue;
-                    tempMaxCross = std::max(tempMaxCross, child->bounds.w + child->computedStyle->margin.horizontal());
-                }
-                computedContentW = tempMaxCross;
-            }
-            computedContentW += s.padding.horizontal();
-
-            if (!s.width.isSet() || s.width.isAuto()) {
-                float parentAvailW = constraints.availableWidth - s.margin.horizontal();
-                float resolvedW = computedContentW;
-                if (parentAvailW > 0.0f && parentAvailW < 9999.0f) {
-                    resolvedW = std::min(resolvedW, parentAvailW);
-                }
-                if (s.minWidth.isSet()) {
-                    resolvedW = std::max(resolvedW, s.minWidth.resolve(constraints.availableWidth, constraints.parentWidth, constraints.parentHeight, constraints.emBase));
-                }
-                if (s.maxWidth.isSet()) {
-                    resolvedW = std::min(resolvedW, s.maxWidth.resolve(constraints.availableWidth, constraints.parentWidth, constraints.parentHeight, constraints.emBase));
-                }
-                widget->bounds.w = resolvedW;
-                contentW = std::max(0.0f, widget->bounds.w - s.padding.horizontal());
-                contentX = widget->bounds.x + s.padding.left;
-            }
             float availableSpace = (isRow ? contentW : contentH) - fixedSize - totalGap;
             availableSpace = std::max(0.0f, availableSpace);
 
@@ -255,7 +220,7 @@ namespace FluxUI {
                     } else {
                         childW = measuredMain[i];
                     }
-                    childH = (cs.height.isSet() && !cs.height.isAuto()) ? cs.height.resolve(contentH, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : contentH;
+                    childH = cs.height.isSet() ? cs.height.resolve(contentH, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : contentH;
                     if (childH <= 0 && !cs.height.isSet()) childH = 0.0f;
 
                     AlignItems effectiveAlign = s.alignItems;
@@ -302,6 +267,13 @@ namespace FluxUI {
                     contentEnd = rtlRow ? std::min(contentEnd, cursor + nextGap)
                                         : std::max(contentEnd, cursor - nextGap);
                 } else {
+                    childW = cs.width.isSet() ? cs.width.resolve(contentW, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : contentW;
+                    if (cs.flexGrow > 0 && totalFlexGrow > 0) {
+                        childH = measuredMain[i] + availableSpace * (cs.flexGrow / totalFlexGrow);
+                    } else {
+                        childH = measuredMain[i];
+                    }
+
                     AlignItems effectiveAlign = s.alignItems;
                     if (cs.alignSelf != AlignSelf::Auto) {
                         switch (cs.alignSelf) {
@@ -312,20 +284,6 @@ namespace FluxUI {
                             case AlignSelf::Baseline: effectiveAlign = AlignItems::Baseline; break;
                             default: break;
                         }
-                    }
-
-                    if (cs.width.isSet() && !cs.width.isAuto()) {
-                        childW = cs.width.resolve(contentW, constraints.parentWidth, constraints.parentHeight, constraints.emBase);
-                    } else if (effectiveAlign == AlignItems::Stretch) {
-                        childW = contentW;
-                    } else {
-                        childW = child->bounds.w;
-                    }
-
-                    if (cs.flexGrow > 0 && totalFlexGrow > 0) {
-                        childH = measuredMain[i] + availableSpace * (cs.flexGrow / totalFlexGrow);
-                    } else {
-                        childH = measuredMain[i];
                     }
 
                     float cx = contentX;
@@ -809,9 +767,7 @@ namespace FluxUI {
         }
 
 
-        // 3. Pass 1: Measure preferred column widths (Blink-style)
-        // For cells with explicit CSS width: use the resolved CSS width + padding/border
-        // For cells without explicit width: measure intrinsic content size
+        // 3. Pass 1: Measure preferred column widths
         std::vector<float> colMinWidths(maxCols, 0.0f);
         std::vector<float> colMaxWidths(maxCols, 0.0f);
 
@@ -822,45 +778,20 @@ namespace FluxUI {
                 Widget* cell = matrix[r][c];
                 if (!cell || cell->colspan > 1) continue;
 
-                const auto& cs = *cell->computedStyle;
-                bool hasExplicitWidth = cs.width.isSet() && !cs.width.isAuto();
+                Rect measureArea = {0, 0, 10000.0f, 10000.0f};
+                cell->layout(measureArea);
 
-                if (hasExplicitWidth) {
-                    // Cell has explicit CSS width — use it as the preferred column width
-                    float resolved = cs.width.resolve(constraints.availableWidth, constraints.parentWidth, constraints.parentHeight, constraints.emBase);
-                    // Add padding and border for the full cell box width
-                    float cellPadH = cs.padding.horizontal();
-                    float cellBorderH = usedBorderHorizontal(cs);
-                    float fullW = resolved + cellPadH + cellBorderH;
-                    minW = std::max(minW, fullW);
-                    maxW = std::max(maxW, fullW);
-                } else {
-                    // Cell has auto width — measure intrinsic content size
-                    // Max-content: single-line text width (measure at large available width)
-                    Rect maxMeasure = {0, 0, 10000.0f, 10000.0f};
-                    cell->layout(maxMeasure);
-                    float maxContentW = cell->bounds.w;
-                    // Clamp max-content to a reasonable size for auto-width cells
-                    // (don't let one long text dominate the entire table)
-                    float cellPadH = cs.padding.horizontal();
-                    float cellBorderH = usedBorderHorizontal(cs);
-                    
-                    // Min-content: wrapped text width (measure at narrow width)
-                    Rect minMeasure = {0, 0, cellPadH + cellBorderH + 1.0f, 10000.0f};
-                    cell->layout(minMeasure);
-                    float minContentW = cell->bounds.w;
-
-                    minW = std::max(minW, std::min(maxContentW, 100.0f));
-                    maxW = std::max(maxW, maxContentW);
+                float cellW = cell->bounds.w;
+                if (cell->computedStyle->width.isSet()) {
+                    float resolved = cell->computedStyle->width.resolve(constraints.availableWidth, constraints.parentWidth, constraints.parentHeight, constraints.emBase);
+                    cellW = std::max(cellW, resolved);
                 }
+
+                minW = std::max(minW, std::min(cellW, 100.0f));
+                maxW = std::max(maxW, cellW);
             }
             colMinWidths[c] = std::max(5.0f, minW);
             colMaxWidths[c] = std::max(5.0f, maxW);
-        }
-
-        std::printf("DEBUG TABLE: maxCols=%zu\n", maxCols);
-        for (size_t c = 0; c < maxCols; ++c) {
-            std::printf("  Col %zu: minW=%.2f, maxW=%.2f\n", c, colMinWidths[c], colMaxWidths[c]);
         }
 
         for (size_t r = 0; r < matrix.size(); ++r) {
@@ -899,20 +830,9 @@ namespace FluxUI {
 
         // 4. Distribute table width to columns
         std::vector<float> colWidths = colMaxWidths;
+        float availW = widget->bounds.w - s.padding.horizontal();
         float totalMaxW = 0.0f;
         for (float w : colWidths) totalMaxW += w;
-
-        float availW = widget->bounds.w - s.padding.horizontal();
-        if (!s.width.isSet() || s.width.isAuto()) {
-            // Blink behavior: table auto-width uses max-content width but caps at container available width
-            float containerAvailW = widget->bounds.w - s.padding.horizontal();
-            if (containerAvailW > 0.0f && containerAvailW < 9999.0f) {
-                availW = std::min(totalMaxW, containerAvailW);
-            } else {
-                availW = totalMaxW;
-            }
-            widget->bounds.w = availW + s.padding.horizontal() + usedBorderHorizontal(s);
-        }
 
         if (totalMaxW > 0.0f && totalMaxW > availW) {
             float totalMinW = 0.0f;
@@ -930,12 +850,10 @@ namespace FluxUI {
                 }
             }
         } else if (totalMaxW > 0.0f && totalMaxW < availW) {
-            float extra = availW - totalMaxW;
+            float extra = (availW - totalMaxW) / maxCols;
             for (size_t col = 0; col < maxCols; ++col) {
-                colWidths[col] += extra * (colMaxWidths[col] / totalMaxW);
+                colWidths[col] += extra;
             }
-        } else if (totalMaxW > 0.0f) {
-            // totalMaxW == availW, do nothing (keep colMaxWidths)
         } else if (maxCols > 0) {
             for (size_t col = 0; col < maxCols; ++col) {
                 colWidths[col] = availW / maxCols;
@@ -1026,7 +944,7 @@ namespace FluxUI {
 
         // Pass 3: Final cell placement using snapped coordinates
         for (size_t r = 0; r < matrix.size(); ++r) {
-            Widget* rowWidget = (r < rows.size()) ? rows[r] : nullptr;
+            Widget* rowWidget = rows[r];
 
             for (size_t c = 0; c < maxCols; ++c) {
                 Widget* cell = matrix[r][c];
@@ -1048,12 +966,10 @@ namespace FluxUI {
                 cell->layout(cellArea);
             }
 
-            if (rowWidget) {
-                float rowWidgetY = snappedY[r];
-                float rowWidgetH = snappedY[r + 1] - rowWidgetY;
-                rowWidget->bounds = {snappedX[0], rowWidgetY, snappedX[maxCols] - snappedX[0], rowWidgetH};
-                rowWidget->layoutDirty = false;
-            }
+            float rowWidgetY = snappedY[r];
+            float rowWidgetH = snappedY[r + 1] - rowWidgetY;
+            rowWidget->bounds = {snappedX[0], rowWidgetY, snappedX[maxCols] - snappedX[0], rowWidgetH};
+            rowWidget->layoutDirty = false;
         }
 
         for (auto& child : widget->children) {
