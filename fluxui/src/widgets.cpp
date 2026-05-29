@@ -2452,21 +2452,29 @@ void Widget::layout(const Rect& parentBounds) {
     bool heightProvidedByParentFlex = consumesParentMainAxisHeight(this, s);
     float x = parentBounds.x + s.margin.left;
     float y = parentBounds.y + s.margin.top;
-    float w = s.width.isSet() ? s.width.resolve(parentBounds.w, vpW, vpH) :
-              (parentBounds.w < 9999 ? parentBounds.w - s.margin.horizontal() : 0);
-    float h = s.height.isSet() ? s.height.resolve(parentBounds.h, vpW, vpH) :
-              (parentBounds.h < 9999 ? parentBounds.h - s.margin.vertical() : 0);
-    bool widthControlsRatio = s.aspectRatio > 0.0f && s.width.isSet() && !s.height.isSet();
-    bool heightControlsRatio = s.aspectRatio > 0.0f && s.height.isSet() && !s.width.isSet();
-    if (s.minWidth.isSet()) w = std::max(w, s.minWidth.resolve(parentBounds.w, vpW, vpH));
-    if (s.maxWidth.isSet()) w = std::min(w, s.maxWidth.resolve(parentBounds.w, vpW, vpH));
-    if (widthControlsRatio) h = w / s.aspectRatio;
-    if (s.minHeight.isSet()) h = std::max(h, s.minHeight.resolve(parentBounds.h, vpW, vpH));
-    if (s.maxHeight.isSet()) h = std::min(h, s.maxHeight.resolve(parentBounds.h, vpW, vpH));
-    if (heightControlsRatio) w = h * s.aspectRatio;
-    if (s.hasBoxSizing && s.boxSizing == BoxSizing::ContentBox) {
-        if (s.width.isSet()) w += s.padding.horizontal() + usedBorderHorizontal(s);
-        if (s.height.isSet()) h += s.padding.vertical() + usedBorderVertical(s);
+    bool isTableCellFinal = (s.display == Display::TableCell && parentBounds.w < 9999);
+    float w = 0.0f;
+    float h = 0.0f;
+    if (isTableCellFinal) {
+        w = parentBounds.w;
+        h = parentBounds.h;
+    } else {
+         w = (s.width.isSet() && !s.width.isAuto()) ? s.width.resolve(parentBounds.w, vpW, vpH) :
+            (parentBounds.w < 9999 ? parentBounds.w - s.margin.horizontal() : 0);
+        h = (s.height.isSet() && !s.height.isAuto()) ? s.height.resolve(parentBounds.h, vpW, vpH) :
+            (parentBounds.h < 9999 ? parentBounds.h - s.margin.vertical() : 0);
+        bool widthControlsRatio = s.aspectRatio > 0.0f && s.width.isSet() && !s.width.isAuto() && !s.height.isSet();
+        bool heightControlsRatio = s.aspectRatio > 0.0f && s.height.isSet() && !s.height.isAuto() && !s.width.isSet();
+        if (s.minWidth.isSet()) w = std::max(w, s.minWidth.resolve(parentBounds.w, vpW, vpH));
+        if (s.maxWidth.isSet()) w = std::min(w, s.maxWidth.resolve(parentBounds.w, vpW, vpH));
+        if (widthControlsRatio) h = w / s.aspectRatio;
+        if (s.minHeight.isSet()) h = std::max(h, s.minHeight.resolve(parentBounds.h, vpW, vpH));
+        if (s.maxHeight.isSet()) h = std::min(h, s.maxHeight.resolve(parentBounds.h, vpW, vpH));
+        if (heightControlsRatio) w = h * s.aspectRatio;
+        if (s.hasBoxSizing && s.boxSizing == BoxSizing::ContentBox) {
+            if (s.width.isSet() && !s.width.isAuto()) w += s.padding.horizontal() + usedBorderHorizontal(s);
+            if (s.height.isSet() && !s.height.isAuto()) h += s.padding.vertical() + usedBorderVertical(s);
+        }
     }
     bool hasSizeContainment = (s.contain & kContainSize);
     if (hasSizeContainment) {
@@ -2519,112 +2527,18 @@ void Widget::layout(const Rect& parentBounds) {
         bounds.h = hasSizeContainment && !s.height.isSet() ? s.padding.vertical() + usedBorderVertical(s) : res.height;
         contentHeight = hasSizeContainment ? s.padding.vertical() + usedBorderVertical(s) : res.contentHeight;
     } else if (s.display == Display::Table) {
-        std::vector<Widget*> rows;
-        std::function<void(Widget*)> collectRows = [&](Widget* w) {
-            for (auto& child : w->children) {
-                if (!child->visible || isDisplayNone(child.get())) continue;
-                if (child->computedStyle->display == Display::TableRow) {
-                    rows.push_back(child.get());
-                } else if (child->computedStyle->display == Display::TableRowGroup ||
-                           child->computedStyle->display == Display::TableHeaderGroup ||
-                           child->computedStyle->display == Display::TableFooterGroup) {
-                    collectRows(child.get());
-                }
-            }
-        };
-        collectRows(this);
+        LayoutConstraints constraints;
+        constraints.availableWidth = parentBounds.w;
+        constraints.availableHeight = parentBounds.h;
+        constraints.parentWidth = vpW;
+        constraints.parentHeight = vpH;
+        constraints.emBase = 16.0f;
 
-        std::vector<std::vector<Widget*>> matrix;
-        size_t maxCols = 0;
-        for (Widget* row : rows) {
-            std::vector<Widget*> cells;
-            for (auto& child : row->children) {
-                if (!child->visible || isDisplayNone(child.get())) continue;
-                if (child->computedStyle->display == Display::TableCell) {
-                    cells.push_back(child.get());
-                }
-            }
-            maxCols = std::max(maxCols, cells.size());
-            matrix.push_back(cells);
-        }
-
-        std::vector<float> colWidths(maxCols, 0.0f);
-        float availW = bounds.w - s.padding.horizontal();
-        for (size_t col = 0; col < maxCols; ++col) {
-            float maxCellW = 0.0f;
-            for (auto& rowCells : matrix) {
-                if (col < rowCells.size()) {
-                    Widget* cell = rowCells[col];
-                    Rect measureArea = { 0, 0, 10000.0f, 10000.0f };
-                    cell->layout(measureArea);
-                    maxCellW = std::max(maxCellW, cell->bounds.w);
-                }
-            }
-            colWidths[col] = std::max(5.0f, maxCellW);
-        }
-
-        float totalMeasuredW = 0.0f;
-        for (float w : colWidths) totalMeasuredW += w;
-        if (totalMeasuredW > 0.0f && totalMeasuredW > availW) {
-            for (size_t col = 0; col < maxCols; ++col) {
-                colWidths[col] = (colWidths[col] / totalMeasuredW) * availW;
-            }
-        } else if (totalMeasuredW > 0.0f && totalMeasuredW < availW) {
-            float extra = (availW - totalMeasuredW) / maxCols;
-            for (size_t col = 0; col < maxCols; ++col) {
-                colWidths[col] += extra;
-            }
-        } else if (maxCols > 0) {
-            for (size_t col = 0; col < maxCols; ++col) {
-                colWidths[col] = availW / maxCols;
-            }
-        }
-
-        float currentY = bounds.y + s.padding.top;
-        float startX = bounds.x + s.padding.left;
-
-        for (size_t r = 0; r < matrix.size(); ++r) {
-            Widget* rowWidget = rows[r];
-            auto& rowCells = matrix[r];
-            float rowH = 0.0f;
-
-            float currentX = startX;
-            for (size_t col = 0; col < rowCells.size(); ++col) {
-                Widget* cell = rowCells[col];
-                float colW = colWidths[col];
-                Rect cellArea = { currentX, currentY, colW, 10000.0f };
-                cell->layout(cellArea);
-                rowH = std::max(rowH, cell->bounds.h);
-                currentX += colW;
-            }
-
-            currentX = startX;
-            for (size_t col = 0; col < rowCells.size(); ++col) {
-                Widget* cell = rowCells[col];
-                float colW = colWidths[col];
-                Rect cellArea = { currentX, currentY, colW, rowH };
-                cell->layout(cellArea);
-                currentX += colW;
-            }
-
-            rowWidget->bounds = { startX, currentY, availW, rowH };
-            rowWidget->layoutDirty = false;
-
-            currentY += rowH;
-        }
-
-        if (!s.height.isSet() && !heightProvidedByParentFlex && parent != nullptr) {
-            if (hasSizeContainment) {
-                bounds.h = s.padding.vertical() + usedBorderVertical(s);
-            } else {
-                bounds.h = resolveAutoBlockHeight(currentY - bounds.y + s.padding.bottom);
-            }
-        }
-        if (hasSizeContainment) {
-            contentHeight = s.padding.vertical() + usedBorderVertical(s);
-        } else {
-            contentHeight = currentY - bounds.y + s.padding.bottom;
-        }
+        TableLayoutAlgorithm algorithm;
+        LayoutResult res = algorithm.layout(this, constraints);
+        bounds.w = hasSizeContainment && !s.width.isSet() ? s.padding.horizontal() + usedBorderHorizontal(s) : res.width;
+        bounds.h = hasSizeContainment && !s.height.isSet() ? s.padding.vertical() + usedBorderVertical(s) : res.height;
+        contentHeight = hasSizeContainment ? s.padding.vertical() + usedBorderVertical(s) : res.contentHeight;
     } else {
         if (s.columnCount > 1 || s.columnWidth > 0.0f) {
             float columnGap = s.columnGap > 0.0f ? s.columnGap : 16.0f;
@@ -2883,7 +2797,7 @@ void Widget::layout(const Rect& parentBounds) {
             }
             cy = maxFloatY;
 
-            if (!s.height.isSet() && !heightProvidedByParentFlex && !children.empty() && parent != nullptr) {
+            if (!s.height.isSet() && !heightProvidedByParentFlex && !children.empty() && parent != nullptr && (s.display != Display::TableCell || parentBounds.h >= 9999.0f)) {
                 if (hasSizeContainment) {
                     bounds.h = s.padding.vertical() + usedBorderVertical(s);
                 } else {
@@ -3654,18 +3568,30 @@ void Text::layout(const Rect& parentBounds) {
     const Style& s = *computedStyle;
     const bool hasOnlyChildContent = !children.empty() && content.empty();
     const bool shrinkToText = isInlineFlowItem(this) ||
-        (s.flexGrow <= 0.0f && parentUsesRowFlex(this));
-    if (!s.width.isSet() && shrinkToText && !hasOnlyChildContent) {
-        bounds.w = std::max(1.0f, intrinsicTextWidth(content, s.fontSize, s.whiteSpace) +
-            s.padding.horizontal() + usedBorderHorizontal(s));
+        (s.flexGrow <= 0.0f && parentUsesRowFlex(this)) ||
+        (s.display == Display::TableCell && parentBounds.w >= 9999.0f);
+    if (!s.width.isSet() && shrinkToText) {
+        if (hasOnlyChildContent) {
+            float maxChildRight = 0.0f;
+            for (const auto& child : children) {
+                if (!child || !child->visible || isDisplayNone(child.get())) continue;
+                Rect childMeasureArea = {0, 0, 10000.0f, 10000.0f};
+                child->layout(childMeasureArea);
+                maxChildRight = std::max(maxChildRight, child->bounds.w + child->computedStyle->margin.horizontal());
+            }
+            bounds.w = std::max(1.0f, maxChildRight + s.padding.horizontal() + usedBorderHorizontal(s));
+        } else {
+            bounds.w = std::max(1.0f, intrinsicTextWidth(content, s.fontSize, s.whiteSpace) +
+                s.padding.horizontal() + usedBorderHorizontal(s));
+        }
     }
-    if (!s.height.isSet() && !hasOnlyChildContent) {
+    if (!s.height.isSet() && !hasOnlyChildContent && (s.display != Display::TableCell || parentBounds.h >= 9999.0f)) {
         float availableW = std::max(0.0f, bounds.w - s.padding.horizontal());
         std::vector<std::string> lines = layoutTextLines(content, s.fontSize, availableW, s.whiteSpace);
         float lineCount = static_cast<float>(std::max<size_t>(1, lines.size()));
         bounds.h = std::max(1.0f, lineCount * (s.fontSize * s.lineHeight) +
             s.padding.vertical() + usedBorderVertical(s));
-    } else if (!s.height.isSet() && hasOnlyChildContent) {
+    } else if (!s.height.isSet() && hasOnlyChildContent && (s.display != Display::TableCell || parentBounds.h >= 9999.0f)) {
         float childBottom = bounds.y + s.padding.top;
         for (const auto& child : children) {
             if (!child || !child->visible || isDisplayNone(child.get()) || isOutOfFlow(child.get())) {
@@ -6975,7 +6901,7 @@ bool Application::renderRoute(Widget* container) {
     return true;
 }
 void Application::updateStyleAndLayout() {
-    if (documentLifecycle >= DocumentLifecycle::LayoutClean) {
+    if (documentLifecycle >= DocumentLifecycle::LayoutClean && root_ && !root_->subtreeStyleDirty && !root_->layoutDirty) {
         return;
     }
     // Avoid re-entrancy / infinite recursion
@@ -7621,4 +7547,104 @@ void Application::startViewTransition(std::function<void()> mutationCallback) {
     activeViewTransition_.duration = 0.25f;
     needsRedraw_ = true;
 }
+
+void SvgElement::markSvgDirty() {
+    Widget* p = parent;
+    while (p) {
+        if (p->type == "svg") {
+            static_cast<Svg*>(p)->isRasterDirty = true;
+            break;
+        }
+        p = p->parent;
+    }
+    if (auto* app = Application::instance()) {
+        app->requestRedraw();
+    }
+}
+
+void SvgElement::setAttribute(const std::string& name, const std::string& value) {
+    Widget::setAttribute(name, value);
+    if (name == "fill") fill = value;
+    else if (name == "stroke") stroke = value;
+    else if (name == "stroke-width") strokeWidth = value;
+    else if (name == "transform") transformAttr = value;
+    else if (name == "opacity") opacityAttr = value;
+    else if (name == "fill-opacity") fillOpacity = value;
+    else if (name == "stroke-opacity") strokeOpacity = value;
+    else if (type == "path" && name == "d") static_cast<SvgPath*>(this)->d = value;
+    else if (type == "rect") {
+        auto* r = static_cast<SvgRect*>(this);
+        if (name == "x") r->x = value;
+        else if (name == "y") r->y = value;
+        else if (name == "width") r->width = value;
+        else if (name == "height") r->height = value;
+        else if (name == "rx") r->rx = value;
+        else if (name == "ry") r->ry = value;
+    } else if (type == "circle") {
+        auto* c = static_cast<SvgCircle*>(this);
+        if (name == "cx") c->cx = value;
+        else if (name == "cy") c->cy = value;
+        else if (name == "r") c->r = value;
+    } else if (type == "ellipse") {
+        auto* el = static_cast<SvgEllipse*>(this);
+        if (name == "cx") el->cx = value;
+        else if (name == "cy") el->cy = value;
+        else if (name == "rx") el->rx = value;
+        else if (name == "ry") el->ry = value;
+    } else if (type == "line") {
+        auto* l = static_cast<SvgLine*>(this);
+        if (name == "x1") l->x1 = value;
+        else if (name == "y1") l->y1 = value;
+        else if (name == "x2") l->x2 = value;
+        else if (name == "y2") l->y2 = value;
+    } else if (type == "polyline" && name == "points") {
+        static_cast<SvgPolyline*>(this)->points = value;
+    } else if (type == "polygon" && name == "points") {
+        static_cast<SvgPolygon*>(this)->points = value;
+    }
+    markSvgDirty();
+}
+
+Svg::~Svg() {
+}
+
+void Svg::setAttribute(const std::string& name, const std::string& value) {
+    Widget::setAttribute(name, value);
+    if (name == "viewBox") viewBox = value;
+    else if (name == "width") width = value;
+    else if (name == "height") height = value;
+    else if (name == "preserveAspectRatio") preserveAspectRatio = value;
+    isRasterDirty = true;
+    if (auto* app = Application::instance()) {
+        app->requestRedraw();
+    }
+}
+
+void Svg::layout(const Rect& parentBounds) {
+    Widget::layout(parentBounds);
+    for (auto& child : children) {
+        child->bounds = bounds;
+        child->layout(bounds);
+    }
+}
+
+void Svg::render(Renderer& renderer) {
+    if (!visible) return;
+    
+    int outW = std::clamp((int)std::round(bounds.w), 1, 4096);
+    int outH = std::clamp((int)std::round(bounds.h), 1, 4096);
+    
+    if (isRasterDirty || cachedImage.width != outW || cachedImage.height != outH) {
+        renderer.rasterizeSvgWidget(this, cachedImage);
+        isRasterDirty = false;
+        
+        if (loadedTextureKey.empty()) {
+            loadedTextureKey = "svg_dyn_" + std::to_string((uintptr_t)this);
+        }
+        renderer.updateDynamicTexture(loadedTextureKey, cachedImage);
+    }
+    
+    renderer.drawImage(loadedTextureKey, bounds);
+}
+
 }

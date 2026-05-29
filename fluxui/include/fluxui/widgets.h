@@ -109,6 +109,16 @@ class Meter;
 class Progress;
 class Hr;
 class Br;
+class Svg;
+class SvgElement;
+class SvgG;
+class SvgPath;
+class SvgRect;
+class SvgCircle;
+class SvgEllipse;
+class SvgLine;
+class SvgPolyline;
+class SvgPolygon;
 class LayoutObject;
 enum class VirtualListScrollStrategy {
     Start = 0,
@@ -324,6 +334,8 @@ public:
     std::shared_ptr<Widget> afterPseudoNode;
     std::unique_ptr<LayoutObject> layoutObject;
     bool skipDOMChildrenPaint = false;
+    int colspan = 1;
+    int rowspan = 1;
     void attachLayoutTree();
     void detachLayoutTree();
     virtual std::unique_ptr<LayoutObject> createLayoutObject();
@@ -449,6 +461,15 @@ public:
     Progress* htmlProgress(float value = -1.0f, float max = 1.0f, const std::string& cls = "");
     Widget* hr(const std::string& cls = "");
     Widget* br(const std::string& cls = "");
+    Svg* svg(const std::string& cls = "");
+    SvgG* svgG(const std::string& cls = "");
+    SvgPath* svgPath(const std::string& d = "", const std::string& cls = "");
+    SvgRect* svgRect(const std::string& cls = "");
+    SvgCircle* svgCircle(const std::string& cls = "");
+    SvgEllipse* svgEllipse(const std::string& cls = "");
+    SvgLine* svgLine(const std::string& cls = "");
+    SvgPolyline* svgPolyline(const std::string& cls = "");
+    SvgPolygon* svgPolygon(const std::string& cls = "");
     Widget* setId(const std::string& value);
     Widget* classes(const std::string& value);
     Widget* addClass(const std::string& value);
@@ -498,6 +519,7 @@ public:
     virtual CursorType cursorAt(Vec2 point) const;
     virtual Widget* hitTest(Vec2 point, bool interactiveOnly = false);
     virtual void render(Renderer& renderer);
+    virtual void setAttribute(const std::string& name, const std::string& value);
     bool isScrollableY() const;
     bool isClippingOverflow() const;
     bool getScrollBarRects(Rect& track, Rect& thumb) const;
@@ -974,6 +996,105 @@ public:
         className = cls;
     }
 };
+
+class SvgElement : public Widget {
+public:
+    std::string fill;
+    std::string stroke;
+    std::string strokeWidth;
+    std::string transformAttr;
+    std::string opacityAttr;
+    std::string fillOpacity;
+    std::string strokeOpacity;
+
+    SvgElement() { type = "svg-element"; }
+    virtual ~SvgElement() override = default;
+
+    void markSvgDirty();
+    void setAttribute(const std::string& name, const std::string& value) override;
+};
+
+class SvgG : public SvgElement {
+public:
+    SvgG() { type = "g"; }
+    SvgG(const std::string& cls) { type = "g"; className = cls; }
+};
+
+class SvgPath : public SvgElement {
+public:
+    std::string d;
+    SvgPath() { type = "path"; }
+    SvgPath(const std::string& pathD, const std::string& cls = "") : d(pathD) { type = "path"; className = cls; }
+};
+
+class SvgRect : public SvgElement {
+public:
+    std::string x = "0";
+    std::string y = "0";
+    std::string width = "0";
+    std::string height = "0";
+    std::string rx = "0";
+    std::string ry = "0";
+    SvgRect() { type = "rect"; }
+};
+
+class SvgCircle : public SvgElement {
+public:
+    std::string cx = "0";
+    std::string cy = "0";
+    std::string r = "0";
+    SvgCircle() { type = "circle"; }
+};
+
+class SvgEllipse : public SvgElement {
+public:
+    std::string cx = "0";
+    std::string cy = "0";
+    std::string rx = "0";
+    std::string ry = "0";
+    SvgEllipse() { type = "ellipse"; }
+};
+
+class SvgLine : public SvgElement {
+public:
+    std::string x1 = "0";
+    std::string y1 = "0";
+    std::string x2 = "0";
+    std::string y2 = "0";
+    SvgLine() { type = "line"; }
+};
+
+class SvgPolyline : public SvgElement {
+public:
+    std::string points;
+    SvgPolyline() { type = "polyline"; }
+};
+
+class SvgPolygon : public SvgElement {
+public:
+    std::string points;
+    SvgPolygon() { type = "polygon"; }
+};
+
+class Svg : public Widget {
+public:
+    std::string viewBox;
+    std::string width;
+    std::string height;
+    std::string preserveAspectRatio = "xMidYMid meet";
+
+    bool isRasterDirty = true;
+    ImageData cachedImage;
+    std::string loadedTextureKey;
+
+    Svg() { type = "svg"; }
+    Svg(const std::string& cls) { type = "svg"; className = cls; }
+    ~Svg() override;
+
+    void layout(const Rect& parentBounds) override;
+    void render(Renderer& renderer) override;
+    void setAttribute(const std::string& name, const std::string& value) override;
+};
 inline Panel* Widget::panel(const std::string& cls, size_t reserve) {
     auto* widget = add<Panel>(cls);
     if (reserve > 0) {
@@ -1008,7 +1129,15 @@ inline Widget* Widget::element(const std::string& tag,
     if (lower == "br" || lower == "wbr") return br(cls);
     if (lower == "checkbox") return checkbox(false, cls);
     if (lower == "radio") return radio(false, "", cls);
-    if (lower == "range") return range(0.5f, 0.0f, 1.0f, 0.01f, cls);
+    if (lower == "svg") return svg(cls);
+    if (lower == "g") return svgG(cls);
+    if (lower == "path") return svgPath("", cls);
+    if (lower == "rect") return svgRect(cls);
+    if (lower == "circle") return svgCircle(cls);
+    if (lower == "ellipse") return svgEllipse(cls);
+    if (lower == "line") return svgLine(cls);
+    if (lower == "polyline") return svgPolyline(cls);
+    if (lower == "polygon") return svgPolygon(cls);
 
     // Headline Elements
     if (lower == "h1") return h1(content, cls);
@@ -1369,6 +1498,45 @@ inline Widget* Widget::hr(const std::string& cls) {
 inline Widget* Widget::br(const std::string& cls) {
     return add<Br>(cls);
 }
+inline Svg* Widget::svg(const std::string& cls) {
+    return add<Svg>(cls);
+}
+inline SvgG* Widget::svgG(const std::string& cls) {
+    return add<SvgG>(cls);
+}
+inline SvgPath* Widget::svgPath(const std::string& d, const std::string& cls) {
+    return add<SvgPath>(d, cls);
+}
+inline SvgRect* Widget::svgRect(const std::string& cls) {
+    auto* w = add<SvgRect>();
+    w->className = cls;
+    return w;
+}
+inline SvgCircle* Widget::svgCircle(const std::string& cls) {
+    auto* w = add<SvgCircle>();
+    w->className = cls;
+    return w;
+}
+inline SvgEllipse* Widget::svgEllipse(const std::string& cls) {
+    auto* w = add<SvgEllipse>();
+    w->className = cls;
+    return w;
+}
+inline SvgLine* Widget::svgLine(const std::string& cls) {
+    auto* w = add<SvgLine>();
+    w->className = cls;
+    return w;
+}
+inline SvgPolyline* Widget::svgPolyline(const std::string& cls) {
+    auto* w = add<SvgPolyline>();
+    w->className = cls;
+    return w;
+}
+inline SvgPolygon* Widget::svgPolygon(const std::string& cls) {
+    auto* w = add<SvgPolygon>();
+    w->className = cls;
+    return w;
+}
 inline Widget* Widget::setId(const std::string& value) {
     std::string oldId = id;
     id = value;
@@ -1487,6 +1655,21 @@ inline Widget* Widget::css(const std::string& declarations) {
     }
     markStyleDirtyRecursive();
     return this;
+}
+inline void Widget::setAttribute(const std::string& name, const std::string& value) {
+    if (name == "id") {
+        setId(value);
+    } else if (name == "class") {
+        classes(value);
+    } else if (name == "style") {
+        css(value);
+    } else if (name == "colspan") {
+        try { colspan = std::stoi(value); } catch (...) { colspan = 1; }
+        markLayoutDirty();
+    } else if (name == "rowspan") {
+        try { rowspan = std::stoi(value); } catch (...) { rowspan = 1; }
+        markLayoutDirty();
+    }
 }
 class StatCard : public Widget {
 public:

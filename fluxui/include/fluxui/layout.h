@@ -71,4 +71,10 @@ namespace FluxUI {
         LayoutResult layout(Widget* widget, const LayoutConstraints& constraints) override;
     };
 
+    // Table Layout Solver (Parity with Blink's NGTableLayoutAlgorithm)
+    class TableLayoutAlgorithm : public LayoutAlgorithm {
+    public:
+        LayoutResult layout(Widget* widget, const LayoutConstraints& constraints) override;
+    };
+
 } // namespace FluxUI

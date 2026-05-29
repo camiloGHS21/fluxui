@@ -139,6 +139,8 @@ void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     HWND hwnd = (HWND)window;
     ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
     UpdateWindow(hwnd);
     
     // Uncloak window after first show and layout update

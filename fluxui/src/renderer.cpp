@@ -1,5 +1,6 @@
 // FluxUI Renderer - GPU-accelerated rendering
 #include "fluxui/renderer.h"
+#include "fluxui/widgets.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -1453,6 +1454,227 @@ bool rasterizeSvgToRgba(const unsigned char* data, int dataSize, ImageData& imag
 }
 
 } // namespace
+
+#if FLUXUI_HAS_VULKAN_SDK
+struct VulkanRendererState;
+bool ensureVulkanImageTexture(VulkanRendererState& state,
+                              const std::string& key,
+                              ImageData& image);
+#endif
+
+bool Renderer::updateDynamicTexture(const std::string& name, const ImageData& image) {
+    if (name.empty()) return false;
+    
+    auto it = images_.find(name);
+    uint32_t oldTexId = 0;
+    if (it != images_.end()) {
+        oldTexId = it->second.textureId;
+        if (oldTexId != 0 && activeBackend_ == RenderBackendType::Auto) {
+            glDeleteTextures(1, &oldTexId);
+        }
+    }
+    
+    ImageData newImg = image;
+    newImg.textureId = 0;
+    images_[name] = std::move(newImg);
+    
+    if (activeBackend_ == RenderBackendType::Vulkan && vulkan_ && vulkan_->device) {
+#if FLUXUI_HAS_VULKAN_SDK
+        ensureVulkanImageTexture(*vulkan_, name, images_[name]);
+#endif
+    } else if (backendInitialized_) {
+        ensureImageTexture(name, images_[name]);
+    }
+    return true;
+}
+
+bool Renderer::rasterizeSvgWidget(Widget* svgWidget, ImageData& image) {
+    if (!svgWidget || svgWidget->type != "svg") return false;
+    
+    Svg* svg = static_cast<Svg*>(svgWidget);
+    std::vector<float> vb = parseSvgNumberList(svg->viewBox);
+    float viewX = vb.size() >= 4 ? vb[0] : 0.0f;
+    float viewY = vb.size() >= 4 ? vb[1] : 0.0f;
+    float viewW = vb.size() >= 4 ? vb[2] : 0.0f;
+    float viewH = vb.size() >= 4 ? vb[3] : 0.0f;
+    
+    float width = svg->bounds.w;
+    float height = svg->bounds.h;
+    if (width <= 0.0f) width = parseSvgFloat(svg->width, viewW > 0.0f ? viewW : 300.0f);
+    if (height <= 0.0f) height = parseSvgFloat(svg->height, viewH > 0.0f ? viewH : 150.0f);
+    
+    if (viewW <= 0.0f) viewW = width;
+    if (viewH <= 0.0f) viewH = height;
+    
+    int outW = std::clamp((int)std::round(width), 1, 4096);
+    int outH = std::clamp((int)std::round(height), 1, 4096);
+    if ((size_t)outW * (size_t)outH > 16u * 1024u * 1024u) return false;
+    
+    image.width = outW;
+    image.height = outH;
+    image.svg = true;
+    image.textureId = 0;
+    image.loaded = true;
+    image.pixels.assign((size_t)outW * (size_t)outH * 4u, 0);
+    
+    SvgCanvas canvas;
+    canvas.pixels = &image.pixels;
+    canvas.width = outW;
+    canvas.height = outH;
+    canvas.viewX = viewX;
+    canvas.viewY = viewY;
+    
+    SvgAspectRatio aspect = parseSvgPreserveAspectRatio(svg->preserveAspectRatio);
+    float rawScaleX = outW / std::max(1.0f, viewW);
+    float rawScaleY = outH / std::max(1.0f, viewH);
+    if (aspect.none) {
+        canvas.scaleX = rawScaleX;
+        canvas.scaleY = rawScaleY;
+    } else {
+        float uniformScale = aspect.slice ? std::max(rawScaleX, rawScaleY)
+                                          : std::min(rawScaleX, rawScaleY);
+        canvas.scaleX = uniformScale;
+        canvas.scaleY = uniformScale;
+        canvas.offsetX = (outW - viewW * uniformScale) * aspect.alignX;
+        canvas.offsetY = (outH - viewH * uniformScale) * aspect.alignY;
+    }
+    
+    SvgPaintState rootPaint;
+    rootPaint.fill = "black";
+    rootPaint.stroke = "none";
+    rootPaint.opacity = "1";
+    rootPaint.fillOpacity = "1";
+    rootPaint.strokeOpacity = "1";
+    rootPaint.strokeWidth = "1";
+    rootPaint.color = "black";
+    
+    std::vector<SvgAffine> transformStack;
+    transformStack.push_back(SvgAffine::identity());
+    std::vector<SvgPaintState> paintStack;
+    paintStack.push_back(rootPaint);
+    
+    std::function<void(Widget*)> traverse = [&](Widget* w) {
+        if (!w || !w->visible) return;
+        
+        std::string type = w->type;
+        if (type == "svg" && w != svgWidget) return;
+        
+        if (type == "g") {
+            SvgG* g = static_cast<SvgG*>(w);
+            SvgAffine elementTransform = transformStack.back().multiply(
+                parseSvgTransformList(g->transformAttr));
+                
+            SvgAttrs attrs;
+            if (!g->fill.empty()) attrs["fill"] = g->fill;
+            if (!g->stroke.empty()) attrs["stroke"] = g->stroke;
+            if (!g->strokeWidth.empty()) attrs["stroke-width"] = g->strokeWidth;
+            if (!g->opacityAttr.empty()) attrs["opacity"] = g->opacityAttr;
+            if (!g->fillOpacity.empty()) attrs["fill-opacity"] = g->fillOpacity;
+            if (!g->strokeOpacity.empty()) attrs["stroke-opacity"] = g->strokeOpacity;
+            
+            SvgPaintState elementPaint = mergeSvgPaintState(paintStack.back(), attrs);
+            
+            transformStack.push_back(elementTransform);
+            paintStack.push_back(elementPaint);
+            
+            for (auto& child : g->children) {
+                traverse(child.get());
+            }
+            
+            transformStack.pop_back();
+            paintStack.pop_back();
+            return;
+        }
+        
+        if (type == "path" || type == "rect" || type == "circle" || type == "ellipse" ||
+            type == "line" || type == "polyline" || type == "polygon") {
+            SvgElement* elem = static_cast<SvgElement*>(w);
+            SvgAffine elementTransform = transformStack.back().multiply(
+                parseSvgTransformList(elem->transformAttr));
+                
+            SvgAttrs attrs;
+            if (!elem->fill.empty()) attrs["fill"] = elem->fill;
+            if (!elem->stroke.empty()) attrs["stroke"] = elem->stroke;
+            if (!elem->strokeWidth.empty()) attrs["stroke-width"] = elem->strokeWidth;
+            if (!elem->opacityAttr.empty()) attrs["opacity"] = elem->opacityAttr;
+            if (!elem->fillOpacity.empty()) attrs["fill-opacity"] = elem->fillOpacity;
+            if (!elem->strokeOpacity.empty()) attrs["stroke-opacity"] = elem->strokeOpacity;
+            
+            SvgPaintState paint = mergeSvgPaintState(paintStack.back(), attrs);
+            
+            bool noFill = false;
+            bool noStroke = false;
+            Color currentColor = parseSvgColor(paint.color, Color(0, 0, 0, 1));
+            Color fill = parseSvgColor(paint.fill, currentColor, &noFill);
+            Color stroke = parseSvgColor(paint.stroke, currentColor, &noStroke);
+            float opacity = parseSvgFloat(paint.opacity, 1.0f);
+            fill.a *= parseSvgFloat(paint.fillOpacity, 1.0f) * opacity;
+            stroke.a *= parseSvgFloat(paint.strokeOpacity, 1.0f) * opacity;
+            if (noFill) fill.a = 0.0f;
+            if (noStroke) stroke.a = 0.0f;
+            float strokeWidth = parseSvgFloat(paint.strokeWidth, 1.0f) *
+                                (std::abs(canvas.scaleX) + std::abs(canvas.scaleY)) * 0.5f;
+                                
+            SvgAffine previousTransform = canvas.transform;
+            canvas.transform = elementTransform;
+            
+            if (type == "rect") {
+                SvgRect* r = static_cast<SvgRect*>(w);
+                drawSvgRect(canvas,
+                            parseSvgFloat(r->x),
+                            parseSvgFloat(r->y),
+                            parseSvgFloat(r->width),
+                            parseSvgFloat(r->height),
+                            parseSvgFloat(r->rx),
+                            parseSvgFloat(r->ry),
+                            fill, stroke, strokeWidth);
+            } else if (type == "circle") {
+                SvgCircle* c = static_cast<SvgCircle*>(w);
+                float rad = parseSvgFloat(c->r);
+                drawSvgEllipse(canvas,
+                               parseSvgFloat(c->cx),
+                               parseSvgFloat(c->cy),
+                               rad, rad,
+                               fill, stroke, strokeWidth);
+            } else if (type == "ellipse") {
+                SvgEllipse* el = static_cast<SvgEllipse*>(w);
+                drawSvgEllipse(canvas,
+                               parseSvgFloat(el->cx),
+                               parseSvgFloat(el->cy),
+                               parseSvgFloat(el->rx),
+                               parseSvgFloat(el->ry),
+                               fill, stroke, strokeWidth);
+            } else if (type == "line") {
+                SvgLine* l = static_cast<SvgLine*>(w);
+                std::vector<Vec2> points = {
+                    svgMapPoint(canvas, parseSvgFloat(l->x1), parseSvgFloat(l->y1)),
+                    svgMapPoint(canvas, parseSvgFloat(l->x2), parseSvgFloat(l->y2))
+                };
+                strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
+            } else if (type == "polyline") {
+                SvgPolyline* pl = static_cast<SvgPolyline*>(w);
+                auto points = parseSvgPoints(pl->points, canvas);
+                strokePolyline(canvas, points, stroke.a > 0.0f ? stroke : fill, std::max(1.0f, strokeWidth), false);
+            } else if (type == "polygon") {
+                SvgPolygon* pg = static_cast<SvgPolygon*>(w);
+                auto points = parseSvgPoints(pg->points, canvas);
+                fillPolygon(canvas, points, fill);
+                strokePolyline(canvas, points, stroke, strokeWidth, true);
+            } else if (type == "path") {
+                SvgPath* p = static_cast<SvgPath*>(w);
+                drawSvgPath(canvas, p->d, fill, stroke, std::max(1.0f, strokeWidth));
+            }
+            
+            canvas.transform = previousTransform;
+        }
+    };
+    
+    for (auto& child : svg->children) {
+        traverse(child.get());
+    }
+    
+    return true;
+}
 
 // ============================================================
 //  GLSL Shaders
@@ -4419,10 +4641,14 @@ void Renderer::drawSoftwareRoundedRect(const Rect& rect,
     }
 
     Rect drawRect = transformSoftwareRect(rect, drawScale, pivot);
-    drawRect.x = std::floor(drawRect.x + 0.5f);
-    drawRect.y = std::floor(drawRect.y + 0.5f);
-    drawRect.w = std::floor(drawRect.w + 0.5f);
-    drawRect.h = std::floor(drawRect.h + 0.5f);
+    float left = std::floor(drawRect.x + 0.5f);
+    float right = std::floor(drawRect.x + drawRect.w + 0.5f);
+    float top = std::floor(drawRect.y + 0.5f);
+    float bottom = std::floor(drawRect.y + drawRect.h + 0.5f);
+    drawRect.x = left;
+    drawRect.y = top;
+    drawRect.w = std::max(1.0f, right - left);
+    drawRect.h = std::max(1.0f, bottom - top);
     if (drawRect.w <= 0.0f || drawRect.h <= 0.0f) {
         return;
     }
@@ -4865,10 +5091,14 @@ void Renderer::drawVulkanRoundedRect(const Rect& rect,
 
     VulkanRoundedInstance instance = {};
     auto snapPx = [](float value) { return std::floor(value + 0.5f); };
-    instance.rect[0] = snapPx(drawRect.x * dpiScale_);
-    instance.rect[1] = snapPx(drawRect.y * dpiScale_);
-    instance.rect[2] = std::max(1.0f, snapPx(drawRect.w * dpiScale_));
-    instance.rect[3] = std::max(1.0f, snapPx(drawRect.h * dpiScale_));
+    float left = snapPx(drawRect.x * dpiScale_);
+    float right = snapPx((drawRect.x + drawRect.w) * dpiScale_);
+    float top = snapPx(drawRect.y * dpiScale_);
+    float bottom = snapPx((drawRect.y + drawRect.h) * dpiScale_);
+    instance.rect[0] = left;
+    instance.rect[1] = top;
+    instance.rect[2] = std::max(1.0f, right - left);
+    instance.rect[3] = std::max(1.0f, bottom - top);
     instance.color[0] = color.r;
     instance.color[1] = color.g;
     instance.color[2] = color.b;
@@ -5105,8 +5335,15 @@ void Renderer::drawVulkanText(const std::string& text,
     };
 
     ShapedRun run = shapeTextWithHarfbuzz(font, text, Direction::Ltr);
+    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+        std::cout << "[DEBUG drawVulkanText] shaping text=\"" << text << "\" fontScale=" << fontScale << " hbFont=" << (font.hbFont != nullptr) << " runSize=" << run.size() << std::endl;
+    }
     for (const auto& sg : run) {
         const auto& g = (font.hbFont) ? font.getGlyphByIndex(sg.glyphIndex) : font.getGlyph(sg.codepoint);
+        if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+            std::cout << "  Glyph: codepoint=" << sg.codepoint << " glyphIndex=" << sg.glyphIndex 
+                      << " width=" << g.width << " height=" << g.height << " xadvance=" << g.xadvance << std::endl;
+        }
         if (g.xadvance == 0 && sg.codepoint != ' ') continue;
 
         float w = g.width * fontScale;
@@ -5120,6 +5357,10 @@ void Renderer::drawVulkanText(const std::string& text,
             }
         }
         cursorX += sg.xAdvance * fontScale;
+    }
+
+    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+        std::cout << "  Vertices count: " << (vertices.size() / 8) << std::endl;
     }
 
     if (vertices.empty()) {
@@ -6343,10 +6584,14 @@ void Renderer::drawRoundedRect(const Rect& rect, const Color& color,
 
     auto snap = [this](float v) { return std::floor(v * dpiScale_ + 0.5f) / dpiScale_; };
     RoundedRectInstance inst{};
-    inst.rect[0] = snap(rect.x + translation_.x);
-    inst.rect[1] = snap(rect.y + translation_.y);
-    inst.rect[2] = snap(rect.w);
-    inst.rect[3] = snap(rect.h);
+    float left = snap(rect.x + translation_.x);
+    float right = snap(rect.x + rect.w + translation_.x);
+    float top = snap(rect.y + translation_.y);
+    float bottom = snap(rect.y + rect.h + translation_.y);
+    inst.rect[0] = left;
+    inst.rect[1] = top;
+    inst.rect[2] = std::max(0.0f, right - left);
+    inst.rect[3] = std::max(0.0f, bottom - top);
     inst.color[0] = color.r; inst.color[1] = color.g; inst.color[2] = color.b; inst.color[3] = color.a;
     inst.color2[0] = color.r; inst.color2[1] = color.g; inst.color2[2] = color.b; inst.color2[3] = color.a;
     inst.borderColor[0] = 0; inst.borderColor[1] = 0; inst.borderColor[2] = 0; inst.borderColor[3] = 0;
@@ -6402,10 +6647,14 @@ void Renderer::drawRoundedRectGradient(const Rect& rect, const Gradient& gradien
     auto& c2 = gradient.stops.back().first;
 
     RoundedRectInstance inst{};
-    inst.rect[0] = snap(rect.x + translation_.x);
-    inst.rect[1] = snap(rect.y + translation_.y);
-    inst.rect[2] = snap(rect.w);
-    inst.rect[3] = snap(rect.h);
+    float left = snap(rect.x + translation_.x);
+    float right = snap(rect.x + rect.w + translation_.x);
+    float top = snap(rect.y + translation_.y);
+    float bottom = snap(rect.y + rect.h + translation_.y);
+    inst.rect[0] = left;
+    inst.rect[1] = top;
+    inst.rect[2] = std::max(0.0f, right - left);
+    inst.rect[3] = std::max(0.0f, bottom - top);
     inst.color[0] = c1.r; inst.color[1] = c1.g; inst.color[2] = c1.b; inst.color[3] = c1.a;
     inst.color2[0] = c2.r; inst.color2[1] = c2.g; inst.color2[2] = c2.b; inst.color2[3] = c2.a;
     inst.borderColor[0] = 0; inst.borderColor[1] = 0; inst.borderColor[2] = 0; inst.borderColor[3] = 0;
@@ -6456,10 +6705,14 @@ void Renderer::drawBorder(const Rect& rect, const Border& border, const BorderRa
     batchValid_ = true;
 
     RoundedRectInstance inst{};
-    inst.rect[0] = snap(rect.x + translation_.x);
-    inst.rect[1] = snap(rect.y + translation_.y);
-    inst.rect[2] = snap(rect.w);
-    inst.rect[3] = snap(rect.h);
+    float left = snap(rect.x + translation_.x);
+    float right = snap(rect.x + rect.w + translation_.x);
+    float top = snap(rect.y + translation_.y);
+    float bottom = snap(rect.y + rect.h + translation_.y);
+    inst.rect[0] = left;
+    inst.rect[1] = top;
+    inst.rect[2] = std::max(0.0f, right - left);
+    inst.rect[3] = std::max(0.0f, bottom - top);
     inst.color[0] = 0; inst.color[1] = 0; inst.color[2] = 0; inst.color[3] = 0;
     inst.color2[0] = 0; inst.color2[1] = 0; inst.color2[2] = 0; inst.color2[3] = 0;
     inst.borderColor[0] = border.color.r; inst.borderColor[1] = border.color.g;
@@ -6948,15 +7201,27 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
         recording_->push_back(cmd);
         return;
     }
+    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+        std::cout << "[DEBUG drawText] text=\"" << text 
+                  << "\" activeBackend=" << (int)activeBackend_ 
+                  << " pos=[" << pos.x << ", " << pos.y << "]"
+                  << " color=[" << color.r << ", " << color.g << ", " << color.b << ", " << color.a << "]" << std::endl;
+    }
 
     std::string processedText = reorderBidiText(text, direction, unicodeBidi);
 
     if (activeBackend_ == RenderBackendType::Vulkan) {
+        if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+            std::cout << "[DEBUG drawText] routing to drawVulkanText" << std::endl;
+        }
         drawVulkanText(processedText, pos, color, fontSize, weight, fontName, style);
         return;
     }
 
     if (activeBackend_ == RenderBackendType::Compatibility) {
+        if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+            std::cout << "[DEBUG drawText] routing to drawSoftwareText" << std::endl;
+        }
         drawSoftwareText(processedText, pos, color, fontSize, weight, fontName, style);
         return;
     }
@@ -7151,6 +7416,12 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
                                FontStyle style,
                                Direction direction,
                                UnicodeBidi unicodeBidi) {
+    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+        std::cout << "[DEBUG drawTextInRect] text=\"" << text 
+                  << "\" rect=[" << rect.x << ", " << rect.y << ", " << rect.w << ", " << rect.h 
+                  << "] align=" << (int)align << " weight=" << (int)weight 
+                  << " fontName=\"" << fontName << "\"" << std::endl;
+    }
     if (isRecording()) {
         RenderCommand cmd;
         cmd.type = RenderCommandType::Text;
@@ -7179,8 +7450,10 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
     }
 
     float x = rect.x;
+    float measuredW = 0.0f;
     if (effectiveAlign != TextAlign::Left) {
         Vec2 textSize = measureText(text, fontSize, resolvedFontName);
+        measuredW = textSize.x;
         if (effectiveAlign == TextAlign::Center) x = rect.x + (rect.w - textSize.x) / 2;
         else if (effectiveAlign == TextAlign::Right) x = rect.x + rect.w - textSize.x;
     }
@@ -7196,6 +7469,13 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
         textH = asc + desc;
     }
     float y = rect.y + (rect.h - textH) / 2;
+    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
+        std::cout << "[DEBUG drawTextInRect] resolvedFontName=\"" << resolvedFontName 
+                  << "\" fontForRect=" << (fontForRect != nullptr)
+                  << " font=" << (font != nullptr) 
+                  << " measuredW=" << measuredW 
+                  << " calculated x=" << x << " y=" << y << std::endl;
+    }
     drawText(text, {x, y}, color, fontSize, weight, fontName, style, direction, unicodeBidi);
 }
 
