@@ -2,7 +2,7 @@
 #include <iostream>
 #include <vector>
 
-int main() {
+int main(int argc, char* argv[]) {
     FluxUI::Application app;
     if (!app.init("FluxUI Native SVG Blink-Parity Engine Test", 1080, 750, FluxUI::RenderBackendType::Auto)) {
         return 1;
@@ -15,7 +15,7 @@ int main() {
     app.renderer().releaseFontSources();
     
     app.addStylesheet(
-        ".root { display: flex; flex-direction: column; background-color: #0b0f19; padding: 40px; gap: 24px; align-items: center; }"
+        ".root { display: flex; flex-direction: column; background-color: #0b0f19; padding: 40px; gap: 24px; align-items: center; color: #f8fafc; }"
         ".title-container { display: flex; flex-direction: column; align-items: center; gap: 8px; }"
         ".title { font-size: 28px; font-weight: 700; color: #f8fafc; font-family: 'Segoe UI', Outfit, sans-serif; }"
         ".subtitle { font-size: 14px; color: #64748b; font-family: 'Segoe UI', sans-serif; }"
@@ -28,7 +28,7 @@ int main() {
         ".sidebar-btn-active { background-color: #2563eb; color: #ffffff; border: 1px solid #3b82f6; }"
         
         ".preview-area { display: flex; flex-direction: column; flex-grow: 1; background-color: #111827; border-radius: 16px; padding: 32px; border: 1px solid #1f2937; align-items: center; justify-content: center; gap: 20px; position: relative; }"
-        ".svg-viewport { width: 500px; height: 380px; background-color: #030712; border-radius: 12px; border: 1px solid #1f2937; display: flex; align-items: center; justify-content: center; overflow: hidden; }"
+        ".svg-viewport { width: 500px; height: 380px; background-color: #030712; border-radius: 12px; border: 1px solid #1f2937; display: flex; align-items: center; justify-content: center; overflow: hidden; color: #ffffff; }"
         
         ".button-container { display: flex; flex-direction: row; gap: 12px; }"
         ".btn { width: 160px; height: 42px; border-radius: 10px; font-weight: 600; font-size: 14px; display: flex; justify-content: center; align-items: center; cursor: pointer; }"
@@ -222,6 +222,13 @@ int main() {
     btnH->onClick = [&]() { showSvg(4); };
     btnF->onClick = [&]() { showSvg(5); };
 
+    int startIndex = 2;
+    if (argc > 1) {
+        try {
+            startIndex = std::stoi(argv[1]);
+        } catch (...) {}
+    }
+    showSvg(startIndex);
     app.run();
     app.shutdown();
     return 0;

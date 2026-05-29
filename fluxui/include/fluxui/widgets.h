@@ -260,6 +260,9 @@ struct PaintProperties {
     Rect clipRect{0.0f, 0.0f, 0.0f, 0.0f};
     bool hasClip = false;
     float opacity = 1.0f;
+    int transformNodeId = 0;
+    int clipNodeId = 0;
+    int effectNodeId = 0;
 
     bool operator==(const PaintProperties& o) const {
         return translation.x == o.translation.x &&
@@ -270,7 +273,10 @@ struct PaintProperties {
                clipRect.w == o.clipRect.w &&
                clipRect.h == o.clipRect.h &&
                hasClip == o.hasClip &&
-               opacity == o.opacity;
+               opacity == o.opacity &&
+               transformNodeId == o.transformNodeId &&
+               clipNodeId == o.clipNodeId &&
+               effectNodeId == o.effectNodeId;
     }
     bool operator!=(const PaintProperties& o) const {
         return !(*this == o);
@@ -313,6 +319,9 @@ public:
     WidgetLifecycle lifecycleState = WidgetLifecycle::Uninitialized;
     PaintProperties paintProperties;
     PaintProperties lastPaintProperties;
+    int transformNodeId = 0;
+    int clipNodeId = 0;
+    int effectNodeId = 0;
     Rect lastPaintBounds{0.0f, 0.0f, 0.0f, 0.0f};
     StyleCacheKey lastResolveKey;
     uint32_t lastStyleSheetEpoch = 0;

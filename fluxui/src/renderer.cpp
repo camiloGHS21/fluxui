@@ -2686,6 +2686,9 @@ Renderer::Renderer() {
     blurTexTemp_ = 0;
     blurShaderHoriz_ = 0;
     blurShaderVert_ = 0;
+    activeTransformNodeId = 0;
+    activeClipNodeId = 0;
+    activeEffectNodeId = 0;
 #if FLUXUI_FAST_STARTUP
     fonts_.reserve(FLUXUI_PREALLOC_FONTS);
     images_.reserve(FLUXUI_PREALLOC_IMAGES);
@@ -7215,7 +7218,7 @@ void Renderer::drawRoundedRect(const Rect& rect, const Color& color,
         cmd.radius = radius;
         cmd.opacity = opacity;
         cmd.hasGradient = false;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -7276,7 +7279,7 @@ void Renderer::drawRoundedRectGradient(const Rect& rect, const Gradient& gradien
         cmd.opacity = opacity;
         cmd.hasGradient = true;
         cmd.gradient = gradient;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -7336,7 +7339,7 @@ void Renderer::drawBorder(const Rect& rect, const Border& border, const BorderRa
         cmd.rect.y += (translation_.y - recordingTranslationStart_.y);
         cmd.border = border;
         cmd.radius = radius;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -7396,7 +7399,7 @@ void Renderer::drawBoxShadow(const Rect& rect, const BoxShadow& shadow,
         cmd.rect.y += (translation_.y - recordingTranslationStart_.y);
         cmd.shadow = shadow;
         cmd.radius = radius;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -7857,7 +7860,7 @@ void Renderer::drawText(const std::string& text, const Vec2& pos, const Color& c
         cmd.fontStyle = style;
         cmd.fontDirection = direction;
         cmd.unicodeBidi = unicodeBidi;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
     if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
@@ -8010,7 +8013,7 @@ void Renderer::drawImage(const std::string& nameOrPath, const Rect& rect,
         cmd.sourceUv = sourceUv;
         cmd.opacity = opacity;
         cmd.color = finalTint;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -8101,7 +8104,7 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
         cmd.fontStyle = style;
         cmd.fontDirection = direction;
         cmd.unicodeBidi = unicodeBidi;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -8209,7 +8212,7 @@ void Renderer::pushScissor(const Rect& rect) {
         cmd.scissorRect = rect;
         cmd.scissorRect.x += (translation_.x - recordingTranslationStart_.x);
         cmd.scissorRect.y += (translation_.y - recordingTranslationStart_.y);
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -8263,7 +8266,7 @@ void Renderer::popScissor() {
     if (isRecording()) {
         RenderCommand cmd;
         cmd.type = RenderCommandType::ScissorPop;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 
@@ -8461,7 +8464,7 @@ void Renderer::drawBackdropFilterBlur(const Rect& rect, float blurRadius, const 
         cmd.rect.y += (translation_.y - recordingTranslationStart_.y);
         cmd.blurRadius = blurRadius;
         cmd.radius = radius;
-        recording_->push_back(cmd);
+        recordCommand(std::move(cmd));
         return;
     }
 

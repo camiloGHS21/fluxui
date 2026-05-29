@@ -10,6 +10,7 @@
 #include "fluxui/layout.h"
 #include "fluxui/layout_object.h"
 #include "fluxui/accessibility.h"
+#include "fluxui/property_trees.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -29,6 +30,8 @@
 #include "fluxui/platform.h"
 #include <nlohmann/json.hpp>
 namespace FluxUI {
+
+PropertyTrees g_activePropertyTrees;
 
 class ThreadPool {
 public:
@@ -2447,6 +2450,9 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
 }
 
 void Widget::prePaint(const PaintProperties& parentProps) {
+    if (!parent) {
+        g_activePropertyTrees.clear();
+    }
     lifecycleState = WidgetLifecycle::PrePaintDirty;
 
     // 1. Property Tree Builder phase:
@@ -2471,13 +2477,26 @@ void Widget::updatePaintProperties(const PaintProperties& parentProps) {
     paintProperties.hasClip = parentProps.hasClip;
     paintProperties.opacity = parentProps.opacity * computedStyle->opacity;
 
+    // 1. Resolve TransformNode
     bool scrollable = scrollsOverflowY(computedStyle, contentHeight, bounds.h);
     if (scrollable) {
         scrollY = CompositorEngine::instance().getScrollY(reinterpret_cast<uintptr_t>(this));
         targetScrollY = CompositorEngine::instance().getTargetScrollY(reinterpret_cast<uintptr_t>(this));
         paintProperties.translation.y -= scrollY;
-    }
 
+        Vec2 scrollOffset = {0.0f, -scrollY};
+        transformNodeId = g_activePropertyTrees.insertTransformNode(
+            parentProps.transformNodeId,
+            1.0f,
+            scrollOffset,
+            {0.0f, 0.0f}
+        );
+    } else {
+        transformNodeId = parentProps.transformNodeId;
+    }
+    paintProperties.transformNodeId = transformNodeId;
+
+    // 2. Resolve ClipNode
     bool clip = clipsOverflow(computedStyle);
     if (clip) {
         Rect localClip = bounds;
@@ -2491,7 +2510,29 @@ void Widget::updatePaintProperties(const PaintProperties& parentProps) {
             paintProperties.clipRect = localClip;
             paintProperties.hasClip = true;
         }
+
+        clipNodeId = g_activePropertyTrees.insertClipNode(
+            parentProps.clipNodeId,
+            bounds,
+            transformNodeId
+        );
+    } else {
+        clipNodeId = parentProps.clipNodeId;
     }
+    paintProperties.clipNodeId = clipNodeId;
+
+    // 3. Resolve EffectNode
+    if (computedStyle->opacity != 1.0f) {
+        effectNodeId = g_activePropertyTrees.insertEffectNode(
+            parentProps.effectNodeId,
+            computedStyle->opacity,
+            0.0f,
+            transformNodeId
+        );
+    } else {
+        effectNodeId = parentProps.effectNodeId;
+    }
+    paintProperties.effectNodeId = effectNodeId;
 }
 
 void Widget::invalidatePaintIfNeeded() {

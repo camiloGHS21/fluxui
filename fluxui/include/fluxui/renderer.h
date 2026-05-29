@@ -294,6 +294,11 @@ public:
     void flush();
     Vec2 getTranslation() const { return translation_; }
 
+    // Active Property Tree node IDs for batching recorded commands
+    int activeTransformNodeId = 0;
+    int activeClipNodeId = 0;
+    int activeEffectNodeId = 0;
+
     // Measurement
     Vec2 measureText(const std::string& text, float fontSize,
                      const std::string& fontName = "default") const;
@@ -313,6 +318,15 @@ public:
 
     bool isRecording() const {
         return recording_ != nullptr;
+    }
+
+    void recordCommand(RenderCommand cmd) {
+        if (recording_) {
+            cmd.transformNodeId = activeTransformNodeId;
+            cmd.clipNodeId = activeClipNodeId;
+            cmd.effectNodeId = activeEffectNodeId;
+            recording_->push_back(std::move(cmd));
+        }
     }
 
     void playback(const std::vector<RenderCommand>& commands);

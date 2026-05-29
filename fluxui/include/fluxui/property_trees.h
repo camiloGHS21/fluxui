@@ -241,4 +241,6 @@ private:
     }
 };
 
+extern PropertyTrees g_activePropertyTrees;
+
 } // namespace FluxUI

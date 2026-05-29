@@ -229,6 +229,10 @@ namespace FluxUI {
             cachedCommands_.clear();
             cachedForegroundCommands_.clear();
 
+            renderer.activeTransformNodeId = node_->transformNodeId;
+            renderer.activeClipNodeId = node_->clipNodeId;
+            renderer.activeEffectNodeId = node_->effectNodeId;
+
             // Record background and node content
             renderer.startRecording(cachedCommands_);
             
