@@ -1224,6 +1224,9 @@ void Widget::removeEventListener(size_t listenerId) {
 
 void Widget::dispatchEvent(Event& event) {
     if (event.type.empty()) return;
+    
+    Vec2 originalMousePos = event.mousePos;
+
     std::vector<Widget*> path;
     Widget* curr = this;
     while (curr) {
@@ -1241,6 +1244,15 @@ void Widget::dispatchEvent(Event& event) {
             continue;
         }
         event.currentTarget = w;
+
+        if (w->renderScale != 1.0f && w->renderScale != 0.0f) {
+            Vec2 c = w->bounds.center();
+            event.mousePos.x = c.x + (originalMousePos.x - c.x) / w->renderScale;
+            event.mousePos.y = c.y + (originalMousePos.y - c.y) / w->renderScale;
+        } else {
+            event.mousePos = originalMousePos;
+        }
+
         auto listenersCopy = w->domEventListeners;
         for (auto& entry : listenersCopy) {
             if (entry.type == event.type && entry.useCapture) {
@@ -1255,6 +1267,15 @@ void Widget::dispatchEvent(Event& event) {
         if (w && w->visible && w->style.display != Display::None) {
             event.phase = EventPhase::AtTarget;
             event.currentTarget = w;
+
+            if (w->renderScale != 1.0f && w->renderScale != 0.0f) {
+                Vec2 c = w->bounds.center();
+                event.mousePos.x = c.x + (originalMousePos.x - c.x) / w->renderScale;
+                event.mousePos.y = c.y + (originalMousePos.y - c.y) / w->renderScale;
+            } else {
+                event.mousePos = originalMousePos;
+            }
+
             auto listenersCopy = w->domEventListeners;
             for (auto& entry : listenersCopy) {
                 if (entry.type == event.type) {
@@ -1276,6 +1297,15 @@ void Widget::dispatchEvent(Event& event) {
                 continue;
             }
             event.currentTarget = w;
+
+            if (w->renderScale != 1.0f && w->renderScale != 0.0f) {
+                Vec2 c = w->bounds.center();
+                event.mousePos.x = c.x + (originalMousePos.x - c.x) / w->renderScale;
+                event.mousePos.y = c.y + (originalMousePos.y - c.y) / w->renderScale;
+            } else {
+                event.mousePos = originalMousePos;
+            }
+
             auto listenersCopy = w->domEventListeners;
             for (auto& entry : listenersCopy) {
                 if (entry.type == event.type && !entry.useCapture) {
@@ -1286,6 +1316,8 @@ void Widget::dispatchEvent(Event& event) {
             if (event.propagationStopped) break;
         }
     }
+
+    event.mousePos = originalMousePos;
 }
 
 void Widget::markLayoutDirty() {
@@ -3392,16 +3424,23 @@ CursorType Widget::cursorAt(Vec2 point) const {
     return computedStyle->cursor;
 }
 Widget* Widget::hitTest(Vec2 point, bool interactiveOnly) {
-    if (!canHitTestWidget(this) || !bounds.contains(point)) {
+    Vec2 transformedPoint = point;
+    if (renderScale != 1.0f && renderScale != 0.0f) {
+        Vec2 c = bounds.center();
+        transformedPoint.x = c.x + (point.x - c.x) / renderScale;
+        transformedPoint.y = c.y + (point.y - c.y) / renderScale;
+    }
+
+    if (!canHitTestWidget(this) || !bounds.contains(transformedPoint)) {
         return nullptr;
     }
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         Rect track, thumb;
-        if (getScrollBarRects(track, thumb) && (track.contains(point) || thumb.contains(point))) {
+        if (getScrollBarRects(track, thumb) && (track.contains(transformedPoint) || thumb.contains(transformedPoint))) {
             return this;
         }
     }
-    Vec2 childPoint = point;
+    Vec2 childPoint = transformedPoint;
     if (scrollsOverflowY(computedStyle, contentHeight, bounds.h)) {
         childPoint.y += scrollY;
     }
