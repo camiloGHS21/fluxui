@@ -67,6 +67,12 @@ int main() {
     path->setAttribute("stroke", "#a5b4fc");
     path->setAttribute("stroke-width", "4");
 
+    auto* arcPath = static_cast<FluxUI::SvgPath*>(group->element("path"));
+    arcPath->setAttribute("d", "M 0 100 A 45 45 0 0 1 100 100");
+    arcPath->setAttribute("fill", "none");
+    arcPath->setAttribute("stroke", "#ff7675");
+    arcPath->setAttribute("stroke-width", "5");
+
     auto* line = static_cast<FluxUI::SvgLine*>(group->element("line"));
     line->setAttribute("x1", "150");
     line->setAttribute("y1", "40");

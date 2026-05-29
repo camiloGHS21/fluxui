@@ -1121,6 +1121,83 @@ void appendQuad(std::vector<Vec2>& out, Vec2 p0, Vec2 p1, Vec2 p2) {
     }
 }
 
+void appendArc(std::vector<Vec2>& out, Vec2 p0, float rx, float ry, float angle, bool largeArcFlag, bool sweepFlag, Vec2 p1, SvgCanvas& canvas) {
+    double dx2 = (p0.x - p1.x) / 2.0;
+    double dy2 = (p0.y - p1.y) / 2.0;
+    double angleRad = angle * 3.14159265358979323846 / 180.0;
+    double cosAngle = std::cos(angleRad);
+    double sinAngle = std::sin(angleRad);
+    
+    double x1_prime = cosAngle * dx2 + sinAngle * dy2;
+    double y1_prime = -sinAngle * dx2 + cosAngle * dy2;
+    
+    double rx_d = std::abs(rx);
+    double ry_d = std::abs(ry);
+    if (rx_d == 0.0 || ry_d == 0.0) {
+        out.push_back(svgMapPoint(canvas, p1.x, p1.y));
+        return;
+    }
+    
+    double lambda = (x1_prime * x1_prime) / (rx_d * rx_d) + (y1_prime * y1_prime) / (ry_d * ry_d);
+    if (lambda > 1.0) {
+        rx_d *= std::sqrt(lambda);
+        ry_d *= std::sqrt(lambda);
+    }
+    
+    double rx_sq = rx_d * rx_d;
+    double ry_sq = ry_d * ry_d;
+    double x1_prime_sq = x1_prime * x1_prime;
+    double y1_prime_sq = y1_prime * y1_prime;
+    
+    double sq_term = (rx_sq * ry_sq - rx_sq * y1_prime_sq - ry_sq * x1_prime_sq) / (rx_sq * y1_prime_sq + ry_sq * x1_prime_sq);
+    if (sq_term < 0.0) sq_term = 0.0;
+    double sign = (largeArcFlag == sweepFlag) ? -1.0 : 1.0;
+    double coef = sign * std::sqrt(sq_term);
+    
+    double cx_prime = coef * ((rx_d * y1_prime) / ry_d);
+    double cy_prime = coef * -((ry_d * x1_prime) / rx_d);
+    
+    double cx = cosAngle * cx_prime - sinAngle * cy_prime + (p0.x + p1.x) / 2.0;
+    double cy = sinAngle * cx_prime + cosAngle * cy_prime + (p0.y + p1.y) / 2.0;
+    
+    double ux = (x1_prime - cx_prime) / rx_d;
+    double uy = (y1_prime - cy_prime) / ry_d;
+    double vx = (-x1_prime - cx_prime) / rx_d;
+    double vy = (-y1_prime - cy_prime) / ry_d;
+    
+    auto vectorAngle = [](double ux_val, double uy_val, double vx_val, double vy_val) {
+        double dot = ux_val * vx_val + uy_val * vy_val;
+        double len_u = std::sqrt(ux_val * ux_val + uy_val * uy_val);
+        double len_v = std::sqrt(vx_val * vx_val + vy_val * vy_val);
+        double val = dot / std::max(0.000001, len_u * len_v);
+        if (val < -1.0) val = -1.0;
+        if (val > 1.0) val = 1.0;
+        double a = std::acos(val);
+        if ((ux_val * vy_val - uy_val * vx_val) < 0.0) a = -a;
+        return a;
+    };
+    
+    double startAngle = vectorAngle(1.0, 0.0, ux, uy);
+    double deltaAngle = vectorAngle(ux, uy, vx, vy);
+    
+    if (!sweepFlag && deltaAngle > 0.0) {
+        deltaAngle -= 2.0 * 3.14159265358979323846;
+    } else if (sweepFlag && deltaAngle < 0.0) {
+        deltaAngle += 2.0 * 3.14159265358979323846;
+    }
+    
+    int segments = std::max(6, static_cast<int>(std::ceil(std::abs(deltaAngle) / (10.0 * 3.14159265358979323846 / 180.0))));
+    for (int i = 1; i <= segments; ++i) {
+        double t = static_cast<double>(i) / segments;
+        double currentAngle = startAngle + deltaAngle * t;
+        double x_prime = rx_d * std::cos(currentAngle);
+        double y_prime = ry_d * std::sin(currentAngle);
+        double px = cosAngle * x_prime - sinAngle * y_prime + cx;
+        double py = sinAngle * x_prime + cosAngle * y_prime + cy;
+        out.push_back(svgMapPoint(canvas, static_cast<float>(px), static_cast<float>(py)));
+    }
+}
+
 void drawSvgPath(SvgCanvas& canvas, const std::string& d, Color fill, Color stroke, float strokeWidth) {
     SvgPathParser parser{d};
     std::vector<std::vector<Vec2>> subpaths;
@@ -1212,9 +1289,9 @@ void drawSvgPath(SvgCanvas& canvas, const std::string& d, Color fill, Color stro
                 if (!parser.readNumber(rx) || !parser.readNumber(ry) || !parser.readNumber(rot) ||
                     !parser.readNumber(largeArc) || !parser.readNumber(sweep) ||
                     !parser.readNumber(x) || !parser.readNumber(y)) break;
-                (void)rx; (void)ry; (void)rot; (void)largeArc; (void)sweep;
-                current = map(x, y);
-                currentPath.push_back(svgMapPoint(canvas, current.x, current.y));
+                Vec2 p1 = map(x, y);
+                appendArc(currentPath, current, rx, ry, rot, largeArc != 0.0f, sweep != 0.0f, p1, canvas);
+                current = p1;
             }
         } else {
             parser.command = 0;

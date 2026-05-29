@@ -64,9 +64,35 @@ int main() {
     assert(std::abs(video.currentTime - 0.0f) < 1e-5);
     std::cout << "Seek/Time setter, callback, and clamping tests passed." << std::endl;
 
+    // Test advanced HTML5 states and callbacks
+    assert(video.networkState == FluxUI::Video::NETWORK_EMPTY);
+    assert(video.readyState == FluxUI::Video::HAVE_NOTHING);
+
+    bool seekingCallback = false;
+    bool seekedCallback = false;
+    video.onSeeking = [&]() { seekingCallback = true; };
+    video.onSeeked = [&]() { seekedCallback = true; };
+
+    video.setCurrentTime(20.0f);
+    assert(seekingCallback == true);
+    assert(seekedCallback == true);
+    assert(video.seeking == false);
+    std::cout << "HTML5 seeking/seeked states and callbacks passed." << std::endl;
+
+    bool volumeCallback = false;
+    video.onVolumeChange = [&]() { volumeCallback = true; };
+    video.setVolume(0.5f);
+    assert(volumeCallback == true);
+    volumeCallback = false;
+    video.setMuted(true);
+    assert(volumeCallback == true);
+    std::cout << "HTML5 volumechange callbacks passed." << std::endl;
+
     // Test Attributes parsing
     video.setAttribute("src", "procedural_ocean.mp4");
     assert(video.source == "procedural_ocean.mp4");
+    assert(video.networkState == FluxUI::Video::NETWORK_IDLE);
+    assert(video.readyState == FluxUI::Video::HAVE_ENOUGH_DATA);
 
     video.setAttribute("autoplay", "true");
     assert(video.autoplay == true);

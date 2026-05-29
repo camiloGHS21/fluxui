@@ -783,6 +783,20 @@ public:
 };
 class Video : public Widget {
 public:
+    enum NetworkState {
+        NETWORK_EMPTY = 0,
+        NETWORK_IDLE = 1,
+        NETWORK_LOADING = 2,
+        NETWORK_NO_SOURCE = 3
+    };
+    enum ReadyState {
+        HAVE_NOTHING = 0,
+        HAVE_METADATA = 1,
+        HAVE_CURRENT_DATA = 2,
+        HAVE_FUTURE_DATA = 3,
+        HAVE_ENOUGH_DATA = 4
+    };
+
     std::string source;
     bool autoplay = false;
     bool controls = true;
@@ -793,12 +807,19 @@ public:
     float duration = 60.0f;
     float playbackRate = 1.0f;
     bool paused = true;
+    
+    NetworkState networkState = NETWORK_EMPTY;
+    ReadyState readyState = HAVE_NOTHING;
+    bool seeking = false;
 
     // Callbacks
     std::function<void()> onPlay;
     std::function<void()> onPause;
     std::function<void()> onTimeUpdate;
     std::function<void()> onEnded;
+    std::function<void()> onSeeking;
+    std::function<void()> onSeeked;
+    std::function<void()> onVolumeChange;
 
     Video();
     virtual ~Video() override;

@@ -7809,6 +7809,9 @@ Video::Video() {
     type = "video";
     style.cursor = CursorType::Default;
     lastUpdateTime_ = std::chrono::high_resolution_clock::now();
+    networkState = NETWORK_EMPTY;
+    readyState = HAVE_NOTHING;
+    seeking = false;
 }
 
 Video::~Video() {
@@ -7818,6 +7821,10 @@ Video::~Video() {
 void Video::play() {
     if (!paused) return;
     paused = false;
+    if (networkState == NETWORK_EMPTY && !source.empty()) {
+        networkState = NETWORK_IDLE;
+        readyState = HAVE_ENOUGH_DATA;
+    }
     lastUpdateTime_ = std::chrono::high_resolution_clock::now();
     startAudioThread();
     if (onPlay) onPlay();
@@ -7831,16 +7838,33 @@ void Video::pause() {
 }
 
 void Video::setMuted(bool m) {
+    bool oldMuted = muted;
     muted = m;
+    if (oldMuted != muted && onVolumeChange) {
+        onVolumeChange();
+    }
 }
 
 void Video::setVolume(float v) {
+    float oldVol = volume;
     volume = std::clamp(v, 0.0f, 1.0f);
+    if (oldVol != volume && onVolumeChange) {
+        onVolumeChange();
+    }
 }
 
 void Video::setCurrentTime(float t) {
-    currentTime = std::clamp(t, 0.0f, duration);
-    if (onTimeUpdate) onTimeUpdate();
+    float targetTime = std::clamp(t, 0.0f, duration);
+    if (targetTime != currentTime) {
+        seeking = true;
+        if (onSeeking) onSeeking();
+        
+        currentTime = targetTime;
+        
+        seeking = false;
+        if (onSeeked) onSeeked();
+        if (onTimeUpdate) onTimeUpdate();
+    }
 }
 
 void Video::layout(const Rect& parentBounds) {
@@ -8140,6 +8164,16 @@ void Video::setAttribute(const std::string& name, const std::string& value) {
     Widget::setAttribute(name, value);
     if (name == "src" || name == "source") {
         source = value;
+        if (!source.empty()) {
+            networkState = NETWORK_LOADING;
+            readyState = HAVE_METADATA;
+            // Transition quickly to simulated ready state
+            networkState = NETWORK_IDLE;
+            readyState = HAVE_ENOUGH_DATA;
+        } else {
+            networkState = NETWORK_EMPTY;
+            readyState = HAVE_NOTHING;
+        }
     } else if (name == "autoplay") {
         autoplay = (value == "true" || value == "autoplay" || value == "1");
         if (autoplay) play();
