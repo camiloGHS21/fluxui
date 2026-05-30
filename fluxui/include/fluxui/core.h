@@ -1121,81 +1121,400 @@ struct Style {
     bool hasMinInlineSize = false, hasMinBlockSize = false;
     bool hasMaxInlineSize = false, hasMaxBlockSize = false;
 
-    void resolveLogicalProperties() {
+    // Physical Spacing Explicit Storage & Flags
+    float marginT = 0.0f, marginR = 0.0f, marginB = 0.0f, marginL = 0.0f;
+    float paddingT = 0.0f, paddingR = 0.0f, paddingB = 0.0f, paddingL = 0.0f;
+    bool hasMarginT = false, hasMarginR = false, hasMarginB = false, hasMarginL = false;
+    bool hasPaddingT = false, hasPaddingR = false, hasPaddingB = false, hasPaddingL = false;
+
+    CSSValue topVal, rightVal, bottomVal, leftVal;
+    bool hasTopVal = false, hasRightVal = false, hasBottomVal = false, hasLeftVal = false;
+
+    Border borderT, borderR, borderB, borderL;
+    bool hasBorderT = false, hasBorderR = false, hasBorderB = false, hasBorderL = false;
+
+    bool hasWidthVal = false, hasHeightVal = false;
+    bool hasMinWidthVal = false, hasMinHeightVal = false;
+    bool hasMaxWidthVal = false, hasMaxHeightVal = false;
+
+    // Declaration order tracking
+    uint32_t propertyOrder = 0;
+
+    // Margin orders
+    uint32_t orderMarginTop = 0, orderMarginRight = 0, orderMarginBottom = 0, orderMarginLeft = 0;
+    uint32_t orderMarginBlockStart = 0, orderMarginBlockEnd = 0, orderMarginInlineStart = 0, orderMarginInlineEnd = 0;
+
+    // Padding orders
+    uint32_t orderPaddingTop = 0, orderPaddingRight = 0, orderPaddingBottom = 0, orderPaddingLeft = 0;
+    uint32_t orderPaddingBlockStart = 0, orderPaddingBlockEnd = 0, orderPaddingInlineStart = 0, orderPaddingInlineEnd = 0;
+
+    // Border orders
+    uint32_t orderBorderTop = 0, orderBorderRight = 0, orderBorderBottom = 0, orderBorderLeft = 0;
+    uint32_t orderBorderBlockStart = 0, orderBorderBlockEnd = 0, orderBorderInlineStart = 0, orderBorderInlineEnd = 0;
+
+    // Inset orders
+    uint32_t orderTop = 0, orderRight = 0, orderBottom = 0, orderLeft = 0;
+    uint32_t orderInsetBlockStart = 0, orderInsetBlockEnd = 0, orderInsetInlineStart = 0, orderInsetInlineEnd = 0;
+
+    // Sizing orders
+    uint32_t orderWidth = 0, orderHeight = 0;
+    uint32_t orderMinWidth = 0, orderMinHeight = 0;
+    uint32_t orderMaxWidth = 0, orderMaxHeight = 0;
+    uint32_t orderInlineSize = 0, orderBlockSize = 0;
+    uint32_t orderMinInlineSize = 0, orderMinBlockSize = 0;
+    uint32_t orderMaxInlineSize = 0, orderMaxBlockSize = 0;
+
+    enum PhysicalSide { PhysTop, PhysRight, PhysBottom, PhysLeft };
+    enum LogicalSide { LogBlockStart, LogBlockEnd, LogInlineStart, LogInlineEnd };
+
+    PhysicalSide mapLogicalSide(LogicalSide log) const {
         if (writingMode == WritingMode::HorizontalTb) {
-            if (hasInlineSize) width = inlineSize;
-            if (hasBlockSize) height = blockSize;
-            if (hasMinInlineSize) minWidth = minInlineSize;
-            if (hasMinBlockSize) minHeight = minBlockSize;
-            if (hasMaxInlineSize) maxWidth = maxInlineSize;
-            if (hasMaxBlockSize) maxHeight = maxBlockSize;
-
-            if (hasMarginBlockStart) margin.top = marginBlockStart;
-            if (hasMarginBlockEnd) margin.bottom = marginBlockEnd;
-            if (hasPaddingBlockStart) padding.top = paddingBlockStart;
-            if (hasPaddingBlockEnd) padding.bottom = paddingBlockEnd;
-            if (hasInsetBlockStart) top = insetBlockStart;
-            if (hasInsetBlockEnd) bottom = insetBlockEnd;
-            if (hasBorderBlockStart) { borderTop = borderBlockStart; hasBorderTop = true; }
-            if (hasBorderBlockEnd) { borderBottom = borderBlockEnd; hasBorderBottom = true; }
-
-            if (direction == Direction::Ltr) {
-                if (hasMarginInlineStart) margin.left = marginInlineStart;
-                if (hasMarginInlineEnd) margin.right = marginInlineEnd;
-                if (hasPaddingInlineStart) padding.left = paddingInlineStart;
-                if (hasPaddingInlineEnd) padding.right = paddingInlineEnd;
-                if (hasInsetInlineStart) left = insetInlineStart;
-                if (hasInsetInlineEnd) right = insetInlineEnd;
-                if (hasBorderInlineStart) { borderLeft = borderInlineStart; hasBorderLeft = true; }
-                if (hasBorderInlineEnd) { borderRight = borderInlineEnd; hasBorderRight = true; }
-            } else {
-                if (hasMarginInlineStart) margin.right = marginInlineStart;
-                if (hasMarginInlineEnd) margin.left = marginInlineEnd;
-                if (hasPaddingInlineStart) padding.right = paddingInlineStart;
-                if (hasPaddingInlineEnd) padding.left = paddingInlineEnd;
-                if (hasInsetInlineStart) right = insetInlineStart;
-                if (hasInsetInlineEnd) left = insetInlineEnd;
-                if (hasBorderInlineStart) { borderRight = borderInlineStart; hasBorderRight = true; }
-                if (hasBorderInlineEnd) { borderLeft = borderInlineEnd; hasBorderLeft = true; }
+            switch(log) {
+                case LogBlockStart: return PhysTop;
+                case LogBlockEnd: return PhysBottom;
+                case LogInlineStart: return (direction == Direction::Ltr) ? PhysLeft : PhysRight;
+                case LogInlineEnd: return (direction == Direction::Ltr) ? PhysRight : PhysLeft;
             }
-        } else {
-            if (hasInlineSize) height = inlineSize;
-            if (hasBlockSize) width = blockSize;
-            if (hasMinInlineSize) minHeight = minInlineSize;
-            if (hasMinBlockSize) minWidth = minBlockSize;
-            if (hasMaxInlineSize) maxHeight = maxInlineSize;
-            if (hasMaxBlockSize) maxWidth = maxBlockSize;
+        } else if (writingMode == WritingMode::VerticalRl) {
+            switch(log) {
+                case LogBlockStart: return PhysRight;
+                case LogBlockEnd: return PhysLeft;
+                case LogInlineStart: return (direction == Direction::Ltr) ? PhysTop : PhysBottom;
+                case LogInlineEnd: return (direction == Direction::Ltr) ? PhysBottom : PhysTop;
+            }
+        } else { // VerticalLr
+            switch(log) {
+                case LogBlockStart: return PhysLeft;
+                case LogBlockEnd: return PhysRight;
+                case LogInlineStart: return (direction == Direction::Ltr) ? PhysTop : PhysBottom;
+                case LogInlineEnd: return (direction == Direction::Ltr) ? PhysBottom : PhysTop;
+            }
+        }
+        return PhysTop;
+    }
 
-            if (hasMarginInlineStart) margin.top = marginInlineStart;
-            if (hasMarginInlineEnd) margin.bottom = marginInlineEnd;
-            if (hasPaddingInlineStart) padding.top = paddingInlineStart;
-            if (hasPaddingInlineEnd) padding.bottom = paddingInlineEnd;
-            if (hasInsetInlineStart) top = insetInlineStart;
-            if (hasInsetInlineEnd) bottom = insetInlineEnd;
-            if (hasBorderInlineStart) { borderTop = borderInlineStart; hasBorderTop = true; }
-            if (hasBorderInlineEnd) { borderBottom = borderInlineEnd; hasBorderBottom = true; }
+    LogicalSide getLogicalSideMapping(PhysicalSide phys) const {
+        for (int l = 0; l < 4; ++l) {
+            if (mapLogicalSide((LogicalSide)l) == phys) {
+                return (LogicalSide)l;
+            }
+        }
+        return LogBlockStart;
+    }
 
-            bool isStartRight = (writingMode == WritingMode::VerticalRl);
-            if (direction == Direction::Rtl) isStartRight = !isStartRight;
+    void resolveLogicalProperties() {
+        // Resolve Margins
+        for (int p = 0; p < 4; ++p) {
+            PhysicalSide phys = (PhysicalSide)p;
+            LogicalSide log = getLogicalSideMapping(phys);
 
-            if (isStartRight) {
-                if (hasMarginBlockStart) margin.right = marginBlockStart;
-                if (hasMarginBlockEnd) margin.left = marginBlockEnd;
-                if (hasPaddingBlockStart) padding.right = paddingBlockStart;
-                if (hasPaddingBlockEnd) padding.left = paddingBlockEnd;
-                if (hasInsetBlockStart) right = insetBlockStart;
-                if (hasInsetBlockEnd) left = insetBlockEnd;
-                if (hasBorderBlockStart) { borderRight = borderBlockStart; hasBorderRight = true; }
-                if (hasBorderBlockEnd) { borderLeft = borderBlockEnd; hasBorderLeft = true; }
+            float physVal = 0.0f;
+            bool hasPhys = false;
+            uint32_t physOrder = 0;
+            switch(phys) {
+                case PhysTop: physVal = marginT; hasPhys = hasMarginT; physOrder = orderMarginTop; break;
+                case PhysRight: physVal = marginR; hasPhys = hasMarginR; physOrder = orderMarginRight; break;
+                case PhysBottom: physVal = marginB; hasPhys = hasMarginB; physOrder = orderMarginBottom; break;
+                case PhysLeft: physVal = marginL; hasPhys = hasMarginL; physOrder = orderMarginLeft; break;
+            }
+
+            float logVal = 0.0f;
+            bool hasLog = false;
+            uint32_t logOrder = 0;
+            switch(log) {
+                case LogBlockStart: logVal = marginBlockStart; hasLog = hasMarginBlockStart; logOrder = orderMarginBlockStart; break;
+                case LogBlockEnd: logVal = marginBlockEnd; hasLog = hasMarginBlockEnd; logOrder = orderMarginBlockEnd; break;
+                case LogInlineStart: logVal = marginInlineStart; hasLog = hasMarginInlineStart; logOrder = orderMarginInlineStart; break;
+                case LogInlineEnd: logVal = marginInlineEnd; hasLog = hasMarginInlineEnd; logOrder = orderMarginInlineEnd; break;
+            }
+
+            float finalVal = 0.0f;
+            if (hasPhys && hasLog) {
+                finalVal = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                finalVal = logVal;
+            } else if (hasPhys) {
+                finalVal = physVal;
             } else {
-                if (hasMarginBlockStart) margin.left = marginBlockStart;
-                if (hasMarginBlockEnd) margin.right = marginBlockEnd;
-                if (hasPaddingBlockStart) padding.left = paddingBlockStart;
-                if (hasPaddingBlockEnd) padding.right = paddingBlockEnd;
-                if (hasInsetBlockStart) left = insetBlockStart;
-                if (hasInsetBlockEnd) right = insetBlockEnd;
-                if (hasBorderBlockStart) { borderLeft = borderBlockStart; hasBorderLeft = true; }
-                if (hasBorderBlockEnd) { borderRight = borderBlockEnd; hasBorderRight = true; }
+                // Keep default if neither set
+                switch(phys) {
+                    case PhysTop: finalVal = margin.top; break;
+                    case PhysRight: finalVal = margin.right; break;
+                    case PhysBottom: finalVal = margin.bottom; break;
+                    case PhysLeft: finalVal = margin.left; break;
+                }
+            }
+
+            switch(phys) {
+                case PhysTop: margin.top = finalVal; break;
+                case PhysRight: margin.right = finalVal; break;
+                case PhysBottom: margin.bottom = finalVal; break;
+                case PhysLeft: margin.left = finalVal; break;
+            }
+        }
+
+        // Resolve Paddings
+        for (int p = 0; p < 4; ++p) {
+            PhysicalSide phys = (PhysicalSide)p;
+            LogicalSide log = getLogicalSideMapping(phys);
+
+            float physVal = 0.0f;
+            bool hasPhys = false;
+            uint32_t physOrder = 0;
+            switch(phys) {
+                case PhysTop: physVal = paddingT; hasPhys = hasPaddingT; physOrder = orderPaddingTop; break;
+                case PhysRight: physVal = paddingR; hasPhys = hasPaddingR; physOrder = orderPaddingRight; break;
+                case PhysBottom: physVal = paddingB; hasPhys = hasPaddingB; physOrder = orderPaddingBottom; break;
+                case PhysLeft: physVal = paddingL; hasPhys = hasPaddingL; physOrder = orderPaddingLeft; break;
+            }
+
+            float logVal = 0.0f;
+            bool hasLog = false;
+            uint32_t logOrder = 0;
+            switch(log) {
+                case LogBlockStart: logVal = paddingBlockStart; hasLog = hasPaddingBlockStart; logOrder = orderPaddingBlockStart; break;
+                case LogBlockEnd: logVal = paddingBlockEnd; hasLog = hasPaddingBlockEnd; logOrder = orderPaddingBlockEnd; break;
+                case LogInlineStart: logVal = paddingInlineStart; hasLog = hasPaddingInlineStart; logOrder = orderPaddingInlineStart; break;
+                case LogInlineEnd: logVal = paddingInlineEnd; hasLog = hasPaddingInlineEnd; logOrder = orderPaddingInlineEnd; break;
+            }
+
+            float finalVal = 0.0f;
+            if (hasPhys && hasLog) {
+                finalVal = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                finalVal = logVal;
+            } else if (hasPhys) {
+                finalVal = physVal;
+            } else {
+                switch(phys) {
+                    case PhysTop: finalVal = padding.top; break;
+                    case PhysRight: finalVal = padding.right; break;
+                    case PhysBottom: finalVal = padding.bottom; break;
+                    case PhysLeft: finalVal = padding.left; break;
+                }
+            }
+
+            switch(phys) {
+                case PhysTop: padding.top = finalVal; break;
+                case PhysRight: padding.right = finalVal; break;
+                case PhysBottom: padding.bottom = finalVal; break;
+                case PhysLeft: padding.left = finalVal; break;
+            }
+        }
+
+        // Resolve Insets
+        for (int p = 0; p < 4; ++p) {
+            PhysicalSide phys = (PhysicalSide)p;
+            LogicalSide log = getLogicalSideMapping(phys);
+
+            CSSValue physVal;
+            bool hasPhys = false;
+            uint32_t physOrder = 0;
+            switch(phys) {
+                case PhysTop: physVal = topVal; hasPhys = hasTopVal; physOrder = orderTop; break;
+                case PhysRight: physVal = rightVal; hasPhys = hasRightVal; physOrder = orderRight; break;
+                case PhysBottom: physVal = bottomVal; hasPhys = hasBottomVal; physOrder = orderBottom; break;
+                case PhysLeft: physVal = leftVal; hasPhys = hasLeftVal; physOrder = orderLeft; break;
+            }
+
+            CSSValue logVal;
+            bool hasLog = false;
+            uint32_t logOrder = 0;
+            switch(log) {
+                case LogBlockStart: logVal = insetBlockStart; hasLog = hasInsetBlockStart; logOrder = orderInsetBlockStart; break;
+                case LogBlockEnd: logVal = insetBlockEnd; hasLog = hasInsetBlockEnd; logOrder = orderInsetBlockEnd; break;
+                case LogInlineStart: logVal = insetInlineStart; hasLog = hasInsetInlineStart; logOrder = orderInsetInlineStart; break;
+                case LogInlineEnd: logVal = insetInlineEnd; hasLog = hasInsetInlineEnd; logOrder = orderInsetInlineEnd; break;
+            }
+
+            CSSValue finalVal;
+            bool finalSet = false;
+            if (hasPhys && hasLog) {
+                finalVal = (logOrder > physOrder) ? logVal : physVal;
+                finalSet = true;
+            } else if (hasLog) {
+                finalVal = logVal;
+                finalSet = true;
+            } else if (hasPhys) {
+                finalVal = physVal;
+                finalSet = true;
+            }
+
+            if (finalSet) {
+                switch(phys) {
+                    case PhysTop: top = finalVal; break;
+                    case PhysRight: right = finalVal; break;
+                    case PhysBottom: bottom = finalVal; break;
+                    case PhysLeft: left = finalVal; break;
+                }
+            }
+        }
+
+        // Resolve Borders
+        for (int p = 0; p < 4; ++p) {
+            PhysicalSide phys = (PhysicalSide)p;
+            LogicalSide log = getLogicalSideMapping(phys);
+
+            Border physVal;
+            bool hasPhys = false;
+            uint32_t physOrder = 0;
+            switch(phys) {
+                case PhysTop: physVal = borderT; hasPhys = hasBorderT; physOrder = orderBorderTop; break;
+                case PhysRight: physVal = borderR; hasPhys = hasBorderR; physOrder = orderBorderRight; break;
+                case PhysBottom: physVal = borderB; hasPhys = hasBorderB; physOrder = orderBorderBottom; break;
+                case PhysLeft: physVal = borderL; hasPhys = hasBorderL; physOrder = orderBorderLeft; break;
+            }
+
+            Border logVal;
+            bool hasLog = false;
+            uint32_t logOrder = 0;
+            switch(log) {
+                case LogBlockStart: logVal = borderBlockStart; hasLog = hasBorderBlockStart; logOrder = orderBorderBlockStart; break;
+                case LogBlockEnd: logVal = borderBlockEnd; hasLog = hasBorderBlockEnd; logOrder = orderBorderBlockEnd; break;
+                case LogInlineStart: logVal = borderInlineStart; hasLog = hasBorderInlineStart; logOrder = orderBorderInlineStart; break;
+                case LogInlineEnd: logVal = borderInlineEnd; hasLog = hasBorderInlineEnd; logOrder = orderBorderInlineEnd; break;
+            }
+
+            Border finalVal;
+            bool finalSet = false;
+            if (hasPhys && hasLog) {
+                finalVal = (logOrder > physOrder) ? logVal : physVal;
+                finalSet = true;
+            } else if (hasLog) {
+                finalVal = logVal;
+                finalSet = true;
+            } else if (hasPhys) {
+                finalVal = physVal;
+                finalSet = true;
+            }
+
+            if (finalSet) {
+                switch(phys) {
+                    case PhysTop: borderTop = finalVal; hasBorderTop = true; break;
+                    case PhysRight: borderRight = finalVal; hasBorderRight = true; break;
+                    case PhysBottom: borderBottom = finalVal; hasBorderBottom = true; break;
+                    case PhysLeft: borderLeft = finalVal; hasBorderLeft = true; break;
+                }
+            }
+        }
+
+        // Resolve Width group
+        {
+            bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
+            CSSValue physVal = width;
+            bool hasPhys = hasWidthVal;
+            uint32_t physOrder = orderWidth;
+
+            CSSValue logVal = isWidthLogical ? blockSize : inlineSize;
+            bool hasLog = isWidthLogical ? hasBlockSize : hasInlineSize;
+            uint32_t logOrder = isWidthLogical ? orderBlockSize : orderInlineSize;
+
+            if (hasPhys && hasLog) {
+                width = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                width = logVal;
+            } else if (hasPhys) {
+                width = physVal;
+            }
+        }
+
+        // Resolve Height group
+        {
+            bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
+            CSSValue physVal = height;
+            bool hasPhys = hasHeightVal;
+            uint32_t physOrder = orderHeight;
+
+            CSSValue logVal = isHeightLogical ? blockSize : inlineSize;
+            bool hasLog = isHeightLogical ? hasBlockSize : hasInlineSize;
+            uint32_t logOrder = isHeightLogical ? orderBlockSize : orderInlineSize;
+
+            if (hasPhys && hasLog) {
+                height = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                height = logVal;
+            } else if (hasPhys) {
+                height = physVal;
+            }
+        }
+
+        // Resolve MinWidth group
+        {
+            bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
+            CSSValue physVal = minWidth;
+            bool hasPhys = hasMinWidthVal;
+            uint32_t physOrder = orderMinWidth;
+
+            CSSValue logVal = isWidthLogical ? minBlockSize : minInlineSize;
+            bool hasLog = isWidthLogical ? hasMinBlockSize : hasMinInlineSize;
+            uint32_t logOrder = isWidthLogical ? orderMinBlockSize : orderMinInlineSize;
+
+            if (hasPhys && hasLog) {
+                minWidth = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                minWidth = logVal;
+            } else if (hasPhys) {
+                minWidth = physVal;
+            }
+        }
+
+        // Resolve MinHeight group
+        {
+            bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
+            CSSValue physVal = minHeight;
+            bool hasPhys = hasMinHeightVal;
+            uint32_t physOrder = orderMinHeight;
+
+            CSSValue logVal = isHeightLogical ? minBlockSize : minInlineSize;
+            bool hasLog = isHeightLogical ? hasMinBlockSize : hasMinInlineSize;
+            uint32_t logOrder = isHeightLogical ? orderMinBlockSize : orderMinInlineSize;
+
+            if (hasPhys && hasLog) {
+                minHeight = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                minHeight = logVal;
+            } else if (hasPhys) {
+                minHeight = physVal;
+            }
+        }
+
+        // Resolve MaxWidth group
+        {
+            bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
+            CSSValue physVal = maxWidth;
+            bool hasPhys = hasMaxWidthVal;
+            uint32_t physOrder = orderMaxWidth;
+
+            CSSValue logVal = isWidthLogical ? maxBlockSize : maxInlineSize;
+            bool hasLog = isWidthLogical ? hasMaxBlockSize : hasMaxInlineSize;
+            uint32_t logOrder = isWidthLogical ? orderMaxBlockSize : orderMaxInlineSize;
+
+            if (hasPhys && hasLog) {
+                maxWidth = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                maxWidth = logVal;
+            } else if (hasPhys) {
+                maxWidth = physVal;
+            }
+        }
+
+        // Resolve MaxHeight group
+        {
+            bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
+            CSSValue physVal = maxHeight;
+            bool hasPhys = hasMaxHeightVal;
+            uint32_t physOrder = orderMaxHeight;
+
+            CSSValue logVal = isHeightLogical ? maxBlockSize : maxInlineSize;
+            bool hasLog = isHeightLogical ? hasMaxBlockSize : hasMaxInlineSize;
+            uint32_t logOrder = isHeightLogical ? orderMaxBlockSize : orderMaxInlineSize;
+
+            if (hasPhys && hasLog) {
+                maxHeight = (logOrder > physOrder) ? logVal : physVal;
+            } else if (hasLog) {
+                maxHeight = logVal;
+            } else if (hasPhys) {
+                maxHeight = physVal;
             }
         }
     }

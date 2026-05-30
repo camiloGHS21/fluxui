@@ -3557,31 +3557,44 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
                 }
             }
         }
-        style.border = parseBorder(value, emBase);
+        Border b = parseBorder(value, emBase);
+        style.borderT = b; style.hasBorderT = true; style.orderBorderTop = ++style.propertyOrder;
+        style.borderR = b; style.hasBorderR = true; style.orderBorderRight = ++style.propertyOrder;
+        style.borderB = b; style.hasBorderB = true; style.orderBorderBottom = ++style.propertyOrder;
+        style.borderL = b; style.hasBorderL = true; style.orderBorderLeft = ++style.propertyOrder;
+        style.border = b;
     } else if (name == "border-top") {
-        style.borderTop = parseBorder(value, emBase);
-        style.hasBorderTop = true;
+        style.borderT = parseBorder(value, emBase);
+        style.hasBorderT = true;
+        style.orderBorderTop = ++style.propertyOrder;
     } else if (name == "border-right") {
-        style.borderRight = parseBorder(value, emBase);
-        style.hasBorderRight = true;
+        style.borderR = parseBorder(value, emBase);
+        style.hasBorderR = true;
+        style.orderBorderRight = ++style.propertyOrder;
     } else if (name == "border-bottom") {
-        style.borderBottom = parseBorder(value, emBase);
-        style.hasBorderBottom = true;
+        style.borderB = parseBorder(value, emBase);
+        style.hasBorderB = true;
+        style.orderBorderBottom = ++style.propertyOrder;
     } else if (name == "border-left") {
-        style.borderLeft = parseBorder(value, emBase);
-        style.hasBorderLeft = true;
+        style.borderL = parseBorder(value, emBase);
+        style.hasBorderL = true;
+        style.orderBorderLeft = ++style.propertyOrder;
     } else if (name == "border-block-start") {
         style.borderBlockStart = parseBorder(value, emBase);
         style.hasBorderBlockStart = true;
+        style.orderBorderBlockStart = ++style.propertyOrder;
     } else if (name == "border-block-end") {
         style.borderBlockEnd = parseBorder(value, emBase);
         style.hasBorderBlockEnd = true;
+        style.orderBorderBlockEnd = ++style.propertyOrder;
     } else if (name == "border-inline-start") {
         style.borderInlineStart = parseBorder(value, emBase);
         style.hasBorderInlineStart = true;
+        style.orderBorderInlineStart = ++style.propertyOrder;
     } else if (name == "border-inline-end") {
         style.borderInlineEnd = parseBorder(value, emBase);
         style.hasBorderInlineEnd = true;
+        style.orderBorderInlineEnd = ++style.propertyOrder;
     } else if (name == "border-color") {
         if (isDynamicValue(value)) {
             style.unresolvedBorderColor = value;
@@ -3599,15 +3612,27 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
     } else if (name == "outline-offset") {
         style.outlineOffset = parseLengthPixels(value, emBase);
     } else if (name == "padding") {
-        style.padding = parseEdgeInsets(value, emBase);
+        EdgeInsets inset = parseEdgeInsets(value, emBase);
+        style.paddingT = inset.top; style.hasPaddingT = true; style.orderPaddingTop = ++style.propertyOrder;
+        style.paddingR = inset.right; style.hasPaddingR = true; style.orderPaddingRight = ++style.propertyOrder;
+        style.paddingB = inset.bottom; style.hasPaddingB = true; style.orderPaddingBottom = ++style.propertyOrder;
+        style.paddingL = inset.left; style.hasPaddingL = true; style.orderPaddingLeft = ++style.propertyOrder;
     } else if (name == "padding-top") {
-        style.padding.top = parseLengthPixels(value, emBase);
+        style.paddingT = parseLengthPixels(value, emBase);
+        style.hasPaddingT = true;
+        style.orderPaddingTop = ++style.propertyOrder;
     } else if (name == "padding-right") {
-        style.padding.right = parseLengthPixels(value, emBase);
+        style.paddingR = parseLengthPixels(value, emBase);
+        style.hasPaddingR = true;
+        style.orderPaddingRight = ++style.propertyOrder;
     } else if (name == "padding-bottom") {
-        style.padding.bottom = parseLengthPixels(value, emBase);
+        style.paddingB = parseLengthPixels(value, emBase);
+        style.hasPaddingB = true;
+        style.orderPaddingBottom = ++style.propertyOrder;
     } else if (name == "padding-left") {
-        style.padding.left = parseLengthPixels(value, emBase);
+        style.paddingL = parseLengthPixels(value, emBase);
+        style.hasPaddingL = true;
+        style.orderPaddingLeft = ++style.propertyOrder;
     } else if (name == "padding-block") {
         std::string_view tokens[4];
         int count = 0;
@@ -3616,6 +3641,8 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.paddingBlockEnd = count > 1 ? parseLengthPixels(std::string(tokens[1]), emBase) : style.paddingBlockStart;
         style.hasPaddingBlockStart = count > 0;
         style.hasPaddingBlockEnd = count > 0;
+        style.orderPaddingBlockStart = ++style.propertyOrder;
+        style.orderPaddingBlockEnd = ++style.propertyOrder;
     } else if (name == "padding-inline") {
         std::string_view tokens[4];
         int count = 0;
@@ -3624,28 +3651,46 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.paddingInlineEnd = count > 1 ? parseLengthPixels(std::string(tokens[1]), emBase) : style.paddingInlineStart;
         style.hasPaddingInlineStart = count > 0;
         style.hasPaddingInlineEnd = count > 0;
+        style.orderPaddingInlineStart = ++style.propertyOrder;
+        style.orderPaddingInlineEnd = ++style.propertyOrder;
     } else if (name == "padding-block-start") {
         style.paddingBlockStart = parseLengthPixels(value, emBase);
         style.hasPaddingBlockStart = true;
+        style.orderPaddingBlockStart = ++style.propertyOrder;
     } else if (name == "padding-block-end") {
         style.paddingBlockEnd = parseLengthPixels(value, emBase);
         style.hasPaddingBlockEnd = true;
+        style.orderPaddingBlockEnd = ++style.propertyOrder;
     } else if (name == "padding-inline-start") {
         style.paddingInlineStart = parseLengthPixels(value, emBase);
         style.hasPaddingInlineStart = true;
+        style.orderPaddingInlineStart = ++style.propertyOrder;
     } else if (name == "padding-inline-end") {
         style.paddingInlineEnd = parseLengthPixels(value, emBase);
         style.hasPaddingInlineEnd = true;
+        style.orderPaddingInlineEnd = ++style.propertyOrder;
     } else if (name == "margin") {
-        style.margin = parseEdgeInsets(value, emBase);
+        EdgeInsets inset = parseEdgeInsets(value, emBase);
+        style.marginT = inset.top; style.hasMarginT = true; style.orderMarginTop = ++style.propertyOrder;
+        style.marginR = inset.right; style.hasMarginR = true; style.orderMarginRight = ++style.propertyOrder;
+        style.marginB = inset.bottom; style.hasMarginB = true; style.orderMarginBottom = ++style.propertyOrder;
+        style.marginL = inset.left; style.hasMarginL = true; style.orderMarginLeft = ++style.propertyOrder;
     } else if (name == "margin-top") {
-        style.margin.top = parseLengthPixels(value, emBase);
+        style.marginT = parseLengthPixels(value, emBase);
+        style.hasMarginT = true;
+        style.orderMarginTop = ++style.propertyOrder;
     } else if (name == "margin-right") {
-        style.margin.right = parseLengthPixels(value, emBase);
+        style.marginR = parseLengthPixels(value, emBase);
+        style.hasMarginR = true;
+        style.orderMarginRight = ++style.propertyOrder;
     } else if (name == "margin-bottom") {
-        style.margin.bottom = parseLengthPixels(value, emBase);
+        style.marginB = parseLengthPixels(value, emBase);
+        style.hasMarginB = true;
+        style.orderMarginBottom = ++style.propertyOrder;
     } else if (name == "margin-left") {
-        style.margin.left = parseLengthPixels(value, emBase);
+        style.marginL = parseLengthPixels(value, emBase);
+        style.hasMarginL = true;
+        style.orderMarginLeft = ++style.propertyOrder;
     } else if (name == "margin-block") {
         std::string_view tokens[4];
         int count = 0;
@@ -3654,6 +3699,8 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.marginBlockEnd = count > 1 ? parseLengthPixels(std::string(tokens[1]), emBase) : style.marginBlockStart;
         style.hasMarginBlockStart = count > 0;
         style.hasMarginBlockEnd = count > 0;
+        style.orderMarginBlockStart = ++style.propertyOrder;
+        style.orderMarginBlockEnd = ++style.propertyOrder;
     } else if (name == "margin-inline") {
         std::string_view tokens[4];
         int count = 0;
@@ -3662,24 +3709,30 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.marginInlineEnd = count > 1 ? parseLengthPixels(std::string(tokens[1]), emBase) : style.marginInlineStart;
         style.hasMarginInlineStart = count > 0;
         style.hasMarginInlineEnd = count > 0;
+        style.orderMarginInlineStart = ++style.propertyOrder;
+        style.orderMarginInlineEnd = ++style.propertyOrder;
     } else if (name == "margin-block-start") {
         style.marginBlockStart = parseLengthPixels(value, emBase);
         style.hasMarginBlockStart = true;
+        style.orderMarginBlockStart = ++style.propertyOrder;
     } else if (name == "margin-block-end") {
         style.marginBlockEnd = parseLengthPixels(value, emBase);
         style.hasMarginBlockEnd = true;
+        style.orderMarginBlockEnd = ++style.propertyOrder;
     } else if (name == "margin-inline-start") {
         style.marginInlineStart = parseLengthPixels(value, emBase);
         style.hasMarginInlineStart = true;
+        style.orderMarginInlineStart = ++style.propertyOrder;
     } else if (name == "margin-inline-end") {
         style.marginInlineEnd = parseLengthPixels(value, emBase);
         style.hasMarginInlineEnd = true;
+        style.orderMarginInlineEnd = ++style.propertyOrder;
     } else if (name == "inset") {
         EdgeInsets inset = parseEdgeInsets(value, emBase);
-        style.top = CSSValue::px(inset.top);
-        style.right = CSSValue::px(inset.right);
-        style.bottom = CSSValue::px(inset.bottom);
-        style.left = CSSValue::px(inset.left);
+        style.topVal = CSSValue::px(inset.top); style.hasTopVal = true; style.orderTop = ++style.propertyOrder;
+        style.rightVal = CSSValue::px(inset.right); style.hasRightVal = true; style.orderRight = ++style.propertyOrder;
+        style.bottomVal = CSSValue::px(inset.bottom); style.hasBottomVal = true; style.orderBottom = ++style.propertyOrder;
+        style.leftVal = CSSValue::px(inset.left); style.hasLeftVal = true; style.orderLeft = ++style.propertyOrder;
     } else if (name == "inset-block") {
         std::string_view tokens[4];
         int count = 0;
@@ -3688,6 +3741,8 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.insetBlockEnd = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.insetBlockStart;
         style.hasInsetBlockStart = count > 0;
         style.hasInsetBlockEnd = count > 0;
+        style.orderInsetBlockStart = ++style.propertyOrder;
+        style.orderInsetBlockEnd = ++style.propertyOrder;
     } else if (name == "inset-inline") {
         std::string_view tokens[4];
         int count = 0;
@@ -3696,48 +3751,72 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.insetInlineEnd = count > 1 ? parseCSSValue(std::string(tokens[1])) : style.insetInlineStart;
         style.hasInsetInlineStart = count > 0;
         style.hasInsetInlineEnd = count > 0;
+        style.orderInsetInlineStart = ++style.propertyOrder;
+        style.orderInsetInlineEnd = ++style.propertyOrder;
     } else if (name == "inset-block-start") {
         style.insetBlockStart = parseCSSValue(value);
         style.hasInsetBlockStart = true;
+        style.orderInsetBlockStart = ++style.propertyOrder;
     } else if (name == "inset-block-end") {
         style.insetBlockEnd = parseCSSValue(value);
         style.hasInsetBlockEnd = true;
+        style.orderInsetBlockEnd = ++style.propertyOrder;
     } else if (name == "inset-inline-start") {
         style.insetInlineStart = parseCSSValue(value);
         style.hasInsetInlineStart = true;
+        style.orderInsetInlineStart = ++style.propertyOrder;
     } else if (name == "inset-inline-end") {
         style.insetInlineEnd = parseCSSValue(value);
         style.hasInsetInlineEnd = true;
+        style.orderInsetInlineEnd = ++style.propertyOrder;
     } else if (name == "width") {
         style.width = parseCSSValue(value);
+        style.hasWidthVal = true;
+        style.orderWidth = ++style.propertyOrder;
     } else if (name == "inline-size") {
         style.inlineSize = parseCSSValue(value);
         style.hasInlineSize = true;
+        style.orderInlineSize = ++style.propertyOrder;
     } else if (name == "height") {
         style.height = parseCSSValue(value);
+        style.hasHeightVal = true;
+        style.orderHeight = ++style.propertyOrder;
     } else if (name == "block-size") {
         style.blockSize = parseCSSValue(value);
         style.hasBlockSize = true;
+        style.orderBlockSize = ++style.propertyOrder;
     } else if (name == "min-width") {
         style.minWidth = parseCSSValue(value);
+        style.hasMinWidthVal = true;
+        style.orderMinWidth = ++style.propertyOrder;
     } else if (name == "min-inline-size") {
         style.minInlineSize = parseCSSValue(value);
         style.hasMinInlineSize = true;
+        style.orderMinInlineSize = ++style.propertyOrder;
     } else if (name == "min-height") {
         style.minHeight = parseCSSValue(value);
+        style.hasMinHeightVal = true;
+        style.orderMinHeight = ++style.propertyOrder;
     } else if (name == "min-block-size") {
         style.minBlockSize = parseCSSValue(value);
         style.hasMinBlockSize = true;
+        style.orderMinBlockSize = ++style.propertyOrder;
     } else if (name == "max-width") {
         style.maxWidth = parseCSSValue(value);
+        style.hasMaxWidthVal = true;
+        style.orderMaxWidth = ++style.propertyOrder;
     } else if (name == "max-inline-size") {
         style.maxInlineSize = parseCSSValue(value);
         style.hasMaxInlineSize = true;
+        style.orderMaxInlineSize = ++style.propertyOrder;
     } else if (name == "max-height") {
         style.maxHeight = parseCSSValue(value);
+        style.hasMaxHeightVal = true;
+        style.orderMaxHeight = ++style.propertyOrder;
     } else if (name == "max-block-size") {
         style.maxBlockSize = parseCSSValue(value);
         style.hasMaxBlockSize = true;
+        style.orderMaxBlockSize = ++style.propertyOrder;
     }
     return false;
 }
@@ -4042,13 +4121,21 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "sticky") style.position = Position::Sticky;
         else style.position = Position::Static;
     } else if (name == "top") {
-        style.top = parseCSSValue(value);
+        style.topVal = parseCSSValue(value);
+        style.hasTopVal = true;
+        style.orderTop = ++style.propertyOrder;
     } else if (name == "right") {
-        style.right = parseCSSValue(value);
+        style.rightVal = parseCSSValue(value);
+        style.hasRightVal = true;
+        style.orderRight = ++style.propertyOrder;
     } else if (name == "bottom") {
-        style.bottom = parseCSSValue(value);
+        style.bottomVal = parseCSSValue(value);
+        style.hasBottomVal = true;
+        style.orderBottom = ++style.propertyOrder;
     } else if (name == "left") {
-        style.left = parseCSSValue(value);
+        style.leftVal = parseCSSValue(value);
+        style.hasLeftVal = true;
+        style.orderLeft = ++style.propertyOrder;
     } else if (name == "grid-template-columns") {
         style.gridTemplateColumns = value;
     } else if (name == "grid-template-rows") {
