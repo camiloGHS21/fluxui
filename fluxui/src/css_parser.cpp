@@ -599,14 +599,14 @@ static std::string_view selectorAttributeValue(std::string_view type, std::strin
     return {};
 }
 
-static std::string normalizeAttributeValue(std::string value) {
+static std::string normalizeAttributeValue(std::string value, bool keepCase = false) {
     value = trimLocal(value);
     if (value.size() >= 2 &&
         ((value.front() == '"' && value.back() == '"') ||
          (value.front() == '\'' && value.back() == '\''))) {
         value = value.substr(1, value.size() - 2);
     }
-    return lowerAscii(trimLocal(value));
+    return keepCase ? trimLocal(value) : lowerAscii(trimLocal(value));
 }
 
 static bool selectorTypeMatches(std::string_view requiredType, std::string_view actualType) {
@@ -628,41 +628,111 @@ static bool selectorTypeMatches(std::string_view requiredType, std::string_view 
 
 static bool selectorAttributeMatches(const std::string& selector,
                                      std::string_view actualType) {
+    bool caseInsensitive = false;
     std::string body = trimLocal(selector);
     if (body.empty()) return false;
-    if (body.size() >= 2 && body.substr(body.size() - 2) == " i") {
+    
+    // Check for case sensitivity flags (e.g. [attr="value" i])
+    if (body.size() >= 2 && (body.substr(body.size() - 2) == " i" || body.substr(body.size() - 2) == " I")) {
+        caseInsensitive = true;
+        body = trimLocal(body.substr(0, body.size() - 2));
+    } else if (body.size() >= 2 && (body.substr(body.size() - 2) == " s" || body.substr(body.size() - 2) == " S")) {
+        caseInsensitive = false;
         body = trimLocal(body.substr(0, body.size() - 2));
     }
 
     size_t eq = body.find('=');
-    std::string name = lowerAscii(trimLocal(eq == std::string::npos ? body : body.substr(0, eq)));
+    std::string op = "=";
+    std::string name;
+    std::string rawValue;
+
+    if (eq == std::string::npos) {
+        name = lowerAscii(trimLocal(body));
+    } else {
+        size_t nameEnd = eq;
+        if (eq > 0 && (body[eq - 1] == '~' || body[eq - 1] == '|' || body[eq - 1] == '^' || body[eq - 1] == '$' || body[eq - 1] == '*')) {
+            nameEnd = eq - 1;
+            op = body.substr(eq - 1, 2);
+        }
+        name = lowerAscii(trimLocal(body.substr(0, nameEnd)));
+        rawValue = body.substr(eq + 1);
+    }
+
     if (name.empty()) return false;
 
-    std::string value;
-    if (eq != std::string::npos) {
-        value = normalizeAttributeValue(body.substr(eq + 1));
+    // Retrieve actual value from actualType
+    std::string_view actualValSV = selectorAttributeValue(actualType, name);
+    bool isFlag = selectorHasFlag(actualType, name);
+    
+    // If no operator, check for existence of attribute or flag
+    if (eq == std::string::npos) {
+        if (name == "type" && selectorBaseType(actualType) == "input") return true;
+        return !actualValSV.empty() || isFlag;
     }
 
-    if (name == "type") {
-        std::string_view attr = selectorAttributeValue(actualType, "type");
-        if (attr.empty() && selectorBaseType(actualType) == "input") attr = "text";
-        if (eq == std::string::npos) return !attr.empty();
-        return equalIgnoreCase(value, attr);
+    // Clean required value
+    std::string requiredValue = normalizeAttributeValue(rawValue, !caseInsensitive);
+    
+    std::string actualValue;
+    if (name == "type" && actualValSV.empty() && selectorBaseType(actualType) == "input") {
+        actualValue = "text";
+    } else if (isFlag) {
+        actualValue = name;
+    } else {
+        actualValue = std::string(actualValSV);
     }
-    if (name == "open") {
-        return eq == std::string::npos && selectorHasFlag(actualType, "open");
+    
+    if (!caseInsensitive) {
+        // Class, ID, and Type properties match case-insensitively by default in HTML
+        if (name == "class" || name == "id" || name == "type" || name == "dir") {
+            actualValue = lowerAscii(actualValue);
+            requiredValue = lowerAscii(requiredValue);
+        }
+    } else {
+        actualValue = lowerAscii(actualValue);
+        requiredValue = lowerAscii(requiredValue);
     }
-    if (name == "checked") {
-        return eq == std::string::npos && selectorHasFlag(actualType, "checked");
+
+    // Perform operators matching
+    if (op == "=") {
+        return actualValue == requiredValue;
+    } else if (op == "~=") {
+        std::vector<std::string> words;
+        std::string current;
+        for (char c : actualValue) {
+            if (std::isspace((unsigned char)c)) {
+                if (!current.empty()) {
+                    words.push_back(current);
+                    current.clear();
+                }
+            } else {
+                current += c;
+            }
+        }
+        if (!current.empty()) words.push_back(current);
+        
+        for (const auto& word : words) {
+            if (word == requiredValue) return true;
+        }
+        return false;
+    } else if (op == "|=") {
+        return actualValue == requiredValue ||
+               (actualValue.size() > requiredValue.size() &&
+                actualValue.substr(0, requiredValue.size()) == requiredValue &&
+                actualValue[requiredValue.size()] == '-');
+    } else if (op == "^=") {
+        if (requiredValue.empty()) return false;
+        return actualValue.size() >= requiredValue.size() &&
+               actualValue.substr(0, requiredValue.size()) == requiredValue;
+    } else if (op == "$=") {
+        if (requiredValue.empty()) return false;
+        return actualValue.size() >= requiredValue.size() &&
+               actualValue.substr(actualValue.size() - requiredValue.size()) == requiredValue;
+    } else if (op == "*=") {
+        if (requiredValue.empty()) return false;
+        return actualValue.find(requiredValue) != std::string::npos;
     }
-    if (name == "value") {
-        return eq == std::string::npos && selectorHasFlag(actualType, "value");
-    }
-    if (name == "dir") {
-        std::string_view attr = selectorAttributeValue(actualType, "dir");
-        if (eq == std::string::npos) return !attr.empty();
-        return equalIgnoreCase(value, attr);
-    }
+
     return false;
 }
 

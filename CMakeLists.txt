@@ -489,4 +489,15 @@ target_include_directories(test_svg_parity PRIVATE
 )
 enable_release_lto(test_svg_parity)
 
+add_executable(test_selectors
+    examples/cpp/test_selectors.cpp
+)
+target_link_libraries(test_selectors PRIVATE
+    fluxui
+)
+target_include_directories(test_selectors PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_selectors)
+
 
