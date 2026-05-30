@@ -8721,88 +8721,40 @@ void Renderer::popScale() {
 }
 
 void Renderer::playback(const std::vector<RenderCommand>& commands) {
-    playback(commands, 1.0f);
-}
-
-void Renderer::playback(const std::vector<RenderCommand>& commands, float opacityScale) {
     for (const auto& cmd : commands) {
-        // 1. Resolve transform node properties from global PropertyTrees
-        const auto& transNode = g_activePropertyTrees.getTransformNode(cmd.transformNodeId);
-        
-        float savedScale = scale_;
-        Vec2 savedTranslation = translation_;
-        auto savedPivotStack = scalePivotStack_;
-
-        scale_ = transNode.combinedScale;
-        translation_ = transNode.combinedTranslation;
-        scalePivotStack_.clear();
-        scalePivotStack_.push_back(transNode.pivot);
-
-        // 2. Resolve effect node properties (opacity) from global PropertyTrees
-        float accumulatedOpacity = g_activePropertyTrees.getCombinedOpacity(cmd.effectNodeId);
-        float finalOpacity = cmd.opacity * accumulatedOpacity * opacityScale;
-        
-        Color finalColor = cmd.color;
-        finalColor.a *= (accumulatedOpacity * opacityScale);
-
-        // 3. Resolve clip node properties (combined clip rect) from global PropertyTrees
-        bool hasClip = false;
-        Rect combinedClip;
-        if (cmd.clipNodeId > 0) {
-            const auto& clipNode = g_activePropertyTrees.getClipNode(cmd.clipNodeId);
-            if (clipNode.hasCombinedClip) {
-                hasClip = true;
-                combinedClip = clipNode.combinedClipRect;
-            }
-        }
-
-        if (hasClip) {
-            pushScissor(combinedClip);
-        }
-
-        // 4. Dispatch actual drawing commands
         switch (cmd.type) {
             case RenderCommandType::RoundedRect:
                 if (cmd.hasGradient) {
-                    drawRoundedRectGradient(cmd.rect, cmd.gradient, cmd.radius, finalOpacity);
+                    drawRoundedRectGradient(cmd.rect, cmd.gradient, cmd.radius, cmd.opacity);
                 } else {
-                    drawRoundedRect(cmd.rect, finalColor, cmd.radius, finalOpacity);
+                    drawRoundedRect(cmd.rect, cmd.color, cmd.radius, cmd.opacity);
                 }
                 break;
-            case RenderCommandType::Border: {
-                Border finalBorder = cmd.border;
-                finalBorder.color.a *= (accumulatedOpacity * opacityScale);
-                drawBorder(cmd.rect, finalBorder, cmd.radius);
+            case RenderCommandType::Border:
+                drawBorder(cmd.rect, cmd.border, cmd.radius);
                 break;
-            }
-            case RenderCommandType::BoxShadow: {
-                BoxShadow finalShadow = cmd.shadow;
-                finalShadow.color.a *= (accumulatedOpacity * opacityScale);
-                drawBoxShadow(cmd.rect, finalShadow, cmd.radius);
+            case RenderCommandType::BoxShadow:
+                drawBoxShadow(cmd.rect, cmd.shadow, cmd.radius);
                 break;
-            }
             case RenderCommandType::BackdropFilterBlur:
                 drawBackdropFilterBlur(cmd.rect, cmd.blurRadius, cmd.radius);
                 break;
             case RenderCommandType::Text:
                 if (cmd.rect.w > 0.0f || cmd.rect.h > 0.0f) {
-                    drawTextInRect(cmd.text, cmd.rect, finalColor, cmd.fontSize, cmd.textAlign,
+                    drawTextInRect(cmd.text, cmd.rect, cmd.color, cmd.fontSize, cmd.textAlign,
                                    cmd.fontWeight, cmd.fontName, cmd.fontStyle, cmd.fontDirection, cmd.unicodeBidi);
                 } else {
-                    drawText(cmd.text, Vec2(cmd.rect.x, cmd.rect.y), finalColor, cmd.fontSize, cmd.fontWeight,
+                    drawText(cmd.text, Vec2(cmd.rect.x, cmd.rect.y), cmd.color, cmd.fontSize, cmd.fontWeight,
                              cmd.fontName, cmd.fontStyle, cmd.fontDirection, cmd.unicodeBidi);
                 }
                 break;
-            case RenderCommandType::TexturedQuad: {
-                Color finalTint = cmd.color;
-                finalTint.a *= (accumulatedOpacity * opacityScale);
+            case RenderCommandType::TexturedQuad:
                 if (cmd.sourceUv.w > 0.0f || cmd.sourceUv.h > 0.0f) {
-                    drawImage(cmd.text, cmd.rect, cmd.sourceUv, finalOpacity, finalTint);
+                    drawImage(cmd.text, cmd.rect, cmd.sourceUv, cmd.opacity, cmd.color);
                 } else {
-                    drawImage(cmd.text, cmd.rect, finalOpacity, finalTint);
+                    drawImage(cmd.text, cmd.rect, cmd.opacity, cmd.color);
                 }
                 break;
-            }
             case RenderCommandType::Scissor:
                 pushScissor(cmd.scissorRect);
                 break;
@@ -8810,15 +8762,55 @@ void Renderer::playback(const std::vector<RenderCommand>& commands, float opacit
                 popScissor();
                 break;
         }
+    }
+}
 
-        if (hasClip) {
-            popScissor();
+void Renderer::playback(const std::vector<RenderCommand>& commands, float opacityScale) {
+    for (auto cmd : commands) {
+        cmd.opacity *= opacityScale;
+        cmd.color.a *= opacityScale;
+        switch (cmd.type) {
+            case RenderCommandType::RoundedRect:
+                if (cmd.hasGradient) {
+                    drawRoundedRectGradient(cmd.rect, cmd.gradient, cmd.radius, cmd.opacity);
+                } else {
+                    drawRoundedRect(cmd.rect, cmd.color, cmd.radius, cmd.opacity);
+                }
+                break;
+            case RenderCommandType::Border:
+                cmd.border.color.a *= opacityScale;
+                drawBorder(cmd.rect, cmd.border, cmd.radius);
+                break;
+            case RenderCommandType::BoxShadow:
+                cmd.shadow.color.a *= opacityScale;
+                drawBoxShadow(cmd.rect, cmd.shadow, cmd.radius);
+                break;
+            case RenderCommandType::BackdropFilterBlur:
+                drawBackdropFilterBlur(cmd.rect, cmd.blurRadius, cmd.radius);
+                break;
+            case RenderCommandType::Text:
+                if (cmd.rect.w > 0.0f || cmd.rect.h > 0.0f) {
+                    drawTextInRect(cmd.text, cmd.rect, cmd.color, cmd.fontSize, cmd.textAlign,
+                                   cmd.fontWeight, cmd.fontName, cmd.fontStyle, cmd.fontDirection, cmd.unicodeBidi);
+                } else {
+                    drawText(cmd.text, Vec2(cmd.rect.x, cmd.rect.y), cmd.color, cmd.fontSize, cmd.fontWeight,
+                             cmd.fontName, cmd.fontStyle, cmd.fontDirection, cmd.unicodeBidi);
+                }
+                break;
+            case RenderCommandType::TexturedQuad:
+                if (cmd.sourceUv.w > 0.0f || cmd.sourceUv.h > 0.0f) {
+                    drawImage(cmd.text, cmd.rect, cmd.sourceUv, cmd.opacity, cmd.color);
+                } else {
+                    drawImage(cmd.text, cmd.rect, cmd.opacity, cmd.color);
+                }
+                break;
+            case RenderCommandType::Scissor:
+                pushScissor(cmd.scissorRect);
+                break;
+            case RenderCommandType::ScissorPop:
+                popScissor();
+                break;
         }
-
-        // Restore original state
-        scale_ = savedScale;
-        translation_ = savedTranslation;
-        scalePivotStack_ = savedPivotStack;
     }
 }
 
