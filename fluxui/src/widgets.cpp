@@ -2057,9 +2057,15 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (style.flexGrow > 0) computedStyle.flexGrow = style.flexGrow;
         if (style.flexBasis.isSet()) computedStyle.flexBasis = style.flexBasis;
         if (style.borderRadius.maxRadius() > 0) computedStyle.borderRadius = style.borderRadius;
-        if (style.hasBackdropFilterBlur) {
+        if (style.hasBackdropFilter) {
+            computedStyle.backdropFilterOperations = style.backdropFilterOperations;
+            computedStyle.hasBackdropFilter = true;
             computedStyle.backdropFilterBlur = style.backdropFilterBlur;
-            computedStyle.hasBackdropFilterBlur = true;
+            computedStyle.hasBackdropFilterBlur = style.hasBackdropFilterBlur;
+        }
+        if (style.hasFilter) {
+            computedStyle.filterOperations = style.filterOperations;
+            computedStyle.hasFilter = true;
         }
         if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
         if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;
@@ -2122,7 +2128,14 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
                 if (prop.name == "display") { computedStyle.display = source.display; continue; }
                 if (prop.name == "position") { computedStyle.position = source.position; continue; }
                 if (prop.name == "opacity") { computedStyle.opacity = source.opacity; continue; }
+                if (prop.name == "filter") {
+                    computedStyle.filterOperations = source.filterOperations;
+                    computedStyle.hasFilter = source.hasFilter;
+                    continue;
+                }
                 if (prop.name == "backdrop-filter") {
+                    computedStyle.backdropFilterOperations = source.backdropFilterOperations;
+                    computedStyle.hasBackdropFilter = source.hasBackdropFilter;
                     computedStyle.backdropFilterBlur = source.backdropFilterBlur;
                     computedStyle.hasBackdropFilterBlur = source.hasBackdropFilterBlur;
                     continue;
@@ -2445,9 +2458,15 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     if (style.flexGrow > 0) computedStyle.flexGrow = style.flexGrow;
     if (style.flexBasis.isSet()) computedStyle.flexBasis = style.flexBasis;
     if (style.borderRadius.maxRadius() > 0) computedStyle.borderRadius = style.borderRadius;
-    if (style.hasBackdropFilterBlur) {
+    if (style.hasBackdropFilter) {
+        computedStyle.backdropFilterOperations = style.backdropFilterOperations;
+        computedStyle.hasBackdropFilter = true;
         computedStyle.backdropFilterBlur = style.backdropFilterBlur;
-        computedStyle.hasBackdropFilterBlur = true;
+        computedStyle.hasBackdropFilterBlur = style.hasBackdropFilterBlur;
+    }
+    if (style.hasFilter) {
+        computedStyle.filterOperations = style.filterOperations;
+        computedStyle.hasFilter = true;
     }
     if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
     if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;
@@ -8370,17 +8389,35 @@ bool Widget::applyKeyframePropertyOverride(const std::string& name, const std::s
         return true;
     }
     if (name == "filter") {
-        // Only the simple `blur(Npx)` form is supported in keyframes for now; full
-        // filter-function grammar can be added when filter is wired through paint.
-        auto pos = value.find("blur(");
-        if (pos != std::string::npos) {
-            auto start = pos + 5;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                computedStyle.ensureMutable().backdropFilterBlur =
-                    StyleSheet::parseLengthPixels(value.substr(start, end - start), computedStyle->fontSize);
-                computedStyle.ensureMutable().hasBackdropFilterBlur = true;
+        if (value == "none") {
+            computedStyle.ensureMutable().filterOperations.clear();
+            computedStyle.ensureMutable().hasFilter = false;
+        } else {
+            auto ops = StyleSheet::parseFilterOperations(value, computedStyle->fontSize);
+            computedStyle.ensureMutable().filterOperations = std::move(ops);
+            computedStyle.ensureMutable().hasFilter = !computedStyle->filterOperations.empty();
+        }
+        return true;
+    }
+    if (name == "backdrop-filter") {
+        if (value == "none") {
+            computedStyle.ensureMutable().backdropFilterOperations.clear();
+            computedStyle.ensureMutable().hasBackdropFilter = false;
+            computedStyle.ensureMutable().backdropFilterBlur = 0.0f;
+            computedStyle.ensureMutable().hasBackdropFilterBlur = false;
+        } else {
+            auto ops = StyleSheet::parseFilterOperations(value, computedStyle->fontSize);
+            computedStyle.ensureMutable().backdropFilterBlur = 0.0f;
+            computedStyle.ensureMutable().hasBackdropFilterBlur = false;
+            for (const auto& op : ops) {
+                if (op.type == FilterOperationType::Blur) {
+                    computedStyle.ensureMutable().backdropFilterBlur = op.amount;
+                    computedStyle.ensureMutable().hasBackdropFilterBlur = true;
+                    break;
+                }
             }
+            computedStyle.ensureMutable().backdropFilterOperations = std::move(ops);
+            computedStyle.ensureMutable().hasBackdropFilter = !computedStyle->backdropFilterOperations.empty();
         }
         return true;
     }

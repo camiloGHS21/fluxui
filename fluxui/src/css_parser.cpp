@@ -1,4 +1,4 @@
-#include "fluxui/css_parser.h"
+﻿#include "fluxui/css_parser.h"
 #include "fluxui/widgets.h"
 #include <algorithm>
 #include <cctype>
@@ -3327,24 +3327,32 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
                 style.backgroundGradient = parseGradient(value);
             }
         }
+    } else if (name == "filter") {
+        if (value == "none") {
+            style.filterOperations.clear();
+            style.hasFilter = false;
+        } else {
+            style.filterOperations = parseFilterOperations(value, emBase);
+            style.hasFilter = !style.filterOperations.empty();
+        }
     } else if (name == "backdrop-filter") {
-        size_t blurPos = value.find("blur(");
-        if (blurPos != std::string::npos) {
-            size_t endPos = value.find(")", blurPos);
-            if (endPos != std::string::npos) {
-                std::string blurValStr = value.substr(blurPos + 5, endPos - (blurPos + 5));
-                float val = 0.0f;
-                try {
-                    size_t pxPos = blurValStr.find("px");
-                    if (pxPos != std::string::npos) {
-                        blurValStr = blurValStr.substr(0, pxPos);
-                    }
-                    val = std::stof(blurValStr);
-                } catch (...) {
-                    val = 0.0f;
+        if (value == "none") {
+            style.backdropFilterOperations.clear();
+            style.hasBackdropFilter = false;
+            style.hasBackdropFilterBlur = false;
+            style.backdropFilterBlur = 0.0f;
+        } else {
+            style.backdropFilterOperations = parseFilterOperations(value, emBase);
+            style.hasBackdropFilter = !style.backdropFilterOperations.empty();
+            // Sync the legacy scalar for the renderer drawBackdropFilterBlur() path.
+            style.backdropFilterBlur = 0.0f;
+            style.hasBackdropFilterBlur = false;
+            for (const auto& op : style.backdropFilterOperations) {
+                if (op.type == FilterOperationType::Blur) {
+                    style.backdropFilterBlur = op.amount;
+                    style.hasBackdropFilterBlur = true;
+                    break;
                 }
-                style.backdropFilterBlur = val;
-                style.hasBackdropFilterBlur = true;
             }
         }
     } else if (name == "border-radius") {
@@ -6321,6 +6329,300 @@ float StyleSheet::parseAngleDegrees(const std::string& value) {
 }
 std::vector<TransformOperation> StyleSheet::parseTransformList(const std::string& value) {
     return parseTransformOperations(value);
+}
+
+// ============================================================
+//  parseFilterOperations — Blink FilterOperationResolver parity
+//
+//  Parses the CSS <filter-value-list> grammar including:
+//    blur(<length>)                     — calc() resolved to px, clamped ≥0
+//    brightness(<number-or-percent>)    — calc() resolved, clamped ≥0 (may exceed 1)
+//    contrast(<number-or-percent>)      — calc() resolved, clamped ≥0
+//    drop-shadow(<shadow>)              — offset-x offset-y [blur] [color]
+//    grayscale(<number-or-percent>)     — calc() resolved, clamped [0,1]
+//    hue-rotate(<angle>)                — deg/rad/grad/turn + calc(), unclamped
+//    invert(<number-or-percent>)        — calc() resolved, clamped [0,1]
+//    opacity(<number-or-percent>)       — calc() resolved, clamped [0,1]
+//    saturate(<number-or-percent>)      — calc() resolved, clamped ≥0
+//    sepia(<number-or-percent>)         — calc() resolved, clamped [0,1]
+//    url(<string>)                      — SVG reference filter
+//    luminance-to-alpha()               — Blink kLuminanceToAlpha
+//    color-matrix(<20 numbers>)         — Blink kColorMatrix (feColorMatrix matrix)
+//
+//  calc() / min() / max() / clamp() is supported in all numeric
+//  arguments via parseCSSValue() → CSSValue::resolve(), matching
+//  Blink's FilterOperationResolver::ResolveNumericArgumentForFunction.
+//
+//  Clamping mirrors Blink exactly (filter_operation_resolver.cc):
+//    [0,1]  : grayscale, sepia, invert, opacity
+//    [0,∞)  : brightness, contrast, saturate (>1 is valid)
+//    blur   : clamped ≥ 0
+//    hue-rotate : no clamp
+//
+//  UseCounter: FilterUseCounter::instance().count(FilterFeature::*)
+//  is called once per parsed operation, matching Blink's
+//  CountFilterUse(operationType, document).
+// ============================================================
+std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string& value, float emBase) {
+    std::vector<FilterOperation> ops;
+    if (value.empty() || value == "none") return ops;
+
+    // ── Resolve a numeric/percentage argument with calc() support.
+    //    Mirrors Blink ResolveNumericArgumentForFunction:
+    //      IsPercentage() → computePercentage/100
+    //      else           → computeNumber
+    auto resolveAmount = [&](const std::string& s) -> float {
+        if (s.empty()) return 1.0f; // omitted arg → default 1 (CSS spec)
+        std::string v = trim(s);
+        CSSValue cv = parseCSSValue(v);
+        float vpW = 1920.0f, vpH = 1080.0f;
+        if (auto* app = Application::instance()) {
+            vpW = app->stylesheet().viewportWidth();
+            vpH = app->stylesheet().viewportHeight();
+        }
+        return cv.resolve(emBase, vpW, vpH, emBase);
+    };
+
+    // ── Resolve an angle with calc() support (deg/rad/grad/turn).
+    auto resolveAngle = [&](const std::string& s) -> float {
+        if (s.empty()) return 0.0f;
+        std::string v = trim(s);
+        bool hasMath = v.find("calc(") != std::string::npos ||
+                       v.find("min(")  != std::string::npos ||
+                       v.find("max(")  != std::string::npos ||
+                       v.find("clamp(")!= std::string::npos;
+        if (hasMath) {
+            // Route through CSSValue so calc() is resolved numerically.
+            CSSValue cv = parseCSSValue(v);
+            return cv.resolve(emBase, 1920.0f, 1080.0f, emBase);
+        }
+        return parseAngleDegrees(v);
+    };
+
+    // ── CountFilterUse (Blink CountFilterUse parity) ──────
+    auto countUse = [](FilterFeature f) {
+        FilterUseCounter::instance().count(f);
+    };
+
+    // ── Walk the value string extracting function calls ────
+    size_t pos = 0;
+    const size_t len = value.size();
+
+    while (pos < len) {
+        while (pos < len && (value[pos] == ' ' || value[pos] == '\t' ||
+                              value[pos] == '\r' || value[pos] == '\n'))
+            ++pos;
+        if (pos >= len) break;
+
+        size_t parenOpen = value.find('(', pos);
+        if (parenOpen == std::string::npos) break;
+
+        std::string funcName = trim(value.substr(pos, parenOpen - pos));
+
+        // Depth-aware scan for matching ')'
+        size_t parenClose = parenOpen + 1;
+        int depth = 1;
+        while (parenClose < len && depth > 0) {
+            if (value[parenClose] == '(') ++depth;
+            else if (value[parenClose] == ')') --depth;
+            if (depth > 0) ++parenClose;
+        }
+        if (depth != 0) break; // malformed
+
+        std::string args = trim(value.substr(parenOpen + 1, parenClose - parenOpen - 1));
+        pos = parenClose + 1;
+
+        FilterOperation op;
+
+        // ── blur(<length>) ──────────────────────────────────
+        if (funcName == "blur") {
+            op.type   = FilterOperationType::Blur;
+            op.amount = std::max(0.0f, parseLengthPixels(args, emBase));
+            countUse(FilterFeature::Blur);
+
+        // ── brightness(<number-or-percent>) ────────────────
+        } else if (funcName == "brightness") {
+            op.type   = FilterOperationType::Brightness;
+            op.amount = std::max(0.0f, resolveAmount(args));
+            countUse(FilterFeature::Brightness);
+
+        // ── contrast(<number-or-percent>) ──────────────────
+        } else if (funcName == "contrast") {
+            op.type   = FilterOperationType::Contrast;
+            op.amount = std::max(0.0f, resolveAmount(args));
+            countUse(FilterFeature::Contrast);
+
+        // ── grayscale(<number-or-percent>) ─────────────────
+        } else if (funcName == "grayscale") {
+            op.type   = FilterOperationType::Grayscale;
+            op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
+            countUse(FilterFeature::Grayscale);
+
+        // ── hue-rotate(<angle>) ─────────────────────────────
+        } else if (funcName == "hue-rotate") {
+            op.type   = FilterOperationType::HueRotate;
+            op.amount = resolveAngle(args); // unclamped (Blink parity)
+            countUse(FilterFeature::HueRotate);
+
+        // ── invert(<number-or-percent>) ─────────────────────
+        } else if (funcName == "invert") {
+            op.type   = FilterOperationType::Invert;
+            op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
+            countUse(FilterFeature::Invert);
+
+        // ── opacity(<number-or-percent>) ────────────────────
+        } else if (funcName == "opacity") {
+            op.type   = FilterOperationType::Opacity;
+            op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
+            countUse(FilterFeature::Opacity);
+
+        // ── saturate(<number-or-percent>) ───────────────────
+        } else if (funcName == "saturate") {
+            op.type   = FilterOperationType::Saturate;
+            op.amount = std::max(0.0f, resolveAmount(args));
+            countUse(FilterFeature::Saturate);
+
+        // ── sepia(<number-or-percent>) ──────────────────────
+        } else if (funcName == "sepia") {
+            op.type   = FilterOperationType::Sepia;
+            op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
+            countUse(FilterFeature::Sepia);
+
+        // ── drop-shadow(<shadow>) ────────────────────────────
+        //    offset-x and offset-y required, blur-radius and color optional.
+        //    Color can appear before or after the length values.
+        //    Each length supports calc() via parseLengthPixels.
+        } else if (funcName == "drop-shadow") {
+            op.type        = FilterOperationType::DropShadow;
+            op.shadowColor = Color(0, 0, 0, 1.0f); // default black (currentColor → black)
+
+            std::string remaining = args;
+
+            // Extract functional color tokens depth-aware (rgb/rgba/hsl/oklch/etc.)
+            auto tryExtractFuncColor = [&](std::string& s) -> bool {
+                static const char* const kFuncs[] = {
+                    "oklch(","oklab(","lch(","lab(","color(","hwb(",
+                    "rgba(","rgb(","hsla(","hsl(",nullptr
+                };
+                for (int i = 0; kFuncs[i]; ++i) {
+                    size_t cp = s.find(kFuncs[i]);
+                    if (cp == std::string::npos) continue;
+                    size_t ep = cp + strlen(kFuncs[i]);
+                    int d = 1;
+                    while (ep < s.size() && d > 0) {
+                        if (s[ep] == '(') ++d;
+                        else if (s[ep] == ')') --d;
+                        if (d > 0) ++ep;
+                    }
+                    op.shadowColor = parseColor(trim(s.substr(cp, ep - cp + 1)));
+                    s = s.substr(0, cp) + s.substr(ep + 1);
+                    return true;
+                }
+                return false;
+            };
+
+            bool hadColor = tryExtractFuncColor(remaining);
+
+            // Extract hex color
+            if (!hadColor) {
+                size_t hp = remaining.find('#');
+                if (hp != std::string::npos) {
+                    size_t ep = hp + 1;
+                    while (ep < remaining.size() && std::isalnum((unsigned char)remaining[ep])) ++ep;
+                    op.shadowColor = parseColor(remaining.substr(hp, ep - hp));
+                    remaining = remaining.substr(0, hp) + remaining.substr(ep);
+                    hadColor = true;
+                }
+            }
+
+            // Extract named color keyword (last whitespace-token)
+            if (!hadColor) {
+                static const char* const kNamed[] = {
+                    "black","white","red","green","blue","yellow","cyan","magenta",
+                    "transparent","currentcolor","gray","grey","orange","purple",
+                    "pink","brown","navy","teal","maroon","olive","lime","aqua",
+                    "silver","fuchsia","coral","salmon","khaki","lavender",
+                    "turquoise","violet","indigo","gold","beige",nullptr
+                };
+                std::string rv = trim(remaining);
+                size_t lastSp = rv.rfind(' ');
+                std::string lastTok = (lastSp != std::string::npos)
+                                        ? trim(rv.substr(lastSp + 1)) : rv;
+                std::string ltLow = lastTok;
+                for (char& c : ltLow) c = (char)std::tolower((unsigned char)c);
+                for (int i = 0; kNamed[i]; ++i) {
+                    if (ltLow == kNamed[i]) {
+                        op.shadowColor = parseColor(ltLow);
+                        remaining = (lastSp != std::string::npos)
+                                      ? trim(rv.substr(0, lastSp)) : "";
+                        break;
+                    }
+                }
+            }
+
+            // Parse remaining length tokens: offset-x  offset-y  [blur-radius]
+            // Each supports calc() via parseLengthPixels.
+            {
+                std::vector<std::string> ltoks;
+                std::istringstream ss(trim(remaining));
+                std::string tok;
+                while (ss >> tok) ltoks.push_back(tok);
+                if (ltoks.size() >= 1) op.shadowOffsetX = parseLengthPixels(ltoks[0], emBase);
+                if (ltoks.size() >= 2) op.shadowOffsetY = parseLengthPixels(ltoks[1], emBase);
+                if (ltoks.size() >= 3) op.shadowBlur    = std::max(0.0f, parseLengthPixels(ltoks[2], emBase));
+            }
+            countUse(FilterFeature::DropShadow);
+
+        // ── url(<string>) — SVG reference filter ────────────
+        } else if (funcName == "url") {
+            op.type = FilterOperationType::Reference;
+            std::string u = args;
+            if (!u.empty() && (u.front() == '"' || u.front() == '\'')) u = u.substr(1);
+            if (!u.empty() && (u.back()  == '"' || u.back()  == '\'')) u.pop_back();
+            op.url = u;
+            countUse(FilterFeature::Reference);
+
+        // ── luminance-to-alpha() — Blink kLuminanceToAlpha ──
+        //    SVG feColorMatrix type="luminanceToAlpha". No arguments.
+        } else if (funcName == "luminance-to-alpha") {
+            op.type   = FilterOperationType::LuminanceToAlpha;
+            op.amount = 0.0f;
+            countUse(FilterFeature::LuminanceToAlpha);
+
+        // ── color-matrix(<20 values>) — Blink kColorMatrix ──
+        //    SVG feColorMatrix type="matrix". Expects 20 space/comma-
+        //    separated numbers (4 rows × 5 columns). Each value supports
+        //    calc() via parseCSSValue. Padded/trimmed to exactly 20.
+        } else if (funcName == "color-matrix") {
+            op.type = FilterOperationType::ColorMatrix;
+            std::vector<float> vals;
+            {
+                std::string s = args;
+                for (char& c : s) if (c == ',') c = ' ';
+                std::istringstream ss(s);
+                std::string tok;
+                float vpW = 1920.0f, vpH = 1080.0f;
+                if (auto* app = Application::instance()) {
+                    vpW = app->stylesheet().viewportWidth();
+                    vpH = app->stylesheet().viewportHeight();
+                }
+                while (ss >> tok) {
+                    CSSValue cv = parseCSSValue(tok);
+                    vals.push_back(cv.resolve(emBase, vpW, vpH, emBase));
+                }
+            }
+            vals.resize(20, 0.0f); // Blink requires exactly 20 values
+            op.colorMatrixValues = std::move(vals);
+            countUse(FilterFeature::ColorMatrix);
+
+        } else {
+            // Unknown function — skip (Blink silently ignores unknown filter functions)
+            continue;
+        }
+
+        ops.push_back(std::move(op));
+    }
+    return ops;
 }
 bool StyleSheet::parseTransformOrigin(const std::string& value, Vec2& xy, float& z) {
     TransformOrigin origin = parseTransformOrigin(value);

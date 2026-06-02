@@ -533,4 +533,15 @@ target_include_directories(test_transforms PRIVATE
 )
 enable_release_lto(test_transforms)
 
+add_executable(test_filter
+    examples/cpp/test_filter.cpp
+)
+target_link_libraries(test_filter PRIVATE
+    fluxui
+)
+target_include_directories(test_filter PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_filter)
+
 

@@ -232,6 +232,114 @@ struct BoxShadow {
     }
     bool operator!=(const BoxShadow& o) const { return !(*this == o); }
 };
+
+// ============================================================
+//  CSS Filter Operations (Blink FilterOperation parity)
+//  Mirrors Blink's FilterOperation::OperationType enum and
+//  the per-function data model from filter_operation.h.
+//
+//  Standard CSS <filter-function> types:
+//    blur / brightness / contrast / drop-shadow / grayscale /
+//    hue-rotate / invert / opacity / saturate / sepia / url()
+//
+//  SVG-parity extras (Blink kLuminanceToAlpha, kColorMatrix):
+//    luminance-to-alpha  — feColorMatrix type="luminanceToAlpha"
+//    color-matrix        — feColorMatrix with explicit 20-value matrix
+// ============================================================
+enum class FilterOperationType {
+    // ── Standard CSS filter functions ──────────────────────
+    Blur,               // blur(<length>)
+    Brightness,         // brightness(<number-or-percent>)   [0,∞), clamped ≥0
+    Contrast,           // contrast(<number-or-percent>)     [0,∞)
+    DropShadow,         // drop-shadow(<shadow>)
+    Grayscale,          // grayscale(<number-or-percent>)    [0,1]
+    HueRotate,          // hue-rotate(<angle>)               degrees
+    Invert,             // invert(<number-or-percent>)       [0,1]
+    Opacity,            // opacity(<number-or-percent>)      [0,1]
+    Saturate,           // saturate(<number-or-percent>)     [0,∞)
+    Sepia,              // sepia(<number-or-percent>)        [0,1]
+    Reference,          // url(#svg-filter)
+    // ── SVG filter primitive equivalents (Blink parity) ────
+    LuminanceToAlpha,   // Blink kLuminanceToAlpha — feColorMatrix type="luminanceToAlpha"
+    ColorMatrix,        // Blink kColorMatrix      — feColorMatrix with 20-value matrix
+};
+
+// ── UseCounter: lightweight Blink WebFeature parity ─────────
+// Records which CSS filter functions are used, matching the
+// CountFilterUse / WebFeature pattern from Blink's
+// filter_operation_resolver.cc.
+enum class FilterFeature {
+    Blur,
+    Brightness,
+    Contrast,
+    DropShadow,
+    Grayscale,
+    HueRotate,
+    Invert,
+    Opacity,
+    Saturate,
+    Sepia,
+    Reference,
+    LuminanceToAlpha,
+    ColorMatrix,
+    COUNT  // keep last
+};
+
+// Global filter feature use-counter (Blink WebFeature parity).
+// Thread-unsafe by design — same as Blink's per-document counters.
+struct FilterUseCounter {
+    uint32_t counts[static_cast<int>(FilterFeature::COUNT)] = {};
+
+    void count(FilterFeature f) {
+        counts[static_cast<int>(f)]++;
+    }
+    uint32_t get(FilterFeature f) const {
+        return counts[static_cast<int>(f)];
+    }
+    void reset() {
+        std::fill(std::begin(counts), std::end(counts), 0u);
+    }
+    // Returns the global singleton (Blink document-level parity).
+    static FilterUseCounter& instance() {
+        static FilterUseCounter inst;
+        return inst;
+    }
+};
+
+struct FilterOperation {
+    FilterOperationType type = FilterOperationType::Blur;
+
+    // ── Scalar amount ──────────────────────────────────────
+    // For blur: stdDeviation in px (resolved from calc() at parse time).
+    // For brightness/contrast/saturate: multiplier [0,∞).
+    // For grayscale/invert/opacity/sepia: clamped [0,1] (Blink parity).
+    // For hue-rotate: degrees.
+    // For LuminanceToAlpha: unused (amount = 0).
+    float amount = 0.0f;
+
+    // ── drop-shadow fields ─────────────────────────────────
+    float shadowOffsetX = 0.0f;
+    float shadowOffsetY = 0.0f;
+    float shadowBlur    = 0.0f;
+    Color shadowColor   = Color(0, 0, 0, 1.0f);
+
+    // ── ColorMatrix: 20-value RGBA matrix (Blink kColorMatrix) ──
+    // Laid out as 4 rows × 5 columns (feColorMatrix values attribute).
+    // Empty for all other types.
+    std::vector<float> colorMatrixValues;
+
+    // ── url() reference ────────────────────────────────────
+    std::string url;
+
+    bool operator==(const FilterOperation& o) const {
+        return type == o.type && amount == o.amount &&
+               shadowOffsetX == o.shadowOffsetX && shadowOffsetY == o.shadowOffsetY &&
+               shadowBlur == o.shadowBlur && shadowColor == o.shadowColor &&
+               colorMatrixValues == o.colorMatrixValues &&
+               url == o.url;
+    }
+    bool operator!=(const FilterOperation& o) const { return !(*this == o); }
+};
 struct Border {
     float width = 0;
     Color color;
@@ -1670,8 +1778,17 @@ struct Style {
     BoxShadow boxShadow;
     float opacity = 1.0f;
     float outlineOffset = 0;
+    // Legacy scalar kept for the renderer drawBackdropFilterBlur() path.
+    // Always synced from backdropFilterOperations when parsed.
     float backdropFilterBlur = 0.0f;
     bool hasBackdropFilterBlur = false;
+    // Full filter operation lists (Blink FilterOperations parity).
+    // Both properties accept the same function set; backdrop-filter also
+    // accepts blur() as the primary GPU-composited path.
+    std::vector<FilterOperation> filterOperations;           // filter:
+    std::vector<FilterOperation> backdropFilterOperations;  // backdrop-filter:
+    bool hasFilter = false;
+    bool hasBackdropFilter = false;
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
     FontStyle fontStyle = FontStyle::Normal;

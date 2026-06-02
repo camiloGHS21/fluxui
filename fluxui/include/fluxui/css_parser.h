@@ -328,6 +328,7 @@ public:
     static float parseDuration(const std::string& val);
     static std::vector<TransformOperation> parseTransformOperations(const std::string& value);
     static std::vector<TransformOperation> parseTransformList(const std::string& value);
+    static std::vector<FilterOperation> parseFilterOperations(const std::string& value, float emBase = 16.0f);
     static TransformOrigin parseTransformOrigin(const std::string& value);
     static bool parseTransformOrigin(const std::string& value, Vec2& xy, float& z);
     static TransformStyle parseTransformStyle(const std::string& value);
