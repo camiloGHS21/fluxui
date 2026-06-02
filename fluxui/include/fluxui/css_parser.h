@@ -326,6 +326,14 @@ public:
     static Gradient parseGradient(const std::string& val);
     static float parseFloat(const std::string& val);
     static float parseDuration(const std::string& val);
+    static std::vector<TransformOperation> parseTransformOperations(const std::string& value);
+    static TransformOrigin parseTransformOrigin(const std::string& value);
+    static TransformStyle parseTransformStyle(const std::string& value);
+    static TransformBox parseTransformBox(const std::string& value);
+    static CSSValue parsePerspective(const std::string& value);
+    static PerspectiveOrigin parsePerspectiveOrigin(const std::string& value);
+    static BackfaceVisibility parseBackfaceVisibility(const std::string& value);
+    static float parseAngleDegrees(const std::string& value);
 
     // @property typed interpolation: lerp between two custom property values
     // based on the registered syntax type. Returns the interpolated string.

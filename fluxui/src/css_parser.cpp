@@ -4516,14 +4516,39 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
     } else if (name == "scale") {
         style.scale = parseFloat(value);
     } else if (name == "transform") {
-        auto scalePos = value.find("scale(");
-        if (scalePos != std::string::npos) {
-            auto start = scalePos + 6;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                style.scale = parseFloat(value.substr(start, end - start));
+        style.transform = parseTransformOperations(value);
+        style.hasTransform = true;
+        for (const auto& op : style.transform) {
+            if (op.type == TransformOperationType::Scale ||
+                op.type == TransformOperationType::Scale3d ||
+                op.type == TransformOperationType::ScaleX) {
+                if (!op.args.empty()) {
+                    float val = op.args[0].value;
+                    if (op.args[0].unit == CSSValue::Percent) {
+                        val /= 100.0f;
+                    }
+                    style.scale = val;
+                }
             }
         }
+    } else if (name == "transform-origin") {
+        style.transformOrigin = parseTransformOrigin(value);
+        style.hasTransformOrigin = true;
+    } else if (name == "transform-style") {
+        style.transformStyle = parseTransformStyle(value);
+        style.hasTransformStyle = true;
+    } else if (name == "transform-box") {
+        style.transformBox = parseTransformBox(value);
+        style.hasTransformBox = true;
+    } else if (name == "perspective") {
+        style.perspective = parsePerspective(value);
+        style.hasPerspective = true;
+    } else if (name == "perspective-origin") {
+        style.perspectiveOrigin = parsePerspectiveOrigin(value);
+        style.hasPerspectiveOrigin = true;
+    } else if (name == "backface-visibility") {
+        style.backfaceVisibility = parseBackfaceVisibility(value);
+        style.hasBackfaceVisibility = true;
     }
     // Blink CSS properties: box-sizing, visibility, text-overflow, white-space, etc.
     else if (name == "box-sizing") {
@@ -4719,12 +4744,18 @@ void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const
     } else if (name == "scale") {
         style.hoverScale = parseFloat(value);
     } else if (name == "transform") {
-        auto scalePos = value.find("scale(");
-        if (scalePos != std::string::npos) {
-            auto start = scalePos + 6;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                style.hoverScale = parseFloat(value.substr(start, end - start));
+        auto ops = parseTransformOperations(value);
+        for (const auto& op : ops) {
+            if (op.type == TransformOperationType::Scale ||
+                op.type == TransformOperationType::Scale3d ||
+                op.type == TransformOperationType::ScaleX) {
+                if (!op.args.empty()) {
+                    float val = op.args[0].value;
+                    if (op.args[0].unit == CSSValue::Percent) {
+                        val /= 100.0f;
+                    }
+                    style.hoverScale = val;
+                }
             }
         }
     } else if (name == "hover-background-color" || name == "--hover-bg") {
@@ -4780,12 +4811,18 @@ void StyleSheet::mergeFocusProperty(Style& style, const std::string& name, const
     } else if (name == "scale") {
         style.focusScale = parseFloat(value);
     } else if (name == "transform") {
-        auto scalePos = value.find("scale(");
-        if (scalePos != std::string::npos) {
-            auto start = scalePos + 6;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                style.focusScale = parseFloat(value.substr(start, end - start));
+        auto ops = parseTransformOperations(value);
+        for (const auto& op : ops) {
+            if (op.type == TransformOperationType::Scale ||
+                op.type == TransformOperationType::Scale3d ||
+                op.type == TransformOperationType::ScaleX) {
+                if (!op.args.empty()) {
+                    float val = op.args[0].value;
+                    if (op.args[0].unit == CSSValue::Percent) {
+                        val /= 100.0f;
+                    }
+                    style.focusScale = val;
+                }
             }
         }
     }
@@ -4828,12 +4865,18 @@ void StyleSheet::mergeActiveProperty(Style& style, const std::string& name, cons
     } else if (name == "scale") {
         style.activeScale = parseFloat(value);
     } else if (name == "transform") {
-        auto scalePos = value.find("scale(");
-        if (scalePos != std::string::npos) {
-            auto start = scalePos + 6;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                style.activeScale = parseFloat(value.substr(start, end - start));
+        auto ops = parseTransformOperations(value);
+        for (const auto& op : ops) {
+            if (op.type == TransformOperationType::Scale ||
+                op.type == TransformOperationType::Scale3d ||
+                op.type == TransformOperationType::ScaleX) {
+                if (!op.args.empty()) {
+                    float val = op.args[0].value;
+                    if (op.args[0].unit == CSSValue::Percent) {
+                        val /= 100.0f;
+                    }
+                    style.activeScale = val;
+                }
             }
         }
     }
@@ -6316,6 +6359,425 @@ float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
         }
     }
     return t;
+}
+
+std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::string& value) {
+    std::vector<TransformOperation> operations;
+    std::string trimmedVal = trim(value);
+    if (trimmedVal == "none" || trimmedVal.empty()) {
+        return operations;
+    }
+    
+    size_t pos = 0;
+    while (pos < trimmedVal.size()) {
+        // Skip whitespace
+        while (pos < trimmedVal.size() && std::isspace(static_cast<unsigned char>(trimmedVal[pos]))) {
+            pos++;
+        }
+        if (pos >= trimmedVal.size()) break;
+        
+        // Find the function name
+        size_t nameStart = pos;
+        while (pos < trimmedVal.size() && (std::isalnum(static_cast<unsigned char>(trimmedVal[pos])) || trimmedVal[pos] == '-')) {
+            pos++;
+        }
+        std::string name = trimmedVal.substr(nameStart, pos - nameStart);
+        
+        // Skip whitespace before '('
+        while (pos < trimmedVal.size() && std::isspace(static_cast<unsigned char>(trimmedVal[pos]))) {
+            pos++;
+        }
+        
+        if (pos >= trimmedVal.size() || trimmedVal[pos] != '(') {
+            break;
+        }
+        pos++; // consume '('
+        
+        // Find the matching ')'
+        size_t argsStart = pos;
+        int depth = 1;
+        while (pos < trimmedVal.size() && depth > 0) {
+            if (trimmedVal[pos] == '(') depth++;
+            else if (trimmedVal[pos] == ')') depth--;
+            pos++;
+        }
+        if (depth > 0) {
+            break;
+        }
+        std::string argsStr = trimmedVal.substr(argsStart, pos - 1 - argsStart);
+        
+        // Split arguments by comma
+        std::vector<std::string> rawArgs;
+        size_t argPos = 0;
+        int argDepth = 0;
+        size_t lastStart = 0;
+        while (argPos < argsStr.size()) {
+            if (argsStr[argPos] == '(') argDepth++;
+            else if (argsStr[argPos] == ')') argDepth--;
+            else if (argsStr[argPos] == ',' && argDepth == 0) {
+                rawArgs.push_back(trim(argsStr.substr(lastStart, argPos - lastStart)));
+                lastStart = argPos + 1;
+            }
+            argPos++;
+        }
+        rawArgs.push_back(trim(argsStr.substr(lastStart)));
+        
+        // Parse arguments into CSSValue
+        std::vector<CSSValue> args;
+        for (const auto& rawArg : rawArgs) {
+            if (!rawArg.empty()) {
+                std::string lowerArg = lowerAscii(rawArg);
+                if (lowerArg == "0") {
+                    args.push_back(CSSValue::px(0.0f));
+                } else if (lowerArg.find("deg") != std::string::npos ||
+                           lowerArg.find("rad") != std::string::npos ||
+                           lowerArg.find("grad") != std::string::npos ||
+                           lowerArg.find("turn") != std::string::npos) {
+                    float deg = parseAngleDegrees(rawArg);
+                    args.push_back(CSSValue{deg, CSSValue::Deg});
+                } else {
+                    args.push_back(parseCSSValue(rawArg));
+                }
+            }
+        }
+        
+        TransformOperationType type;
+        bool valid = true;
+        if (name == "translate") {
+            type = TransformOperationType::Translate;
+            if (args.empty() || args.size() > 2) valid = false;
+            if (args.size() == 1) args.push_back(CSSValue::px(0.0f));
+        } else if (name == "translate3d") {
+            type = TransformOperationType::Translate3d;
+            if (args.size() != 3) valid = false;
+        } else if (name == "translateX") {
+            type = TransformOperationType::TranslateX;
+            if (args.size() != 1) valid = false;
+        } else if (name == "translateY") {
+            type = TransformOperationType::TranslateY;
+            if (args.size() != 1) valid = false;
+        } else if (name == "translateZ") {
+            type = TransformOperationType::TranslateZ;
+            if (args.size() != 1) valid = false;
+        } else if (name == "scale") {
+            type = TransformOperationType::Scale;
+            if (args.empty() || args.size() > 2) valid = false;
+            if (args.size() == 1) {
+                args.push_back(args[0]);
+            }
+        } else if (name == "scale3d") {
+            type = TransformOperationType::Scale3d;
+            if (args.size() != 3) valid = false;
+        } else if (name == "scaleX") {
+            type = TransformOperationType::ScaleX;
+            if (args.size() != 1) valid = false;
+        } else if (name == "scaleY") {
+            type = TransformOperationType::ScaleY;
+            if (args.size() != 1) valid = false;
+        } else if (name == "scaleZ") {
+            type = TransformOperationType::ScaleZ;
+            if (args.size() != 1) valid = false;
+        } else if (name == "rotate") {
+            type = TransformOperationType::Rotate;
+            if (args.size() != 1) valid = false;
+        } else if (name == "rotate3d") {
+            type = TransformOperationType::Rotate3d;
+            if (args.size() != 4) valid = false;
+        } else if (name == "rotateX") {
+            type = TransformOperationType::RotateX;
+            if (args.size() != 1) valid = false;
+        } else if (name == "rotateY") {
+            type = TransformOperationType::RotateY;
+            if (args.size() != 1) valid = false;
+        } else if (name == "rotateZ") {
+            type = TransformOperationType::RotateZ;
+            if (args.size() != 1) valid = false;
+        } else if (name == "skew") {
+            type = TransformOperationType::Skew;
+            if (args.empty() || args.size() > 2) valid = false;
+            if (args.size() == 1) args.push_back(CSSValue{0.0f, CSSValue::Deg});
+        } else if (name == "skewX") {
+            type = TransformOperationType::SkewX;
+            if (args.size() != 1) valid = false;
+        } else if (name == "skewY") {
+            type = TransformOperationType::SkewY;
+            if (args.size() != 1) valid = false;
+        } else if (name == "matrix") {
+            type = TransformOperationType::Matrix;
+            if (args.size() != 6) valid = false;
+        } else if (name == "matrix3d") {
+            type = TransformOperationType::Matrix3d;
+            if (args.size() != 16) valid = false;
+        } else if (name == "perspective") {
+            type = TransformOperationType::Perspective;
+            if (args.size() != 1) valid = false;
+        } else {
+            valid = false;
+        }
+        
+        if (valid) {
+            operations.push_back({type, args});
+        }
+    }
+    return operations;
+}
+
+TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
+    TransformOrigin origin;
+    std::string_view tokens[3];
+    int count = 0;
+    splitWhitespace(value, tokens, 3, count);
+    if (count == 0) return origin;
+
+    auto parseX = [](std::string_view tok, bool& ok) -> CSSValue {
+        std::string s = lowerAscii(tok);
+        ok = true;
+        if (s == "left") return CSSValue::pct(0.0f);
+        if (s == "right") return CSSValue::pct(100.0f);
+        if (s == "center") return CSSValue::pct(50.0f);
+        ok = false;
+        return CSSValue::pct(50.0f);
+    };
+
+    auto parseY = [](std::string_view tok, bool& ok) -> CSSValue {
+        std::string s = lowerAscii(tok);
+        ok = true;
+        if (s == "top") return CSSValue::pct(0.0f);
+        if (s == "bottom") return CSSValue::pct(100.0f);
+        if (s == "center") return CSSValue::pct(50.0f);
+        ok = false;
+        return CSSValue::pct(50.0f);
+    };
+
+    if (count == 1) {
+        bool ok = false;
+        CSSValue val = parseX(tokens[0], ok);
+        if (!ok) {
+            val = parseY(tokens[0], ok);
+            if (ok) {
+                origin.x = CSSValue::pct(50.0f);
+                origin.y = val;
+                origin.z = CSSValue::px(0.0f);
+                return origin;
+            } else {
+                val = parseCSSValue(std::string(tokens[0]));
+            }
+        }
+        origin.x = val;
+        origin.y = CSSValue::pct(50.0f);
+        origin.z = CSSValue::px(0.0f);
+    } else if (count == 2) {
+        bool firstIsY = false;
+        bool secondIsX = false;
+        bool firstIsX = false;
+        bool secondIsY = false;
+
+        CSSValue xVal, yVal;
+        
+        bool ok;
+        CSSValue testX1 = parseX(tokens[0], ok);
+        if (ok) { firstIsX = true; xVal = testX1; }
+        
+        CSSValue testY1 = parseY(tokens[0], ok);
+        if (ok) { firstIsY = true; yVal = testY1; }
+
+        CSSValue testX2 = parseX(tokens[1], ok);
+        if (ok) { secondIsX = true; xVal = testX2; }
+        
+        CSSValue testY2 = parseY(tokens[1], ok);
+        if (ok) { secondIsY = true; yVal = testY2; }
+
+        if (firstIsY && secondIsX) {
+            origin.x = xVal;
+            origin.y = yVal;
+        } else {
+            if (firstIsX) {
+                origin.x = xVal;
+            } else {
+                origin.x = parseCSSValue(std::string(tokens[0]));
+            }
+            
+            if (secondIsY) {
+                origin.y = yVal;
+            } else {
+                origin.y = parseCSSValue(std::string(tokens[1]));
+            }
+        }
+        origin.z = CSSValue::px(0.0f);
+    } else if (count == 3) {
+        bool firstIsY = false;
+        bool secondIsX = false;
+        bool firstIsX = false;
+        bool secondIsY = false;
+
+        CSSValue xVal, yVal;
+        
+        bool ok;
+        CSSValue testX1 = parseX(tokens[0], ok);
+        if (ok) { firstIsX = true; xVal = testX1; }
+        
+        CSSValue testY1 = parseY(tokens[0], ok);
+        if (ok) { firstIsY = true; yVal = testY1; }
+
+        CSSValue testX2 = parseX(tokens[1], ok);
+        if (ok) { secondIsX = true; xVal = testX2; }
+        
+        CSSValue testY2 = parseY(tokens[1], ok);
+        if (ok) { secondIsY = true; yVal = testY2; }
+
+        if (firstIsY && secondIsX) {
+            origin.x = xVal;
+            origin.y = yVal;
+        } else {
+            if (firstIsX) {
+                origin.x = xVal;
+            } else {
+                origin.x = parseCSSValue(std::string(tokens[0]));
+            }
+            
+            if (secondIsY) {
+                origin.y = yVal;
+            } else {
+                origin.y = parseCSSValue(std::string(tokens[1]));
+            }
+        }
+        origin.z = parseCSSValue(std::string(tokens[2]));
+    }
+    return origin;
+}
+
+TransformStyle StyleSheet::parseTransformStyle(const std::string& value) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "preserve-3d") return TransformStyle::Preserve3D;
+    return TransformStyle::Flat;
+}
+
+TransformBox StyleSheet::parseTransformBox(const std::string& value) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "content-box") return TransformBox::ContentBox;
+    if (s == "fill-box") return TransformBox::FillBox;
+    if (s == "stroke-box") return TransformBox::StrokeBox;
+    if (s == "view-box") return TransformBox::ViewBox;
+    return TransformBox::BorderBox;
+}
+
+CSSValue StyleSheet::parsePerspective(const std::string& value) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "none" || s.empty()) {
+        return CSSValue{0.0f, CSSValue::None};
+    }
+    return parseCSSValue(s);
+}
+
+PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
+    PerspectiveOrigin origin;
+    std::string_view tokens[2];
+    int count = 0;
+    splitWhitespace(value, tokens, 2, count);
+    if (count == 0) return origin;
+
+    auto parseX = [](std::string_view tok, bool& ok) -> CSSValue {
+        std::string s = lowerAscii(tok);
+        ok = true;
+        if (s == "left") return CSSValue::pct(0.0f);
+        if (s == "right") return CSSValue::pct(100.0f);
+        if (s == "center") return CSSValue::pct(50.0f);
+        ok = false;
+        return CSSValue::pct(50.0f);
+    };
+
+    auto parseY = [](std::string_view tok, bool& ok) -> CSSValue {
+        std::string s = lowerAscii(tok);
+        ok = true;
+        if (s == "top") return CSSValue::pct(0.0f);
+        if (s == "bottom") return CSSValue::pct(100.0f);
+        if (s == "center") return CSSValue::pct(50.0f);
+        ok = false;
+        return CSSValue::pct(50.0f);
+    };
+
+    if (count == 1) {
+        bool ok = false;
+        CSSValue val = parseX(tokens[0], ok);
+        if (!ok) {
+            val = parseY(tokens[0], ok);
+            if (ok) {
+                origin.x = CSSValue::pct(50.0f);
+                origin.y = val;
+                return origin;
+            } else {
+                val = parseCSSValue(std::string(tokens[0]));
+            }
+        }
+        origin.x = val;
+        origin.y = CSSValue::pct(50.0f);
+    } else if (count == 2) {
+        bool firstIsY = false;
+        bool secondIsX = false;
+        bool firstIsX = false;
+        bool secondIsY = false;
+
+        CSSValue xVal, yVal;
+        
+        bool ok;
+        CSSValue testX1 = parseX(tokens[0], ok);
+        if (ok) { firstIsX = true; xVal = testX1; }
+        
+        CSSValue testY1 = parseY(tokens[0], ok);
+        if (ok) { firstIsY = true; yVal = testY1; }
+
+        CSSValue testX2 = parseX(tokens[1], ok);
+        if (ok) { secondIsX = true; xVal = testX2; }
+        
+        CSSValue testY2 = parseY(tokens[1], ok);
+        if (ok) { secondIsY = true; yVal = testY2; }
+
+        if (firstIsY && secondIsX) {
+            origin.x = xVal;
+            origin.y = yVal;
+        } else {
+            if (firstIsX) {
+                origin.x = xVal;
+            } else {
+                origin.x = parseCSSValue(std::string(tokens[0]));
+            }
+            
+            if (secondIsY) {
+                origin.y = yVal;
+            } else {
+                origin.y = parseCSSValue(std::string(tokens[1]));
+            }
+        }
+    }
+    return origin;
+}
+
+BackfaceVisibility StyleSheet::parseBackfaceVisibility(const std::string& value) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "hidden") return BackfaceVisibility::Hidden;
+    return BackfaceVisibility::Visible;
+}
+
+float StyleSheet::parseAngleDegrees(const std::string& value) {
+    std::string lower = lowerAscii(trim(value));
+    if (lower == "0") return 0.0f;
+    
+    size_t lastNum = lower.find_last_of("0123456789.-+");
+    if (lastNum == std::string::npos) return 0.0f;
+    
+    float num = std::stof(lower.substr(0, lastNum + 1));
+    std::string unit = lower.substr(lastNum + 1);
+    
+    if (unit == "deg" || unit.empty()) {
+        return num;
+    } else if (unit == "rad") {
+        return num * 180.0f / 3.141592653589793f;
+    } else if (unit == "grad") {
+        return num * 0.9f;
+    } else if (unit == "turn") {
+        return num * 360.0f;
+    }
+    return 0.0f;
 }
 
 } // namespace FluxUI

@@ -492,7 +492,8 @@ struct CSSValue {
         SvW, SvH, SvMin, SvMax,
         LvW, LvH, LvMin, LvMax,
         DvMin, DvMax,
-        Cqw, Cqh, Cqi, Cqb, Cqmin, Cqmax
+        Cqw, Cqh, Cqi, Cqb, Cqmin, Cqmax,
+        Deg, Rad, Grad, Turn
     };
     float value = 0;
     Unit unit = None;
@@ -1094,6 +1095,86 @@ struct FastCustomProperties {
         static const std::unordered_map<std::string, std::string> emptyMap;
         return map ? map->find(key) : emptyMap.find(key);
     }
+};
+
+
+enum class TransformOperationType {
+    Translate,
+    Translate3d,
+    TranslateX,
+    TranslateY,
+    TranslateZ,
+    Scale,
+    Scale3d,
+    ScaleX,
+    ScaleY,
+    ScaleZ,
+    Rotate,
+    Rotate3d,
+    RotateX,
+    RotateY,
+    RotateZ,
+    Skew,
+    SkewX,
+    SkewY,
+    Matrix,
+    Matrix3d,
+    Perspective
+};
+
+struct TransformOperation {
+    TransformOperationType type;
+    std::vector<CSSValue> args;
+
+    bool operator==(const TransformOperation& o) const {
+        return type == o.type && args == o.args;
+    }
+    bool operator!=(const TransformOperation& o) const {
+        return !(*this == o);
+    }
+};
+
+struct TransformOrigin {
+    CSSValue x = CSSValue::pct(50.0f);
+    CSSValue y = CSSValue::pct(50.0f);
+    CSSValue z = CSSValue::px(0.0f);
+
+    bool operator==(const TransformOrigin& o) const {
+        return x == o.x && y == o.y && z == o.z;
+    }
+    bool operator!=(const TransformOrigin& o) const {
+        return !(*this == o);
+    }
+};
+
+enum class TransformStyle {
+    Flat,
+    Preserve3D
+};
+
+enum class TransformBox {
+    ContentBox,
+    BorderBox,
+    FillBox,
+    StrokeBox,
+    ViewBox
+};
+
+struct PerspectiveOrigin {
+    CSSValue x = CSSValue::pct(50.0f);
+    CSSValue y = CSSValue::pct(50.0f);
+
+    bool operator==(const PerspectiveOrigin& o) const {
+        return x == o.x && y == o.y;
+    }
+    bool operator!=(const PerspectiveOrigin& o) const {
+        return !(*this == o);
+    }
+};
+
+enum class BackfaceVisibility {
+    Visible,
+    Hidden
 };
 
 // ============================================================
@@ -1718,6 +1799,24 @@ struct Style {
     bool hasActiveGradient = false;
     float activeOpacity = -1;
     float activeScale = -1;
+
+    // Transform Properties (Chromium Blink parity)
+    std::vector<TransformOperation> transform;
+    TransformOrigin transformOrigin;
+    TransformStyle transformStyle = TransformStyle::Flat;
+    TransformBox transformBox = TransformBox::BorderBox;
+    CSSValue perspective = CSSValue{0.0f, CSSValue::None}; // none
+    PerspectiveOrigin perspectiveOrigin;
+    BackfaceVisibility backfaceVisibility = BackfaceVisibility::Visible;
+
+    bool hasTransform = false;
+    bool hasTransformOrigin = false;
+    bool hasTransformStyle = false;
+    bool hasTransformBox = false;
+    bool hasPerspective = false;
+    bool hasPerspectiveOrigin = false;
+    bool hasBackfaceVisibility = false;
+
     uint64_t inheritedHash = 0;
 };
 
