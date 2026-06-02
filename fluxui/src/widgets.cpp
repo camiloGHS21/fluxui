@@ -3176,7 +3176,7 @@ void Widget::update(const InputState& input) {
         pressed = false;
         return;
     }
-    float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
+    float dt = std::max(0.0f, input.deltaTime);
     bool oldHovered = hovered;
     hovered = bounds.contains(input.mousePos);
     if (hovered != oldHovered) {
@@ -8319,19 +8319,26 @@ bool Widget::applyKeyframePropertyOverride(const std::string& name, const std::s
         computedStyle.ensureMutable().border.color = StyleSheet::parseColor(value);
         return true;
     }
-    if (name == "scale" || name == "transform") {
-        // Basic scale(X) extraction (parity with mergeProperty for `transform`).
-        // Full transform list support (rotate, translate, matrix) is layered on top of
-        // the existing scale-only transform pipeline; expand this if needed.
-        auto scalePos = value.find("scale(");
-        if (scalePos != std::string::npos) {
-            auto start = scalePos + 6;
-            auto end = value.find(')', start);
-            if (end != std::string::npos) {
-                computedStyle.ensureMutable().scale = StyleSheet::parseFloat(value.substr(start, end - start));
+    if (name == "scale") {
+        computedStyle.ensureMutable().scale = StyleSheet::parseFloat(value);
+        return true;
+    }
+    if (name == "transform") {
+        computedStyle.ensureMutable().transform = StyleSheet::parseTransformOperations(value);
+        computedStyle.ensureMutable().hasTransform = true;
+        // Also extract scale if present (for backward compatibility / optimization)
+        for (const auto& op : computedStyle->transform) {
+            if (op.type == TransformOperationType::Scale ||
+                op.type == TransformOperationType::Scale3d ||
+                op.type == TransformOperationType::ScaleX) {
+                if (!op.args.empty()) {
+                    float val = op.args[0].value;
+                    if (op.args[0].unit == CSSValue::Percent) {
+                        val /= 100.0f;
+                    }
+                    computedStyle.ensureMutable().scale = val;
+                }
             }
-        } else {
-            computedStyle.ensureMutable().scale = StyleSheet::parseFloat(value);
         }
         return true;
     }
@@ -8393,6 +8400,36 @@ bool Widget::applyKeyframePropertyOverride(const std::string& name, const std::s
         computedStyle.ensureMutable().bottom = StyleSheet::parseCSSValue(value);
         return true;
     }
+    if (name == "transform-origin") {
+        computedStyle.ensureMutable().transformOrigin = StyleSheet::parseTransformOrigin(value);
+        computedStyle.ensureMutable().hasTransformOrigin = true;
+        return true;
+    }
+    if (name == "transform-style") {
+        computedStyle.ensureMutable().transformStyle = StyleSheet::parseTransformStyle(value);
+        computedStyle.ensureMutable().hasTransformStyle = true;
+        return true;
+    }
+    if (name == "transform-box") {
+        computedStyle.ensureMutable().transformBox = StyleSheet::parseTransformBox(value);
+        computedStyle.ensureMutable().hasTransformBox = true;
+        return true;
+    }
+    if (name == "perspective") {
+        computedStyle.ensureMutable().perspective = StyleSheet::parsePerspective(value);
+        computedStyle.ensureMutable().hasPerspective = true;
+        return true;
+    }
+    if (name == "perspective-origin") {
+        computedStyle.ensureMutable().perspectiveOrigin = StyleSheet::parsePerspectiveOrigin(value);
+        computedStyle.ensureMutable().hasPerspectiveOrigin = true;
+        return true;
+    }
+    if (name == "backface-visibility") {
+        computedStyle.ensureMutable().backfaceVisibility = StyleSheet::parseBackfaceVisibility(value);
+        computedStyle.ensureMutable().hasBackfaceVisibility = true;
+        return true;
+    }
     return false;
 }
 
@@ -8407,6 +8444,8 @@ void Widget::clearAnimationOverrides() {
     activeAnimations.clear();
     firstUpdate = true;
     localClock = 0.0f;
+    hasLastResolveKey = false;
+    markStyleDirty();
 }
 
 static std::string serializeAnimationNameList(const std::vector<std::string>& v) {
@@ -8420,6 +8459,9 @@ static std::string serializeAnimationNameList(const std::vector<std::string>& v)
 
 void Widget::tickAnimations(const InputState& input) {
     if (!currentSheet) return;
+    if (styleDirty) {
+        resolveStyles(*currentSheet);
+    }
     const Style& s = *computedStyle;
     if (s.animationName.empty()) {
         if (!activeAnimations.empty()) {
@@ -8430,7 +8472,7 @@ void Widget::tickAnimations(const InputState& input) {
     }
 
     // Advance local clock
-    float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
+    float dt = std::max(0.0f, input.deltaTime);
     if (firstUpdate) { localClock = 0.0f; firstUpdate = false; }
     else              { localClock += dt; }
 
@@ -8541,6 +8583,7 @@ void Widget::tickAnimations(const InputState& input) {
                 // fill: none — wipe overrides so the underlying value is restored on the
                 // next styleDirty resolve.
                 engine.clearKeyframeOverrides(wid);
+                hasLastResolveKey = false;
                 markStyleDirty();
             }
             continue;
@@ -8637,6 +8680,25 @@ void Widget::tickAnimations(const InputState& input) {
             auto defIt = currentSheet->getPropertyDefinitions().find(prop);
             if (defIt != currentSheet->getPropertyDefinitions().end()) {
                 syntax = defIt->second.syntax;
+            } else {
+                if (prop == "opacity" || prop == "scale") {
+                    syntax = "<number>";
+                } else if (prop == "color" || prop == "background-color" || prop == "background" || prop == "border-color") {
+                    syntax = "<color>";
+                } else if (prop == "width" || prop == "height" || prop == "top" || prop == "left" || prop == "right" || prop == "bottom" ||
+                           prop == "margin" || prop == "margin-top" || prop == "margin-right" || prop == "margin-bottom" || prop == "margin-left" ||
+                           prop == "padding" || prop == "padding-top" || prop == "padding-right" || prop == "padding-bottom" || prop == "padding-left" ||
+                           prop == "font-size") {
+                    syntax = "<length-percentage>";
+                } else if (prop == "transform") {
+                    syntax = "<transform-list>";
+                } else if (prop == "transform-origin") {
+                    syntax = "<transform-origin>";
+                } else if (prop == "perspective-origin") {
+                    syntax = "<perspective-origin>";
+                } else if (prop == "perspective") {
+                    syntax = "<length>";
+                }
             }
             std::string interp = StyleSheet::interpolateTypedValue(resolvedA, resolvedB, easedT, syntax);
             if (applyKeyframePropertyOverride(prop, interp)) anyChange = true;
@@ -8647,6 +8709,10 @@ void Widget::tickAnimations(const InputState& input) {
         if (auto* app = Application::instance()) {
             app->requestRedraw();
         }
+    }
+
+    if (styleDirty) {
+        resolveStyles(*currentSheet);
     }
 }
 

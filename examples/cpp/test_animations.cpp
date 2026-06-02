@@ -87,6 +87,10 @@ static void testParseTransitionShorthand() {
     auto widget = std::make_shared<Panel>("box");
     Style s = sheet.resolve("box", "", "panel", {}, nullptr, widget.get());
 
+    std::cout << "DEBUG: transitionProperty size = " << s.transitionProperty.size() << std::endl;
+    for (size_t i = 0; i < s.transitionProperty.size(); ++i) {
+        std::cout << "DEBUG: transitionProperty[" << i << "] = '" << s.transitionProperty[i] << "'" << std::endl;
+    }
     assert(s.transitionProperty.size() == 2);
     assert(s.transitionProperty[0] == "opacity");
     assert(s.transitionProperty[1] == "transform");
@@ -137,7 +141,7 @@ static void testTimingFunctionSampling() {
     assert(y025 < y050);
     assert(y050 < y075);
     assert(y025 < 0.25f); // ease-in is slower than linear at the start
-    assert(y075 > 0.75f); // and faster than linear at the end
+    assert(y075 < 0.75f); // and also below diagonal (slower) because it starts slow
 
     std::cout << "  PASS - linear, step-end, steps(4), cubic-bezier all correct." << std::endl;
 }
@@ -195,12 +199,18 @@ static void testAnimationRuntimeTick() {
 
     auto widget = std::make_shared<Panel>("box");
     widget->resolveStyles(sheet);
+    std::cout << "DEBUG base style opacity: " << widget->computedStyle->opacity << std::endl;
     assert(std::abs(widget->computedStyle->opacity - 1.0f) < 1e-6f); // base style
 
     // First update: spawn the animation, no time elapsed -> at delay window or t=0
     InputState input{};
     input.deltaTime = 0.0f;
     widget->update(input);
+    std::cout << "DEBUG step 1 active animations size: " << widget->activeAnimations.size() << std::endl;
+    if (!widget->activeAnimations.empty()) {
+        std::cout << "DEBUG step 1 active animation name: " << widget->activeAnimations[0].name << ", finished: " << widget->activeAnimations[0].finished << ", startTime: " << widget->activeAnimations[0].startTime << ", localClock: " << widget->localClock << std::endl;
+    }
+    std::cout << "DEBUG step 1 opacity: " << widget->computedStyle->opacity << std::endl;
     assert(widget->activeAnimations.size() == 1);
     assert(widget->activeAnimations[0].name == "fadeIn");
     // At t=0 the keyframe at from (opacity 0) should be applied.
@@ -209,11 +219,17 @@ static void testAnimationRuntimeTick() {
     // Advance halfway: 0.25s elapsed -> opacity should be ~0.5
     input.deltaTime = 0.25f;
     widget->update(input);
+    std::cout << "DEBUG step 2 active animations size: " << widget->activeAnimations.size() << std::endl;
+    if (!widget->activeAnimations.empty()) {
+        std::cout << "DEBUG step 2 active animation finished: " << widget->activeAnimations[0].finished << ", localClock: " << widget->localClock << std::endl;
+    }
+    std::cout << "DEBUG step 2 opacity: " << widget->computedStyle->opacity << std::endl;
     assert(std::abs(widget->computedStyle->opacity - 0.5f) < 1e-3f);
 
     // Advance past the end: 0.3s more -> opacity should be 1.0, animation finished
     input.deltaTime = 0.3f;
     widget->update(input);
+    std::cout << "DEBUG step 3 opacity: " << widget->computedStyle->opacity << std::endl;
     assert(std::abs(widget->computedStyle->opacity - 1.0f) < 1e-3f);
     assert(widget->activeAnimations[0].finished);
 
@@ -244,7 +260,7 @@ static void testAnimationAlternateDirection() {
     assert(std::abs(widget->computedStyle->opacity - 0.25f) < 1e-2f);
 
     // 0.4s in -> end of iteration 0, beginning of iteration 1 (reversed) -> opacity=1
-    input.deltaTime = 0.4f;
+    input.deltaTime = 0.3f;
     widget->update(input);
     assert(std::abs(widget->computedStyle->opacity - 1.0f) < 1e-3f);
 

@@ -1,9 +1,5 @@
-// FluxUI - GPU-Accelerated UI Framework with CSS Styling
-// Copyright (c) 2026 - MIT License
 #pragma once
-
 #include "fluxui/config.h"
-
 #include <string>
 #include "fluxui/atomic_string.h"
 #include <vector>
@@ -13,9 +9,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
-
 namespace FluxUI {
-
 inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
     if (!str) {
         if (endptr) *endptr = nullptr;
@@ -23,7 +17,6 @@ inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
     }
     const char* p = str;
     while (*p && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
-    
     const char* start = p;
     bool neg = false;
     if (*p == '-') {
@@ -32,7 +25,6 @@ inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
     } else if (*p == '+') {
         ++p;
     }
-    
     double val = 0.0;
     bool has_digits = false;
     while (*p >= '0' && *p <= '9') {
@@ -40,7 +32,6 @@ inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
         has_digits = true;
         ++p;
     }
-    
     if (*p == '.') {
         const char* dot_ptr = p;
         ++p;
@@ -55,15 +46,13 @@ inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
         if (has_frac_digits) {
             has_digits = true;
         } else if (!has_digits) {
-            p = dot_ptr; // rollback
+            p = dot_ptr;
         }
     }
-    
     if (!has_digits) {
         if (endptr) *endptr = const_cast<char*>(str);
         return 0.0f;
     }
-    
     if (*p == 'e' || *p == 'E') {
         const char* e_ptr = p;
         ++p;
@@ -84,27 +73,23 @@ inline float parseLocaleIndependentFloat(const char* str, char** endptr) {
         if (has_exp_digits) {
             val *= std::pow(10.0, e_neg ? -exp : exp);
         } else {
-            p = e_ptr; // rollback 'e'
+            p = e_ptr;
         }
     }
-    
     if (neg) val = -val;
     if (endptr) {
         *endptr = const_cast<char*>(p);
     }
     return static_cast<float>(val);
 }
-
 inline float parseLocaleIndependentFloat(const std::string& str, float fallback = 0.0f) {
     char* end = nullptr;
     float val = parseLocaleIndependentFloat(str.c_str(), &end);
     if (end == str.c_str()) return fallback;
     return val;
 }
-
 typedef void* NativeWindowHandle;
 typedef void* NativeCursorHandle;
-
 enum ModifierBits {
     MOD_NONE = 0,
     MOD_SHIFT = 1 << 0,
@@ -112,11 +97,6 @@ enum ModifierBits {
     MOD_ALT = 1 << 2,
     MOD_GUI = 1 << 3
 };
-
-// ============================================================
-//  Core Math Types
-// ============================================================
-
 struct Vec2 {
     float x = 0, y = 0;
     Vec2() = default;
@@ -127,23 +107,15 @@ struct Vec2 {
     Vec2 operator/(float s) const { return {x / s, y / s}; }
     bool operator==(const Vec2& o) const { return x == o.x && y == o.y; }
 };
-
 struct Vec4 {
     float x = 0, y = 0, z = 0, w = 0;
     Vec4() = default;
     Vec4(float a, float b, float c, float d) : x(a), y(b), z(c), w(d) {}
 };
-
-// ============================================================
-//  Color
-// ============================================================
-
 struct Color {
     float r = 0, g = 0, b = 0, a = 1.0f;
-
     Color() = default;
     Color(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
-
     static Color fromHex(const std::string& hex) {
         std::string h = hex;
         if (!h.empty() && h[0] == '#') h = h.substr(1);
@@ -177,7 +149,6 @@ struct Color {
             1.0f
         };
     }
-
     static Color fromHSL(float h, float s, float l, float a = 1.0f) {
         float c = (1.0f - std::abs(2.0f * l - 1.0f)) * s;
         float x = c * (1.0f - std::abs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
@@ -191,13 +162,10 @@ struct Color {
         else              { r1 = c; b1 = x; }
         return {r1 + m, g1 + m, b1 + m, a};
     }
-
     static Color fromRGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
         return {r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f};
     }
-
     Color withAlpha(float alpha) const { return {r, g, b, alpha}; }
-
     static Color lerp(const Color& a, const Color& b, float t) {
         t = std::clamp(t, 0.0f, 1.0f);
         return {
@@ -207,7 +175,6 @@ struct Color {
             a.a + (b.a - a.a) * t
         };
     }
-
     Vec4 toVec4() const { return {r, g, b, a}; }
     bool operator==(const Color& other) const {
         return r == other.r && g == other.g && b == other.b && a == other.a;
@@ -216,11 +183,6 @@ struct Color {
         return !(*this == other);
     }
 };
-
-// ============================================================
-//  Geometry
-// ============================================================
-
 struct Rect {
     float x = 0, y = 0, w = 0, h = 0;
     Rect() = default;
@@ -234,7 +196,6 @@ struct Rect {
         return {x + amount, y + amount, w - 2 * amount, h - 2 * amount};
     }
 };
-
 struct EdgeInsets {
     float top = 0, right = 0, bottom = 0, left = 0;
     EdgeInsets() = default;
@@ -248,19 +209,17 @@ struct EdgeInsets {
     }
     bool operator!=(const EdgeInsets& o) const { return !(*this == o); }
 };
-
 struct BorderRadius {
     float tl = 0, tr = 0, br = 0, bl = 0;
     BorderRadius() = default;
     BorderRadius(float all) : tl(all), tr(all), br(all), bl(all) {}
     float maxRadius() const { return std::max({tl, tr, br, bl}); }
-    float uniform() const { return tl; } // assumes all same
+    float uniform() const { return tl; }
     bool operator==(const BorderRadius& o) const {
         return tl == o.tl && tr == o.tr && br == o.br && bl == o.bl;
     }
     bool operator!=(const BorderRadius& o) const { return !(*this == o); }
 };
-
 struct BoxShadow {
     float offsetX = 0, offsetY = 0;
     float blur = 0, spread = 0;
@@ -273,7 +232,6 @@ struct BoxShadow {
     }
     bool operator!=(const BoxShadow& o) const { return !(*this == o); }
 };
-
 struct Border {
     float width = 0;
     Color color;
@@ -284,13 +242,11 @@ struct Border {
     }
     bool operator!=(const Border& o) const { return !(*this == o); }
 };
-
 struct Gradient {
     enum Type { None, Linear, Radial };
     Type type = None;
     float angle = 180.0f;
     std::vector<std::pair<Color, float>> stops;
-
     static Gradient linear(float angle, std::initializer_list<std::pair<Color, float>> stops) {
         Gradient g;
         g.type = Linear;
@@ -298,17 +254,14 @@ struct Gradient {
         g.stops = stops;
         return g;
     }
-
     static Gradient lerp(const Gradient& a, const Gradient& b, float t) {
         if (t <= 0.0f) return a;
         if (t >= 1.0f) return b;
         if (a.type == None) return b;
         if (b.type == None) return a;
-
         Gradient result;
         result.type = a.type;
         result.angle = a.angle + (b.angle - a.angle) * t;
-
         size_t size = std::min(a.stops.size(), b.stops.size());
         result.stops.reserve(size);
         for (size_t i = 0; i < size; ++i) {
@@ -319,11 +272,6 @@ struct Gradient {
         return result;
     }
 };
-
-// ============================================================
-//  CSS Enums
-// ============================================================
-
 enum class Display {
     Block,
     Flex,
@@ -396,7 +344,6 @@ enum class Appearance {
     SliderHorizontal,
     SquareButton
 };
-
 enum ContainmentFlags : uint8_t {
     kContainNone = 0,
     kContainSize = 1 << 0,
@@ -406,41 +353,31 @@ enum ContainmentFlags : uint8_t {
     kContainContent = kContainLayout | kContainPaint | kContainStyle,
     kContainStrict = kContainSize | kContainLayout | kContainPaint | kContainStyle
 };
-
-// ============================================================
-//  CSS Animations & Transitions (Blink css_animations.cc parity)
-// ============================================================
-
 enum class AnimationDirection {
     Normal,
     Reverse,
     Alternate,
     AlternateReverse
 };
-
 enum class AnimationFillMode {
     None,
     Forwards,
     Backwards,
     Both
 };
-
 enum class AnimationPlayState {
     Running,
     Paused
 };
-
 enum class AnimationComposition {
     Replace,
     Add,
     Accumulate
 };
-
 enum class TransitionBehavior {
     Normal,
     AllowDiscrete
 };
-
 struct TimingFunction {
     enum Kind {
         Linear,
@@ -454,13 +391,10 @@ struct TimingFunction {
         Steps
     };
     Kind kind = Kind::Ease;
-    // Cubic-bezier(x1, y1, x2, y2) — defaults match CSS "ease"
     float params[4] = {0.25f, 0.1f, 0.25f, 1.0f};
-    // Steps(n, jump-start|jump-end|jump-none|jump-both|start|end)
     int stepCount = 1;
     enum StepPosition { JumpStart, JumpEnd, JumpNone, JumpBoth, Start, End };
     StepPosition stepPosition = JumpEnd;
-
     static TimingFunction linear()    { TimingFunction t; t.kind = Linear;    return t; }
     static TimingFunction ease()      { TimingFunction t; t.kind = Ease;      return t; }
     static TimingFunction easeIn()    { TimingFunction t; t.kind = EaseIn;    t.params[0]=0.42f; t.params[1]=0.0f; t.params[2]=1.0f; t.params[3]=1.0f; return t; }
@@ -477,14 +411,7 @@ struct TimingFunction {
         return t;
     }
 };
-
-
 class CSSMathExpressionNode;
-
-// ============================================================
-//  CSS Value (supports px, %, auto)
-// ============================================================
-
 struct CSSValue {
     enum Unit {
         Px, Percent, Auto, None, Vw, Vh, Em, Rem, MinContent, MaxContent, FitContent, Ch, Lh, Vi, Vb, Dvw, Dvh,
@@ -497,21 +424,17 @@ struct CSSValue {
     };
     float value = 0;
     Unit unit = None;
-
-    // For calc(), min(), max(), clamp() support: stores operands
     enum CalcOp { CalcNone, CalcAdd, CalcSub, CalcMul, CalcDiv, CalcMin, CalcMax, CalcClamp };
     CalcOp calcOp = CalcNone;
     float calcValue2 = 0;
     Unit calcUnit2 = None;
     float calcValue3 = 0;
     Unit calcUnit3 = None;
-
     std::shared_ptr<CSSMathExpressionNode> mathExpr;
-
     CSSValue() = default;
     CSSValue(float v, Unit u = Px) : value(v), unit(u) {}
     CSSValue(std::shared_ptr<CSSMathExpressionNode> expr);
-
+    operator float() const { return resolve(1.0f); }
     static CSSValue px(float v) { return {v, Px}; }
     static CSSValue pct(float v) { return {v, Percent}; }
     static CSSValue autoVal() { return {0, Auto}; }
@@ -550,16 +473,12 @@ struct CSSValue {
     static CSSValue minContent() { return {0, MinContent}; }
     static CSSValue maxContent() { return {0, MaxContent}; }
     static CSSValue fitContent() { return {0, FitContent}; }
-
     float resolve(float parentSize, float viewportW = 1920.0f, float viewportH = 1080.0f, float emBase = 16.0f) const;
-
     bool isAuto() const { return unit == Auto; }
     bool isSet() const;
     bool isIntrinsic() const { return unit == MinContent || unit == MaxContent || unit == FitContent; }
-
     bool operator==(const CSSValue& o) const;
     bool operator!=(const CSSValue& o) const { return !(*this == o); }
-
     static float resolveUnit(float val, Unit u, float parentSize, float vpW, float vpH, float emBase) {
         float vminVal = std::min(vpW, vpH);
         float vmaxVal = std::max(vpW, vpH);
@@ -570,15 +489,15 @@ struct CSSValue {
             case Vh: return val * vpH / 100.0f;
             case Em: return val * emBase;
             case Rem: return val * 16.0f;
-            case Ch: return val * emBase * 0.5f; // 0.5em width of '0' character fallback
-            case Lh: return val * emBase * 1.2f; // line-height: 1.2em fallback
-            case Vi: return val * vpW / 100.0f;  // Inline axis in horizontal writing mode (width)
-            case Vb: return val * vpH / 100.0f;  // Block axis in horizontal writing mode (height)
-            case Dvw: return val * vpW / 100.0f; // Dynamic viewport width (same as vw)
-            case Dvh: return val * vpH / 100.0f; // Dynamic viewport height (same as vh)
+            case Ch: return val * emBase * 0.5f;
+            case Lh: return val * emBase * 1.2f;
+            case Vi: return val * vpW / 100.0f;
+            case Vb: return val * vpH / 100.0f;
+            case Dvw: return val * vpW / 100.0f;
+            case Dvh: return val * vpH / 100.0f;
             case Vmin: return val * vminVal / 100.0f;
             case Vmax: return val * vmaxVal / 100.0f;
-            case Rlh: return val * 16.0f * 1.2f; // Root line height fallback: 16px font-size * 1.2 factor = 19.2px
+            case Rlh: return val * 16.0f * 1.2f;
             case Ex: return val * emBase * 0.5f;
             case Ic: return val * emBase;
             case Cap: return val * emBase * 0.7f;
@@ -604,17 +523,15 @@ struct CSSValue {
                 float cSize = parentSize > 0.0f ? parentSize : vmaxVal;
                 return val * cSize / 100.0f;
             }
-            default: return val; // For raw unit-less numbers in calculations
+            default: return val;
         }
     }
 };
-
 enum class MathNodeType {
     Value,
     BinaryOp,
     Function
 };
-
 class CSSMathExpressionNode {
 public:
     virtual ~CSSMathExpressionNode() = default;
@@ -622,37 +539,29 @@ public:
     virtual MathNodeType type() const = 0;
     virtual bool isEqual(const CSSMathExpressionNode& other) const = 0;
 };
-
 class CSSMathExpressionValue : public CSSMathExpressionNode {
 public:
     float value;
     CSSValue::Unit unit;
-
     CSSMathExpressionValue(float v, CSSValue::Unit u) : value(v), unit(u) {}
-
     float resolve(float parentSize, float viewportW, float viewportH, float emBase) const override {
         return CSSValue::resolveUnit(value, unit, parentSize, viewportW, viewportH, emBase);
     }
-
     MathNodeType type() const override { return MathNodeType::Value; }
-
     bool isEqual(const CSSMathExpressionNode& other) const override {
         if (other.type() != MathNodeType::Value) return false;
         auto& o = static_cast<const CSSMathExpressionValue&>(other);
         return value == o.value && unit == o.unit;
     }
 };
-
 class CSSMathExpressionBinaryOp : public CSSMathExpressionNode {
 public:
     enum Op { Add, Sub, Mul, Div };
     Op op;
     std::shared_ptr<CSSMathExpressionNode> left;
     std::shared_ptr<CSSMathExpressionNode> right;
-
     CSSMathExpressionBinaryOp(Op o, std::shared_ptr<CSSMathExpressionNode> l, std::shared_ptr<CSSMathExpressionNode> r)
         : op(o), left(l), right(r) {}
-
     float resolve(float parentSize, float viewportW, float viewportH, float emBase) const override {
         float lVal = left ? left->resolve(parentSize, viewportW, viewportH, emBase) : 0.0f;
         float rVal = right ? right->resolve(parentSize, viewportW, viewportH, emBase) : 0.0f;
@@ -664,9 +573,7 @@ public:
             default: return 0.0f;
         }
     }
-
     MathNodeType type() const override { return MathNodeType::BinaryOp; }
-
     bool isEqual(const CSSMathExpressionNode& other) const override {
         if (other.type() != MathNodeType::BinaryOp) return false;
         auto& o = static_cast<const CSSMathExpressionBinaryOp&>(other);
@@ -676,16 +583,13 @@ public:
         return leftEqual && rightEqual;
     }
 };
-
 class CSSMathExpressionFunction : public CSSMathExpressionNode {
 public:
     enum Func { Min, Max, Clamp };
     Func func;
     std::vector<std::shared_ptr<CSSMathExpressionNode>> args;
-
     CSSMathExpressionFunction(Func f, std::vector<std::shared_ptr<CSSMathExpressionNode>> a)
         : func(f), args(a) {}
-
     float resolve(float parentSize, float viewportW, float viewportH, float emBase) const override {
         if (args.empty()) return 0.0f;
         if (func == Min) {
@@ -709,9 +613,7 @@ public:
         }
         return 0.0f;
     }
-
     MathNodeType type() const override { return MathNodeType::Function; }
-
     bool isEqual(const CSSMathExpressionNode& other) const override {
         if (other.type() != MathNodeType::Function) return false;
         auto& o = static_cast<const CSSMathExpressionFunction&>(other);
@@ -723,38 +625,31 @@ public:
         return true;
     }
 };
-
 class CSSMathExpressionParser {
 public:
     static std::shared_ptr<CSSMathExpressionNode> parse(const std::string& str) {
         CSSMathExpressionParser parser(str);
         return parser.parseExpression();
     }
-
 private:
     std::string src;
     size_t pos = 0;
-
     CSSMathExpressionParser(const std::string& s) : src(s) {}
-
     void skipWhitespace() {
         while (pos < src.size() && (src[pos] == ' ' || src[pos] == '\t' || src[pos] == '\r' || src[pos] == '\n')) {
             pos++;
         }
     }
-
     char peek() {
         skipWhitespace();
         if (pos >= src.size()) return '\0';
         return src[pos];
     }
-
     char next() {
         skipWhitespace();
         if (pos >= src.size()) return '\0';
         return src[pos++];
     }
-
     bool consume(char expected) {
         skipWhitespace();
         if (pos < src.size() && src[pos] == expected) {
@@ -763,7 +658,6 @@ private:
         }
         return false;
     }
-
     bool consumeWord(const std::string& word) {
         skipWhitespace();
         if (pos + word.size() <= src.size() && src.compare(pos, word.size(), word) == 0) {
@@ -775,11 +669,9 @@ private:
         }
         return false;
     }
-
     std::shared_ptr<CSSMathExpressionNode> parseExpression() {
         auto node = parseTerm();
         if (!node) return nullptr;
-
         while (true) {
             skipWhitespace();
             char opChar = peek();
@@ -795,11 +687,9 @@ private:
         }
         return node;
     }
-
     std::shared_ptr<CSSMathExpressionNode> parseTerm() {
         auto node = parseFactor();
         if (!node) return nullptr;
-
         while (true) {
             skipWhitespace();
             char opChar = peek();
@@ -815,18 +705,15 @@ private:
         }
         return node;
     }
-
     std::shared_ptr<CSSMathExpressionNode> parseFactor() {
         skipWhitespace();
         char c = peek();
         if (c == '\0') return nullptr;
-
         if (consume('(')) {
             auto node = parseExpression();
             consume(')');
             return node;
         }
-
         if (consumeWord("calc")) {
             if (consume('(')) {
                 auto node = parseExpression();
@@ -867,14 +754,11 @@ private:
                 return std::make_shared<CSSMathExpressionFunction>(CSSMathExpressionFunction::Clamp, args);
             }
         }
-
         return parseValue();
     }
-
     std::shared_ptr<CSSMathExpressionNode> parseValue() {
         skipWhitespace();
         if (pos >= src.size()) return nullptr;
-
         size_t start = pos;
         if (src[pos] == '+' || src[pos] == '-') {
             pos++;
@@ -884,14 +768,11 @@ private:
             hasDigits = true;
             pos++;
         }
-
         if (!hasDigits) {
             return nullptr;
         }
-
         std::string numStr = src.substr(start, pos - start);
         float val = parseLocaleIndependentFloat(numStr, 0.0f);
-
         CSSValue::Unit unit = CSSValue::None;
         if (pos < src.size() && src[pos] == '%') {
             unit = CSSValue::Percent;
@@ -943,10 +824,8 @@ private:
                 unit = CSSValue::Px;
             }
         }
-
         return std::make_shared<CSSMathExpressionValue>(val, unit);
     }
-
     static std::string lowerAscii(const std::string& str) {
         std::string res = str;
         for (char& c : res) {
@@ -955,9 +834,7 @@ private:
         return res;
     }
 };
-
 inline CSSValue::CSSValue(std::shared_ptr<CSSMathExpressionNode> expr) : value(0), unit(None), mathExpr(expr) {}
-
 inline float CSSValue::resolve(float parentSize, float viewportW, float viewportH, float emBase) const {
     if (mathExpr) {
         return mathExpr->resolve(parentSize, viewportW, viewportH, emBase);
@@ -979,11 +856,9 @@ inline float CSSValue::resolve(float parentSize, float viewportW, float viewport
         default: return primary;
     }
 }
-
 inline bool CSSValue::isSet() const {
     return unit != None || mathExpr != nullptr;
 }
-
 inline bool CSSValue::operator==(const CSSValue& o) const {
     if (unit != o.unit || value != o.value || calcOp != o.calcOp ||
         calcValue2 != o.calcValue2 || calcUnit2 != o.calcUnit2 ||
@@ -994,34 +869,26 @@ inline bool CSSValue::operator==(const CSSValue& o) const {
     if (!mathExpr || !o.mathExpr) return false;
     return mathExpr->isEqual(*o.mathExpr);
 }
-
 struct FastCustomProperties {
     std::shared_ptr<std::unordered_map<std::string, std::string>> map;
-
     FastCustomProperties() = default;
-
     FastCustomProperties(const FastCustomProperties& other) : map(other.map) {}
-
     FastCustomProperties& operator=(const FastCustomProperties& other) {
         if (this != &other) {
             map = other.map;
         }
         return *this;
     }
-
     FastCustomProperties(FastCustomProperties&& other) noexcept : map(std::move(other.map)) {}
-
     FastCustomProperties& operator=(FastCustomProperties&& other) noexcept {
         map = std::move(other.map);
         return *this;
     }
-
     FastCustomProperties(const std::unordered_map<std::string, std::string>& other) {
         if (!other.empty()) {
             map = std::make_shared<std::unordered_map<std::string, std::string>>(other);
         }
     }
-
     FastCustomProperties& operator=(const std::unordered_map<std::string, std::string>& other) {
         if (other.empty()) {
             map.reset();
@@ -1030,15 +897,12 @@ struct FastCustomProperties {
         }
         return *this;
     }
-
     const std::unordered_map<std::string, std::string>* getMapPointer() const {
         return map.get();
     }
-
     std::unordered_map<std::string, std::string>* getMapPointer() {
         return map.get();
     }
-
     void ensureUnique() {
         if (!map) {
             map = std::make_shared<std::unordered_map<std::string, std::string>>();
@@ -1046,58 +910,104 @@ struct FastCustomProperties {
             map = std::make_shared<std::unordered_map<std::string, std::string>>(*map);
         }
     }
-
     std::unordered_map<std::string, std::string>& getOrCreateMap() {
         ensureUnique();
         return *map;
     }
-
     operator const std::unordered_map<std::string, std::string>&() const {
         static const std::unordered_map<std::string, std::string> emptyMap;
         return map ? *map : emptyMap;
     }
-
     auto begin() {
         ensureUnique();
         return map->begin();
     }
-
     auto begin() const {
         static const std::unordered_map<std::string, std::string> emptyMap;
         return map ? map->begin() : emptyMap.begin();
     }
-
     auto end() {
         ensureUnique();
         return map->end();
     }
-
     auto end() const {
         static const std::unordered_map<std::string, std::string> emptyMap;
         return map ? map->end() : emptyMap.end();
     }
-
     size_t size() const { return map ? map->size() : 0; }
     bool empty() const { return !map || map->empty(); }
     void clear() { map.reset(); }
-
     std::string& operator[](const std::string& key) {
         ensureUnique();
         return (*map)[key];
     }
-
     auto find(const std::string& key) {
         ensureUnique();
         return map->find(key);
     }
-
     auto find(const std::string& key) const {
         static const std::unordered_map<std::string, std::string> emptyMap;
         return map ? map->find(key) : emptyMap.find(key);
     }
 };
-
-
+struct Transform2D {
+    float m00 = 1.0f, m01 = 0.0f, m02 = 0.0f;
+    float m10 = 0.0f, m11 = 1.0f, m12 = 0.0f;
+    Transform2D() = default;
+    Transform2D(float m00, float m01, float m02, float m10, float m11, float m12)
+        : m00(m00), m01(m01), m02(m02), m10(m10), m11(m11), m12(m12) {}
+    static Transform2D identity() {
+        return Transform2D(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+    }
+    static Transform2D fromTranslate(float tx, float ty) {
+        return Transform2D(1.0f, 0.0f, tx, 0.0f, 1.0f, ty);
+    }
+    static Transform2D fromScale(float sx, float sy) {
+        return Transform2D(sx, 0.0f, 0.0f, 0.0f, sy, 0.0f);
+    }
+    static Transform2D fromRotate(float angleRad) {
+        float c = std::cos(angleRad);
+        float s = std::sin(angleRad);
+        return Transform2D(c, -s, 0.0f, s, c, 0.0f);
+    }
+    static Transform2D fromSkew(float axRad, float ayRad) {
+        return Transform2D(1.0f, std::tan(axRad), 0.0f, std::tan(ayRad), 1.0f, 0.0f);
+    }
+    bool isIdentity() const {
+        return m00 == 1.0f && m01 == 0.0f && m02 == 0.0f &&
+               m10 == 0.0f && m11 == 1.0f && m12 == 0.0f;
+    }
+    Transform2D multiplied(const Transform2D& o) const {
+        return Transform2D(
+            m00 * o.m00 + m01 * o.m10,
+            m00 * o.m01 + m01 * o.m11,
+            m00 * o.m02 + m01 * o.m12 + m02,
+            m10 * o.m00 + m11 * o.m10,
+            m10 * o.m01 + m11 * o.m11,
+            m10 * o.m02 + m11 * o.m12 + m12
+        );
+    }
+    Vec2 mapPoint(const Vec2& p) const {
+        return Vec2(
+            m00 * p.x + m01 * p.y + m02,
+            m10 * p.x + m11 * p.y + m12
+        );
+    }
+    Transform2D inverse() const {
+        float det = m00 * m11 - m01 * m10;
+        if (std::abs(det) < 1e-9f) {
+            return identity();
+        }
+        float invDet = 1.0f / det;
+        return Transform2D(
+            m11 * invDet, -m01 * invDet, (m01 * m12 - m11 * m02) * invDet,
+            -m10 * invDet, m00 * invDet, (m10 * m02 - m00 * m12) * invDet
+        );
+    }
+    Vec2 inverseMapPoint(const Vec2& p) const {
+        return inverse().mapPoint(p);
+    }
+};
 enum class TransformOperationType {
     Translate,
     Translate3d,
@@ -1121,24 +1031,194 @@ enum class TransformOperationType {
     Matrix3d,
     Perspective
 };
-
 struct TransformOperation {
+    enum Kind {
+        Translate,
+        Scale,
+        Rotate,
+        Skew,
+        Matrix,
+        Perspective
+    };
     TransformOperationType type;
     std::vector<CSSValue> args;
-
+    Kind kind = Translate;
+    float v[16] = {0};
+    int dim = 2;
+    TransformOperation() = default;
     bool operator==(const TransformOperation& o) const {
         return type == o.type && args == o.args;
     }
     bool operator!=(const TransformOperation& o) const {
         return !(*this == o);
     }
+    void resolveFromArgs() {
+        constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+        std::fill(std::begin(v), std::end(v), 0.0f);
+        int t = (int)type;
+        if (t <= 4) {
+            kind = Translate;
+            dim = (t == 1 || t == 4) ? 3 : 2;
+            if (t == 0) {
+                if (args.size() >= 1) v[0] = args[0].resolve(1.0f);
+                if (args.size() >= 2) v[1] = args[1].resolve(1.0f);
+            } else if (t == 1) {
+                if (args.size() >= 1) v[0] = args[0].resolve(1.0f);
+                if (args.size() >= 2) v[1] = args[1].resolve(1.0f);
+                if (args.size() >= 3) v[2] = args[2].resolve(1.0f);
+            } else if (t == 2) {
+                if (!args.empty()) v[0] = args[0].resolve(1.0f);
+            } else if (t == 3) {
+                if (!args.empty()) v[1] = args[0].resolve(1.0f);
+            } else if (t == 4) {
+                if (!args.empty()) v[2] = args[0].resolve(1.0f);
+            }
+        } else if (t <= 9) {
+            kind = Scale;
+            dim = (t == 6 || t == 9) ? 3 : 2;
+            v[0] = 1.0f; v[1] = 1.0f; v[2] = 1.0f;
+            if (t == 5) {
+                if (args.size() >= 1) {
+                    v[0] = args[0].resolve(1.0f);
+                    v[1] = (args.size() >= 2) ? args[1].resolve(1.0f) : args[0].resolve(1.0f);
+                }
+            } else if (t == 6) {
+                if (args.size() >= 1) v[0] = args[0].resolve(1.0f);
+                if (args.size() >= 2) v[1] = args[1].resolve(1.0f);
+                if (args.size() >= 3) v[2] = args[2].resolve(1.0f);
+            } else if (t == 7) {
+                if (!args.empty()) v[0] = args[0].resolve(1.0f);
+            } else if (t == 8) {
+                if (!args.empty()) v[1] = args[0].resolve(1.0f);
+            } else if (t == 9) {
+                if (!args.empty()) v[2] = args[0].resolve(1.0f);
+            }
+        } else if (t <= 14) {
+            kind = Rotate;
+            dim = (t == 11) ? 3 : 2;
+            if (t == 11) {
+                if (args.size() >= 4) {
+                    v[0] = args[0].resolve(1.0f);
+                    v[1] = args[1].resolve(1.0f);
+                    v[2] = args[2].resolve(1.0f);
+                    v[3] = args[3].resolve(1.0f) * kDegToRad;
+                }
+            } else {
+                if (!args.empty()) v[0] = args[0].resolve(1.0f) * kDegToRad;
+            }
+        } else if (t <= 17) {
+            kind = Skew;
+            dim = 2;
+            if (t == 15) {
+                if (args.size() >= 1) v[0] = args[0].resolve(1.0f) * kDegToRad;
+                if (args.size() >= 2) v[1] = args[1].resolve(1.0f) * kDegToRad;
+            } else if (t == 16) {
+                if (!args.empty()) v[0] = args[0].resolve(1.0f) * kDegToRad;
+            } else if (t == 17) {
+                if (!args.empty()) v[1] = args[0].resolve(1.0f) * kDegToRad;
+            }
+        } else if (t <= 19) {
+            kind = Matrix;
+            dim = (t == 19) ? 3 : 2;
+            for (size_t i = 0; i < args.size() && i < 16; ++i) {
+                v[i] = args[i].resolve(1.0f);
+            }
+        } else {
+            kind = Perspective;
+            dim = 2;
+            if (!args.empty()) v[0] = args[0].resolve(1.0f);
+        }
+    }
+    static TransformOperation scaleOp(float sx, float sy) {
+        TransformOperation op;
+        op.type = TransformOperationType::Scale;
+        op.kind = Scale;
+        op.dim = 2;
+        op.v[0] = sx;
+        op.v[1] = sy;
+        op.args = { CSSValue(sx, CSSValue::None), CSSValue(sy, CSSValue::None) };
+        return op;
+    }
+    static TransformOperation rotate(float angleRad) {
+        TransformOperation op;
+        op.type = TransformOperationType::Rotate;
+        op.kind = Rotate;
+        op.dim = 2;
+        op.v[0] = angleRad;
+        constexpr float kRadToDeg = 180.0f / 3.14159265358979323846f;
+        op.args = { CSSValue(angleRad * kRadToDeg, CSSValue::Deg) };
+        return op;
+    }
+    static TransformOperation blend(const TransformOperation& a, const TransformOperation& b, float t) {
+        if (a.kind != b.kind) {
+            return t < 0.5f ? a : b;
+        }
+        TransformOperation res = a;
+        if (a.kind == Rotate) {
+            constexpr float kPi = 3.14159265358979323846f;
+            float diff = b.v[0] - a.v[0];
+            diff = std::remainder(diff, 2.0f * kPi);
+            res.v[0] = a.v[0] + diff * t;
+            constexpr float kRadToDeg = 180.0f / kPi;
+            res.args = { CSSValue(res.v[0] * kRadToDeg, CSSValue::Deg) };
+        } else {
+            int limit = (a.kind == Matrix) ? 16 : 4;
+            for (int i = 0; i < limit; ++i) {
+                res.v[i] = a.v[i] + (b.v[i] - a.v[i]) * t;
+            }
+            res.args.clear();
+            if (res.kind == Translate) {
+                if (res.dim == 3) {
+                    res.args = { CSSValue(res.v[0], CSSValue::Px), CSSValue(res.v[1], CSSValue::Px), CSSValue(res.v[2], CSSValue::Px) };
+                } else {
+                    res.args = { CSSValue(res.v[0], CSSValue::Px), CSSValue(res.v[1], CSSValue::Px) };
+                }
+            } else if (res.kind == Scale) {
+                if (res.dim == 3) {
+                    res.args = { CSSValue(res.v[0], CSSValue::None), CSSValue(res.v[1], CSSValue::None), CSSValue(res.v[2], CSSValue::None) };
+                } else {
+                    res.args = { CSSValue(res.v[0], CSSValue::None), CSSValue(res.v[1], CSSValue::None) };
+                }
+            } else if (res.kind == Skew) {
+                res.args = { CSSValue(res.v[0] * (180.0f / 3.14159265f), CSSValue::Deg), CSSValue(res.v[1] * (180.0f / 3.14159265f), CSSValue::Deg) };
+            } else if (res.kind == Matrix) {
+                if (res.dim == 3) {
+                    for (int i = 0; i < 16; ++i) res.args.push_back(CSSValue(res.v[i], CSSValue::None));
+                } else {
+                    for (int i = 0; i < 6; ++i) res.args.push_back(CSSValue(res.v[i], CSSValue::None));
+                }
+            } else if (res.kind == Perspective) {
+                res.args = { CSSValue(res.v[0], CSSValue::Px) };
+            }
+        }
+        return res;
+    }
+    Transform2D toTransform2D() const {
+        if (kind == Translate) {
+            return Transform2D::fromTranslate(v[0], v[1]);
+        } else if (kind == Scale) {
+            return Transform2D::fromScale(v[0], v[1]);
+        } else if (kind == Rotate) {
+            return Transform2D::fromRotate(v[0]);
+        } else if (kind == Skew) {
+            return Transform2D::fromSkew(v[0], v[1]);
+        } else if (kind == Matrix) {
+            return Transform2D(v[0], v[2], v[4], v[1], v[3], v[5]);
+        }
+        return Transform2D::identity();
+    }
+    Transform2D apply(const Transform2D& matrix, const Vec2& origin) const {
+        Transform2D opMatrix = this->toTransform2D();
+        Transform2D t = Transform2D::fromTranslate(origin.x, origin.y)
+                          .multiplied(opMatrix)
+                          .multiplied(Transform2D::fromTranslate(-origin.x, -origin.y));
+        return matrix.multiplied(t);
+    }
 };
-
 struct TransformOrigin {
     CSSValue x = CSSValue::pct(50.0f);
     CSSValue y = CSSValue::pct(50.0f);
     CSSValue z = CSSValue::px(0.0f);
-
     bool operator==(const TransformOrigin& o) const {
         return x == o.x && y == o.y && z == o.z;
     }
@@ -1146,12 +1226,11 @@ struct TransformOrigin {
         return !(*this == o);
     }
 };
-
 enum class TransformStyle {
     Flat,
-    Preserve3D
+    Preserve3D,
+    Preserve3d = Preserve3D
 };
-
 enum class TransformBox {
     ContentBox,
     BorderBox,
@@ -1159,11 +1238,9 @@ enum class TransformBox {
     StrokeBox,
     ViewBox
 };
-
 struct PerspectiveOrigin {
     CSSValue x = CSSValue::pct(50.0f);
     CSSValue y = CSSValue::pct(50.0f);
-
     bool operator==(const PerspectiveOrigin& o) const {
         return x == o.x && y == o.y;
     }
@@ -1171,18 +1248,11 @@ struct PerspectiveOrigin {
         return !(*this == o);
     }
 };
-
 enum class BackfaceVisibility {
     Visible,
     Hidden
 };
-
-// ============================================================
-//  Style (all CSS properties for a widget)
-// ============================================================
-
 struct Style {
-    // Display & Layout (matching Blink ComputedStyle)
     Display display = Display::Block;
     Position position = Position::Static;
     FlexDirection flexDirection = FlexDirection::Column;
@@ -1196,7 +1266,7 @@ struct Style {
     CSSValue flexBasis;
     int order = 0;
     float gap = 0;
-    float rowGap = 0;   // Blink separates row-gap and column-gap
+    float rowGap = 0;
     float columnGap = 0;
     int columnCount = 0;
     float columnWidth = 0.0f;
@@ -1216,7 +1286,7 @@ struct Style {
     std::string gridColumn;
     std::string gridRow;
     std::string content;
-    float aspectRatio = 0;  // 0 means auto
+    float aspectRatio = 0;
     ObjectFit objectFit = ObjectFit::Fill;
     bool hasObjectFit = false;
     Appearance appearance = Appearance::Auto;
@@ -1225,100 +1295,67 @@ struct Style {
     Vec2 objectPositionOffset = {0.0f, 0.0f};
     bool hasObjectPosition = false;
     ContainmentFlags contain = kContainNone;
-
-
-    // Dimensions
     CSSValue width, height;
     CSSValue minWidth, minHeight;
     CSSValue maxWidth, maxHeight;
-
-    // Spacing
     EdgeInsets padding;
     EdgeInsets margin;
-
-    // Direction & Writing Mode
     Direction direction = Direction::Ltr;
     bool hasDirection = false;
     UnicodeBidi unicodeBidi = UnicodeBidi::Normal;
     bool hasUnicodeBidi = false;
     WritingMode writingMode = WritingMode::HorizontalTb;
     bool hasWritingMode = false;
-
-    // Logical Spacing & Inset/Border properties
     float marginInlineStart = 0.0f, marginInlineEnd = 0.0f;
     float marginBlockStart = 0.0f, marginBlockEnd = 0.0f;
     bool hasMarginInlineStart = false, hasMarginInlineEnd = false;
     bool hasMarginBlockStart = false, hasMarginBlockEnd = false;
-
     float paddingInlineStart = 0.0f, paddingInlineEnd = 0.0f;
     float paddingBlockStart = 0.0f, paddingBlockEnd = 0.0f;
     bool hasPaddingInlineStart = false, hasPaddingInlineEnd = false;
     bool hasPaddingBlockStart = false, hasPaddingBlockEnd = false;
-
     CSSValue insetInlineStart, insetInlineEnd;
     CSSValue insetBlockStart, insetBlockEnd;
     bool hasInsetInlineStart = false, hasInsetInlineEnd = false;
     bool hasInsetBlockStart = false, hasInsetBlockEnd = false;
-
     Border borderInlineStart, borderInlineEnd;
     Border borderBlockStart, borderBlockEnd;
     bool hasBorderInlineStart = false, hasBorderInlineEnd = false;
     bool hasBorderBlockStart = false, hasBorderBlockEnd = false;
-
-    // Logical Dimensions
     CSSValue inlineSize, blockSize;
     CSSValue minInlineSize, minBlockSize;
     CSSValue maxInlineSize, maxBlockSize;
     bool hasInlineSize = false, hasBlockSize = false;
     bool hasMinInlineSize = false, hasMinBlockSize = false;
     bool hasMaxInlineSize = false, hasMaxBlockSize = false;
-
-    // Physical Spacing Explicit Storage & Flags
     float marginT = 0.0f, marginR = 0.0f, marginB = 0.0f, marginL = 0.0f;
     float paddingT = 0.0f, paddingR = 0.0f, paddingB = 0.0f, paddingL = 0.0f;
     bool hasMarginT = false, hasMarginR = false, hasMarginB = false, hasMarginL = false;
     bool hasPaddingT = false, hasPaddingR = false, hasPaddingB = false, hasPaddingL = false;
-
     CSSValue topVal, rightVal, bottomVal, leftVal;
     bool hasTopVal = false, hasRightVal = false, hasBottomVal = false, hasLeftVal = false;
-
     Border borderT, borderR, borderB, borderL;
     bool hasBorderT = false, hasBorderR = false, hasBorderB = false, hasBorderL = false;
-
     bool hasWidthVal = false, hasHeightVal = false;
     bool hasMinWidthVal = false, hasMinHeightVal = false;
     bool hasMaxWidthVal = false, hasMaxHeightVal = false;
-
-    // Declaration order tracking
     uint32_t propertyOrder = 0;
-
-    // Margin orders
     uint32_t orderMarginTop = 0, orderMarginRight = 0, orderMarginBottom = 0, orderMarginLeft = 0;
     uint32_t orderMarginBlockStart = 0, orderMarginBlockEnd = 0, orderMarginInlineStart = 0, orderMarginInlineEnd = 0;
-
-    // Padding orders
     uint32_t orderPaddingTop = 0, orderPaddingRight = 0, orderPaddingBottom = 0, orderPaddingLeft = 0;
     uint32_t orderPaddingBlockStart = 0, orderPaddingBlockEnd = 0, orderPaddingInlineStart = 0, orderPaddingInlineEnd = 0;
-
-    // Border orders
     uint32_t orderBorderTop = 0, orderBorderRight = 0, orderBorderBottom = 0, orderBorderLeft = 0;
     uint32_t orderBorderBlockStart = 0, orderBorderBlockEnd = 0, orderBorderInlineStart = 0, orderBorderInlineEnd = 0;
-
-    // Inset orders
     uint32_t orderTop = 0, orderRight = 0, orderBottom = 0, orderLeft = 0;
     uint32_t orderInsetBlockStart = 0, orderInsetBlockEnd = 0, orderInsetInlineStart = 0, orderInsetInlineEnd = 0;
-
-    // Sizing orders
     uint32_t orderWidth = 0, orderHeight = 0;
     uint32_t orderMinWidth = 0, orderMinHeight = 0;
     uint32_t orderMaxWidth = 0, orderMaxHeight = 0;
     uint32_t orderInlineSize = 0, orderBlockSize = 0;
     uint32_t orderMinInlineSize = 0, orderMinBlockSize = 0;
     uint32_t orderMaxInlineSize = 0, orderMaxBlockSize = 0;
-
     enum PhysicalSide { PhysTop, PhysRight, PhysBottom, PhysLeft };
     enum LogicalSide { LogBlockStart, LogBlockEnd, LogInlineStart, LogInlineEnd };
-
     PhysicalSide mapLogicalSide(LogicalSide log) const {
         if (writingMode == WritingMode::HorizontalTb) {
             switch(log) {
@@ -1334,7 +1371,7 @@ struct Style {
                 case LogInlineStart: return (direction == Direction::Ltr) ? PhysTop : PhysBottom;
                 case LogInlineEnd: return (direction == Direction::Ltr) ? PhysBottom : PhysTop;
             }
-        } else { // VerticalLr
+        } else {
             switch(log) {
                 case LogBlockStart: return PhysLeft;
                 case LogBlockEnd: return PhysRight;
@@ -1344,7 +1381,6 @@ struct Style {
         }
         return PhysTop;
     }
-
     LogicalSide getLogicalSideMapping(PhysicalSide phys) const {
         for (int l = 0; l < 4; ++l) {
             if (mapLogicalSide((LogicalSide)l) == phys) {
@@ -1353,13 +1389,10 @@ struct Style {
         }
         return LogBlockStart;
     }
-
     void resolveLogicalProperties() {
-        // Resolve Margins
         for (int p = 0; p < 4; ++p) {
             PhysicalSide phys = (PhysicalSide)p;
             LogicalSide log = getLogicalSideMapping(phys);
-
             float physVal = 0.0f;
             bool hasPhys = false;
             uint32_t physOrder = 0;
@@ -1369,7 +1402,6 @@ struct Style {
                 case PhysBottom: physVal = marginB; hasPhys = hasMarginB; physOrder = orderMarginBottom; break;
                 case PhysLeft: physVal = marginL; hasPhys = hasMarginL; physOrder = orderMarginLeft; break;
             }
-
             float logVal = 0.0f;
             bool hasLog = false;
             uint32_t logOrder = 0;
@@ -1379,7 +1411,6 @@ struct Style {
                 case LogInlineStart: logVal = marginInlineStart; hasLog = hasMarginInlineStart; logOrder = orderMarginInlineStart; break;
                 case LogInlineEnd: logVal = marginInlineEnd; hasLog = hasMarginInlineEnd; logOrder = orderMarginInlineEnd; break;
             }
-
             float finalVal = 0.0f;
             if (hasPhys && hasLog) {
                 finalVal = (logOrder > physOrder) ? logVal : physVal;
@@ -1388,7 +1419,6 @@ struct Style {
             } else if (hasPhys) {
                 finalVal = physVal;
             } else {
-                // Keep default if neither set
                 switch(phys) {
                     case PhysTop: finalVal = margin.top; break;
                     case PhysRight: finalVal = margin.right; break;
@@ -1396,7 +1426,6 @@ struct Style {
                     case PhysLeft: finalVal = margin.left; break;
                 }
             }
-
             switch(phys) {
                 case PhysTop: margin.top = finalVal; break;
                 case PhysRight: margin.right = finalVal; break;
@@ -1404,12 +1433,9 @@ struct Style {
                 case PhysLeft: margin.left = finalVal; break;
             }
         }
-
-        // Resolve Paddings
         for (int p = 0; p < 4; ++p) {
             PhysicalSide phys = (PhysicalSide)p;
             LogicalSide log = getLogicalSideMapping(phys);
-
             float physVal = 0.0f;
             bool hasPhys = false;
             uint32_t physOrder = 0;
@@ -1419,7 +1445,6 @@ struct Style {
                 case PhysBottom: physVal = paddingB; hasPhys = hasPaddingB; physOrder = orderPaddingBottom; break;
                 case PhysLeft: physVal = paddingL; hasPhys = hasPaddingL; physOrder = orderPaddingLeft; break;
             }
-
             float logVal = 0.0f;
             bool hasLog = false;
             uint32_t logOrder = 0;
@@ -1429,7 +1454,6 @@ struct Style {
                 case LogInlineStart: logVal = paddingInlineStart; hasLog = hasPaddingInlineStart; logOrder = orderPaddingInlineStart; break;
                 case LogInlineEnd: logVal = paddingInlineEnd; hasLog = hasPaddingInlineEnd; logOrder = orderPaddingInlineEnd; break;
             }
-
             float finalVal = 0.0f;
             if (hasPhys && hasLog) {
                 finalVal = (logOrder > physOrder) ? logVal : physVal;
@@ -1445,7 +1469,6 @@ struct Style {
                     case PhysLeft: finalVal = padding.left; break;
                 }
             }
-
             switch(phys) {
                 case PhysTop: padding.top = finalVal; break;
                 case PhysRight: padding.right = finalVal; break;
@@ -1453,12 +1476,9 @@ struct Style {
                 case PhysLeft: padding.left = finalVal; break;
             }
         }
-
-        // Resolve Insets
         for (int p = 0; p < 4; ++p) {
             PhysicalSide phys = (PhysicalSide)p;
             LogicalSide log = getLogicalSideMapping(phys);
-
             CSSValue physVal;
             bool hasPhys = false;
             uint32_t physOrder = 0;
@@ -1468,7 +1488,6 @@ struct Style {
                 case PhysBottom: physVal = bottomVal; hasPhys = hasBottomVal; physOrder = orderBottom; break;
                 case PhysLeft: physVal = leftVal; hasPhys = hasLeftVal; physOrder = orderLeft; break;
             }
-
             CSSValue logVal;
             bool hasLog = false;
             uint32_t logOrder = 0;
@@ -1478,7 +1497,6 @@ struct Style {
                 case LogInlineStart: logVal = insetInlineStart; hasLog = hasInsetInlineStart; logOrder = orderInsetInlineStart; break;
                 case LogInlineEnd: logVal = insetInlineEnd; hasLog = hasInsetInlineEnd; logOrder = orderInsetInlineEnd; break;
             }
-
             CSSValue finalVal;
             bool finalSet = false;
             if (hasPhys && hasLog) {
@@ -1491,7 +1509,6 @@ struct Style {
                 finalVal = physVal;
                 finalSet = true;
             }
-
             if (finalSet) {
                 switch(phys) {
                     case PhysTop: top = finalVal; break;
@@ -1501,12 +1518,9 @@ struct Style {
                 }
             }
         }
-
-        // Resolve Borders
         for (int p = 0; p < 4; ++p) {
             PhysicalSide phys = (PhysicalSide)p;
             LogicalSide log = getLogicalSideMapping(phys);
-
             Border physVal;
             bool hasPhys = false;
             uint32_t physOrder = 0;
@@ -1516,7 +1530,6 @@ struct Style {
                 case PhysBottom: physVal = borderB; hasPhys = hasBorderB; physOrder = orderBorderBottom; break;
                 case PhysLeft: physVal = borderL; hasPhys = hasBorderL; physOrder = orderBorderLeft; break;
             }
-
             Border logVal;
             bool hasLog = false;
             uint32_t logOrder = 0;
@@ -1526,7 +1539,6 @@ struct Style {
                 case LogInlineStart: logVal = borderInlineStart; hasLog = hasBorderInlineStart; logOrder = orderBorderInlineStart; break;
                 case LogInlineEnd: logVal = borderInlineEnd; hasLog = hasBorderInlineEnd; logOrder = orderBorderInlineEnd; break;
             }
-
             Border finalVal;
             bool finalSet = false;
             if (hasPhys && hasLog) {
@@ -1539,7 +1551,6 @@ struct Style {
                 finalVal = physVal;
                 finalSet = true;
             }
-
             if (finalSet) {
                 switch(phys) {
                     case PhysTop: borderTop = finalVal; hasBorderTop = true; break;
@@ -1549,18 +1560,14 @@ struct Style {
                 }
             }
         }
-
-        // Resolve Width group
         {
             bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
             CSSValue physVal = width;
             bool hasPhys = hasWidthVal;
             uint32_t physOrder = orderWidth;
-
             CSSValue logVal = isWidthLogical ? blockSize : inlineSize;
             bool hasLog = isWidthLogical ? hasBlockSize : hasInlineSize;
             uint32_t logOrder = isWidthLogical ? orderBlockSize : orderInlineSize;
-
             if (hasPhys && hasLog) {
                 width = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1569,18 +1576,14 @@ struct Style {
                 width = physVal;
             }
         }
-
-        // Resolve Height group
         {
             bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
             CSSValue physVal = height;
             bool hasPhys = hasHeightVal;
             uint32_t physOrder = orderHeight;
-
             CSSValue logVal = isHeightLogical ? blockSize : inlineSize;
             bool hasLog = isHeightLogical ? hasBlockSize : hasInlineSize;
             uint32_t logOrder = isHeightLogical ? orderBlockSize : orderInlineSize;
-
             if (hasPhys && hasLog) {
                 height = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1589,18 +1592,14 @@ struct Style {
                 height = physVal;
             }
         }
-
-        // Resolve MinWidth group
         {
             bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
             CSSValue physVal = minWidth;
             bool hasPhys = hasMinWidthVal;
             uint32_t physOrder = orderMinWidth;
-
             CSSValue logVal = isWidthLogical ? minBlockSize : minInlineSize;
             bool hasLog = isWidthLogical ? hasMinBlockSize : hasMinInlineSize;
             uint32_t logOrder = isWidthLogical ? orderMinBlockSize : orderMinInlineSize;
-
             if (hasPhys && hasLog) {
                 minWidth = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1609,18 +1608,14 @@ struct Style {
                 minWidth = physVal;
             }
         }
-
-        // Resolve MinHeight group
         {
             bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
             CSSValue physVal = minHeight;
             bool hasPhys = hasMinHeightVal;
             uint32_t physOrder = orderMinHeight;
-
             CSSValue logVal = isHeightLogical ? minBlockSize : minInlineSize;
             bool hasLog = isHeightLogical ? hasMinBlockSize : hasMinInlineSize;
             uint32_t logOrder = isHeightLogical ? orderMinBlockSize : orderMinInlineSize;
-
             if (hasPhys && hasLog) {
                 minHeight = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1629,18 +1624,14 @@ struct Style {
                 minHeight = physVal;
             }
         }
-
-        // Resolve MaxWidth group
         {
             bool isWidthLogical = (writingMode != WritingMode::HorizontalTb);
             CSSValue physVal = maxWidth;
             bool hasPhys = hasMaxWidthVal;
             uint32_t physOrder = orderMaxWidth;
-
             CSSValue logVal = isWidthLogical ? maxBlockSize : maxInlineSize;
             bool hasLog = isWidthLogical ? hasMaxBlockSize : hasMaxInlineSize;
             uint32_t logOrder = isWidthLogical ? orderMaxBlockSize : orderMaxInlineSize;
-
             if (hasPhys && hasLog) {
                 maxWidth = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1649,18 +1640,14 @@ struct Style {
                 maxWidth = physVal;
             }
         }
-
-        // Resolve MaxHeight group
         {
             bool isHeightLogical = (writingMode == WritingMode::HorizontalTb);
             CSSValue physVal = maxHeight;
             bool hasPhys = hasMaxHeightVal;
             uint32_t physOrder = orderMaxHeight;
-
             CSSValue logVal = isHeightLogical ? maxBlockSize : maxInlineSize;
             bool hasLog = isHeightLogical ? hasMaxBlockSize : hasMaxInlineSize;
             uint32_t logOrder = isHeightLogical ? orderMaxBlockSize : orderMaxInlineSize;
-
             if (hasPhys && hasLog) {
                 maxHeight = (logOrder > physOrder) ? logVal : physVal;
             } else if (hasLog) {
@@ -1670,13 +1657,9 @@ struct Style {
             }
         }
     }
-
-    // Position offsets
     CSSValue top, right, bottom, left;
-
-    // Visual
-    Color color = Color(1, 1, 1, 1);             // text color
-    Color backgroundColor = Color(0, 0, 0, 0);   // transparent by default
+    Color color = Color(1, 1, 1, 1);
+    Color backgroundColor = Color(0, 0, 0, 0);
     Gradient backgroundGradient;
     Border border;
     Border borderTop, borderRight, borderBottom, borderLeft;
@@ -1689,8 +1672,6 @@ struct Style {
     float outlineOffset = 0;
     float backdropFilterBlur = 0.0f;
     bool hasBackdropFilterBlur = false;
-
-    // Typography (matching Blink inherited properties)
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
     FontStyle fontStyle = FontStyle::Normal;
@@ -1704,9 +1685,9 @@ struct Style {
     WordBreak wordBreak = WordBreak::Normal;
     VerticalAlign verticalAlign = VerticalAlign::Baseline;
     ListStyleType listStyleType = ListStyleType::Disc;
-    float letterSpacing = 0;     // Blink: letter-spacing
-    float wordSpacing = 0;       // Blink: word-spacing
-    Color textDecorationColor;   // defaults to currentColor
+    float letterSpacing = 0;
+    float wordSpacing = 0;
+    Color textDecorationColor;
     bool hasTextDecorationColor = false;
     bool hasColor = false;
     bool hasFontSize = false;
@@ -1732,47 +1713,35 @@ struct Style {
     std::string unresolvedColor;
     std::string unresolvedBorderColor;
     std::string unresolvedBackgroundGradient;
-
-    // Interaction
     CursorType cursor = CursorType::Default;
-    float transitionDuration = 0.15f; // seconds (legacy scalar; populated from transitionDurations[0])
-    float scale = 1.0f; // 1.0 = normal size
-    float springStiffness = 180.0f;  // for physics-based animations
-    float springDamping = 18.0f;     // for physics-based animations
-
-    // Animations (CSS Animations Level 1 + Level 2 parity with Blink css_animations.cc)
-    // Parallel arrays, one entry per animation in animation-* lists.
+    float transitionDuration = 0.15f;
+    float scale = 1.0f;
+    float springStiffness = 180.0f;
+    float springDamping = 18.0f;
     std::vector<std::string> animationName;
-    std::vector<float> animationDuration;        // seconds
-    std::vector<float> animationDelay;           // seconds
-    std::vector<float> animationIterationCount;  // -1 == infinite
+    std::vector<float> animationDuration;
+    std::vector<float> animationDelay;
+    std::vector<float> animationIterationCount;
     std::vector<AnimationDirection> animationDirection;
     std::vector<AnimationFillMode> animationFillMode;
     std::vector<AnimationPlayState> animationPlayState;
     std::vector<TimingFunction> animationTimingFunction;
     std::vector<AnimationComposition> animationComposition;
-
-    // Transitions (CSS Transitions Level 1 + Level 2)
-    // Parallel arrays, one entry per transition in transition-* lists.
-    std::vector<std::string> transitionProperty; // e.g. {"opacity", "transform", "background-color", ...}
-    std::vector<float> transitionDurations;       // seconds
-    std::vector<float> transitionDelays;          // seconds
+    std::vector<std::string> transitionProperty;
+    std::vector<float> transitionDurations;
+    std::vector<float> transitionDelays;
     std::vector<TimingFunction> transitionTimingFunctions;
     std::vector<TransitionBehavior> transitionBehavior;
-
-    // Hover state overrides
     Color hoverBackgroundColor;
     Color hoverColor;
     Gradient hoverBackgroundGradient;
-    float hoverOpacity = -1; // -1 means no override
+    float hoverOpacity = -1;
     bool hasHoverBg = false;
     bool hasHoverColor = false;
     bool hasHoverBorder = false;
     bool hasHoverGradient = false;
     Color hoverBorderColor;
-    float hoverScale = -1; // -1 means no override
-
-    // Focus state overrides (:focus)
+    float hoverScale = -1;
     Color focusBackgroundColor;
     Color focusColor;
     Color focusBorderColor;
@@ -1785,8 +1754,6 @@ struct Style {
     bool hasFocusGradient = false;
     float focusOpacity = -1;
     float focusScale = -1;
-
-    // Active state overrides (:active)
     Color activeBackgroundColor;
     Color activeColor;
     Color activeBorderColor;
@@ -1799,16 +1766,13 @@ struct Style {
     bool hasActiveGradient = false;
     float activeOpacity = -1;
     float activeScale = -1;
-
-    // Transform Properties (Chromium Blink parity)
     std::vector<TransformOperation> transform;
     TransformOrigin transformOrigin;
     TransformStyle transformStyle = TransformStyle::Flat;
     TransformBox transformBox = TransformBox::BorderBox;
-    CSSValue perspective = CSSValue{0.0f, CSSValue::None}; // none
+    CSSValue perspective = CSSValue{0.0f, CSSValue::None};
     PerspectiveOrigin perspectiveOrigin;
     BackfaceVisibility backfaceVisibility = BackfaceVisibility::Visible;
-
     bool hasTransform = false;
     bool hasTransformOrigin = false;
     bool hasTransformStyle = false;
@@ -1816,37 +1780,24 @@ struct Style {
     bool hasPerspective = false;
     bool hasPerspectiveOrigin = false;
     bool hasBackfaceVisibility = false;
-
     uint64_t inheritedHash = 0;
 };
-
-// ============================================================
-//  ComputedStyle Copy-on-Write Wrapper
-// ============================================================
-
 class ComputedStyle {
 public:
     ComputedStyle() : m_style(std::make_shared<Style>()) {}
     ComputedStyle(const Style& style) : m_style(std::make_shared<Style>(style)) {}
     ComputedStyle(std::shared_ptr<const Style> style) : m_style(std::move(style)) {}
-
     ComputedStyle(const ComputedStyle& other) = default;
     ComputedStyle& operator=(const ComputedStyle& other) = default;
     ComputedStyle(ComputedStyle&& other) noexcept = default;
     ComputedStyle& operator=(ComputedStyle&& other) noexcept = default;
-
     const Style* operator->() const { return m_style.get(); }
     Style* operator->() { return &ensureMutable(); }
-
     const Style& operator*() const { return *m_style; }
     Style& operator*() { return ensureMutable(); }
-
     operator const Style&() const { return *m_style; }
-
     explicit operator bool() const { return m_style != nullptr; }
-
     const Style* get() const { return m_style.get(); }
-
     Style& ensureMutable() {
         if (!m_style) {
             m_style = std::make_shared<Style>();
@@ -1855,22 +1806,18 @@ public:
         }
         return const_cast<Style&>(*m_style);
     }
-
     ComputedStyle& operator=(std::shared_ptr<const Style> other) {
         m_style = std::move(other);
         return *this;
     }
-
     ComputedStyle& operator=(const Style& other) {
         m_style = std::make_shared<Style>(other);
         return *this;
     }
-
     ComputedStyle& operator=(std::nullptr_t) {
         m_style = nullptr;
         return *this;
     }
-
     bool operator==(const ComputedStyle& other) const {
         return m_style == other.m_style;
     }
@@ -1883,22 +1830,14 @@ public:
     bool operator!=(std::nullptr_t) const {
         return m_style != nullptr;
     }
-
 private:
     std::shared_ptr<const Style> m_style;
 };
-
-
-// ============================================================
-//  Events
-// ============================================================
-
 enum class EventType {
     MouseMove, MouseDown, MouseUp, MouseScroll,
     KeyDown, KeyUp, TextInput,
     WindowResize, WindowClose
 };
-
 struct InputEvent {
     EventType type;
     Vec2 mousePos;
@@ -1911,11 +1850,6 @@ struct InputEvent {
     Vec2 windowSize;
     bool consumed = false;
 };
-
-// ============================================================
-//  Input State (current frame)
-// ============================================================
-
 struct InputState {
     Vec2 mousePos;
     Vec2 mouseDelta;
@@ -1930,5 +1864,4 @@ struct InputState {
     int modifiers = 0;
     std::string text;
 };
-
-} // namespace FluxUI
+}

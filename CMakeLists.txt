@@ -522,4 +522,15 @@ target_include_directories(test_animations PRIVATE
 )
 enable_release_lto(test_animations)
 
+add_executable(test_transforms
+    examples/cpp/test_transforms.cpp
+)
+target_link_libraries(test_transforms PRIVATE
+    fluxui
+)
+target_include_directories(test_transforms PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_transforms)
+
 

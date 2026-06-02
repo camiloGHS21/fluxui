@@ -327,13 +327,20 @@ public:
     static float parseFloat(const std::string& val);
     static float parseDuration(const std::string& val);
     static std::vector<TransformOperation> parseTransformOperations(const std::string& value);
+    static std::vector<TransformOperation> parseTransformList(const std::string& value);
     static TransformOrigin parseTransformOrigin(const std::string& value);
+    static bool parseTransformOrigin(const std::string& value, Vec2& xy, float& z);
     static TransformStyle parseTransformStyle(const std::string& value);
+    static bool parseTransformStyle(const std::string& value, TransformStyle& out);
     static TransformBox parseTransformBox(const std::string& value);
+    static bool parseTransformBox(const std::string& value, TransformBox& out);
     static CSSValue parsePerspective(const std::string& value);
+    static bool parsePerspective(const std::string& value, float& out);
     static PerspectiveOrigin parsePerspectiveOrigin(const std::string& value);
     static BackfaceVisibility parseBackfaceVisibility(const std::string& value);
+    static bool parseBackfaceVisibility(const std::string& value, BackfaceVisibility& out);
     static float parseAngleDegrees(const std::string& value);
+    static std::string interpolateTransformList(const std::string& fromStr, const std::string& toStr, float t);
 
     // @property typed interpolation: lerp between two custom property values
     // based on the registered syntax type. Returns the interpolated string.

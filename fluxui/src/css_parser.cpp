@@ -1,4 +1,3 @@
-// FluxUI CSS Parser Implementation
 #include "fluxui/css_parser.h"
 #include "fluxui/widgets.h"
 #include <algorithm>
@@ -6,11 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <utility>
-
 namespace FluxUI {
-
 static bool supportsConditionMatches(std::string_view cond);
-
 StyleSheet::StyleSheet() {
 #if FLUXUI_FAST_STARTUP
     rules.reserve(FLUXUI_STYLE_CACHE_SIZE / 4);
@@ -21,15 +17,7 @@ StyleSheet::StyleSheet() {
     typeRuleIndex_.reserve(64);
     universalRuleIndex_.reserve(64);
 #endif
-
-    // ========================================================================
-    // Default Blink/Chromium User Agent Stylesheet (html.css equivalent)
-    // Covers ALL standard HTML element types for out-of-the-box rendering.
-    // Reference: chromium/src/third_party/blink/renderer/core/html/resources/html.css
-    // ========================================================================
     parse(
-        // --- Root container (FluxUI Application root widget) ---
-        // This rule keeps the root stable across style re-resolutions triggered by events.
         ".root {\n"
         "    display: flex;\n"
         "    flex-direction: column;\n"
@@ -40,21 +28,15 @@ StyleSheet::StyleSheet() {
         "    color: #000000;\n"
         "    background-color: #ffffff;\n"
         "}\n"
-
-        // --- Block-level structural elements ---
         "html, body, div, section, article, aside, header, footer, main, nav, "
         "form, details, summary, address, figure, figcaption, hgroup, search { display: block; }\n"
         "body { margin: 8px; font-family: sans-serif; font-size: 16px; line-height: 1.2; color: #000000; background-color: #ffffff; }\n"
-
-        // --- Typography: headings ---
         "h1 { display: block; font-size: 2em; font-weight: bold; margin: 0.67em 0; }\n"
         "h2 { display: block; font-size: 1.5em; font-weight: bold; margin: 0.83em 0; }\n"
         "h3 { display: block; font-size: 1.17em; font-weight: bold; margin: 1em 0; }\n"
         "h4 { display: block; font-size: 1em; font-weight: bold; margin: 1.33em 0; }\n"
         "h5 { display: block; font-size: 0.83em; font-weight: bold; margin: 1.67em 0; }\n"
         "h6 { display: block; font-size: 0.67em; font-weight: bold; margin: 2.33em 0; }\n"
-
-        // --- Typography: inline text semantics ---
         "strong, b { font-weight: bold; }\n"
         "em, i { font-style: italic; }\n"
         "small { font-size: 0.83em; }\n"
@@ -66,23 +48,15 @@ StyleSheet::StyleSheet() {
         "q { display: inline; }\n"
         "cite { font-style: italic; }\n"
         "time { display: inline; }\n"
-
-        // --- Block text elements ---
         "p { display: block; margin: 1em 0; }\n"
         "blockquote { display: block; margin: 1em 40px; }\n"
         "pre { display: block; font-family: monospace; white-space: pre; margin: 1em 0; }\n"
         "code, kbd, samp { font-family: monospace; font-size: 1em; }\n"
-
-        // --- Lists ---
         "ul, ol { display: block; margin: 1em 0; padding-left: 40px; }\n"
         "li { display: list-item; }\n"
-
-        // --- Anchors / Hyperlinks (Blink html.css defaults) ---
         "a { display: inline; color: #0000ee; text-decoration: underline; cursor: pointer; }\n"
         "a:hover { color: #0000ee; }\n"
         "a:active { color: #ff0000; }\n"
-
-        // --- Button (Blink html.css) ---
         "button {\n"
         "    display: inline-block;\n"
         "    padding: 1px 6px;\n"
@@ -99,8 +73,6 @@ StyleSheet::StyleSheet() {
         "}\n"
         "button:active { border-style: inset; }\n"
         "button:disabled { background-color: rgba(239,239,239,0.3); border-color: rgba(118,118,118,0.3); color: rgba(16,16,16,0.3); }\n"
-
-        // --- Text input & textarea (Blink html.css) ---
         "input {\n"
         "    display: inline-block;\n"
         "    padding: 1px 2px;\n"
@@ -138,11 +110,7 @@ StyleSheet::StyleSheet() {
         "    outline-offset: 0;\n"
         "}\n"
         "input:disabled, textarea:disabled { cursor: default; background-color: rgba(239,239,239,0.3); color: #545454; border-color: rgba(118,118,118,0.3); }\n"
-
-        // --- Label ---
         "label { display: inline; cursor: default; }\n"
-
-        // --- Fieldset & legend (Blink html.css) ---
         "fieldset {\n"
         "    display: block;\n"
         "    margin: 0 2px;\n"
@@ -156,8 +124,6 @@ StyleSheet::StyleSheet() {
         "    font-weight: normal;\n"
         "    font-size: 1em;\n"
         "}\n"
-
-        // --- Select dropdown (Blink html.css) ---
         "select {\n"
         "    display: inline-block;\n"
         "    padding: 1px 4px;\n"
@@ -175,8 +141,6 @@ StyleSheet::StyleSheet() {
         "}\n"
         "select:disabled { opacity: 0.7; border-color: rgba(118,118,118,0.3); }\n"
         "option { display: none; }\n"
-
-        // --- Checkbox (Blink html.css) ---
         "input[type='checkbox'] {\n"
         "    display: inline-block;\n"
         "    width: 13px;\n"
@@ -189,8 +153,6 @@ StyleSheet::StyleSheet() {
         "    cursor: default;\n"
         "    box-sizing: border-box;\n"
         "}\n"
-
-        // --- Radio button (Blink html.css) ---
         "input[type='radio'] {\n"
         "    display: inline-block;\n"
         "    width: 13px;\n"
@@ -203,8 +165,6 @@ StyleSheet::StyleSheet() {
         "    cursor: default;\n"
         "    box-sizing: border-box;\n"
         "}\n"
-
-        // --- Color Input (Blink-like) ---
         "input[type='color'] {\n"
         "    width: 44px;\n"
         "    height: 27px;\n"
@@ -215,16 +175,12 @@ StyleSheet::StyleSheet() {
         "    box-sizing: border-box;\n"
         "    cursor: default;\n"
         "}\n"
-
-        // --- File Input (Blink-like) ---
         "input[type='file'] {\n"
         "    display: inline-block;\n"
         "    border: none;\n"
         "    background-color: transparent;\n"
         "    cursor: default;\n"
         "}\n"
-
-        // --- Range slider ---
         "input[type='range'] {\n"
         "    display: inline-block;\n"
         "    min-width: 129px;\n"
@@ -234,8 +190,6 @@ StyleSheet::StyleSheet() {
         "    background-color: transparent;\n"
         "    cursor: pointer;\n"
         "}\n"
-
-        // --- Meter ---
         "meter {\n"
         "    display: inline-block;\n"
         "    min-width: 80px;\n"
@@ -244,8 +198,6 @@ StyleSheet::StyleSheet() {
         "    border-radius: 4px;\n"
         "    background-color: #efefef;\n"
         "}\n"
-
-        // --- Progress ---
         "progress {\n"
         "    display: inline-block;\n"
         "    min-width: 160px;\n"
@@ -254,11 +206,7 @@ StyleSheet::StyleSheet() {
         "    border-radius: 4px;\n"
         "    background-color: #efefef;\n"
         "}\n"
-
-        // --- Horizontal rule (Blink html.css) ---
         "hr { display: block; overflow: hidden; margin: 0.5em auto; border-style: inset; border-width: 1px; color: gray; }\n"
-
-        // --- Details & summary ---
         "details { display: block; margin: 0; padding: 0; }\n"
         "summary {\n"
         "    display: block;\n"
@@ -266,8 +214,6 @@ StyleSheet::StyleSheet() {
         "    padding: 4px 0;\n"
         "    font-weight: normal;\n"
         "}\n"
-
-        // --- Dialog (Blink html.css defaults) ---
         "dialog {\n"
         "    display: none;\n"
         "    position: absolute;\n"
@@ -278,8 +224,6 @@ StyleSheet::StyleSheet() {
         "    padding: 1em;\n"
         "    box-shadow: 0 4px 16px rgba(0,0,0,0.15);\n"
         "}\n"
-
-        // --- Table elements ---
         "table { display: table; border-collapse: separate; border-spacing: 2px; }\n"
         "thead { display: table-header-group; }\n"
         "tbody { display: table-row-group; }\n"
@@ -288,34 +232,24 @@ StyleSheet::StyleSheet() {
         "th { display: table-cell; font-weight: bold; text-align: center; padding: 1px; }\n"
         "td { display: table-cell; padding: 1px; }\n"
         "caption { display: table-caption; text-align: center; }\n"
-
-        // --- BR ---
         "br { display: block; height: 0; }\n"
-
-        // --- Text decoration elements (Blink html.css) ---
         "u, ins { text-decoration: underline; }\n"
         "s, strike, del { text-decoration: line-through; }\n"
         "tt { font-family: monospace; }\n"
-
-        // --- Focus visible (Blink html.css) ---
         "input:focus, textarea:focus, select:focus { outline-offset: 0; }\n"
     );
 }
-
 std::string StyleSheet::trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\n\r");
     size_t end = s.find_last_not_of(" \t\n\r");
     return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
 }
-
 std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css) {
     std::vector<CSSToken> tokens;
     size_t i = 0;
     size_t n = css.size();
-
     while (i < n) {
         char c = css[i];
-
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f') {
             size_t start = i;
             while (i < n && (css[i] == ' ' || css[i] == '\t' || css[i] == '\n' || css[i] == '\r' || css[i] == '\f')) {
@@ -324,7 +258,6 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
             tokens.push_back({CSSToken::Whitespace, " "});
             continue;
         }
-
         if (c == '/' && i + 1 < n && css[i + 1] == '*') {
             i += 2;
             while (i < n && !(css[i] == '*' && i + 1 < n && css[i + 1] == '/')) {
@@ -333,7 +266,6 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
             if (i < n) i += 2;
             continue;
         }
-
         if (c == '{') { tokens.push_back({CSSToken::LeftBrace, "{"}); i++; continue; }
         if (c == '}') { tokens.push_back({CSSToken::RightBrace, "}"}); i++; continue; }
         if (c == '(') { tokens.push_back({CSSToken::LeftParenthesis, "("}); i++; continue; }
@@ -343,7 +275,6 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
         if (c == ':') { tokens.push_back({CSSToken::Colon, ":"}); i++; continue; }
         if (c == ';') { tokens.push_back({CSSToken::Semicolon, ";"}); i++; continue; }
         if (c == ',') { tokens.push_back({CSSToken::Comma, ","}); i++; continue; }
-
         if (c == '"' || c == '\'') {
             char quoteChar = c;
             std::string strVal;
@@ -365,7 +296,6 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
             tokens.push_back({CSSToken::String, strVal});
             continue;
         }
-
         if (c == '@') {
             std::string keyword = "@";
             i++;
@@ -376,7 +306,6 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
             tokens.push_back({CSSToken::AtKeyword, keyword});
             continue;
         }
-
         std::string text;
         while (i < n &&
                css[i] != '{' && css[i] != '}' &&
@@ -395,33 +324,27 @@ std::vector<StyleSheet::CSSToken> StyleSheet::tokenizeCSS(const std::string& css
     tokens.push_back({CSSToken::EndOfFile, ""});
     return tokens;
 }
-
 std::vector<std::string> StyleSheet::splitTopLevel(const std::string& value, char delimiter) {
     std::vector<std::string> parts;
     auto tokens = tokenizeCSS(value);
-    
     std::string current;
     int parenDepth = 0;
     int bracketDepth = 0;
     int braceDepth = 0;
-
     for (const auto& t : tokens) {
         if (t.type == CSSToken::EndOfFile) {
             break;
         }
-
         if (t.type == CSSToken::LeftParenthesis) parenDepth++;
         else if (t.type == CSSToken::RightParenthesis && parenDepth > 0) parenDepth--;
         else if (t.type == CSSToken::LeftBracket) bracketDepth++;
         else if (t.type == CSSToken::RightBracket && bracketDepth > 0) bracketDepth--;
         else if (t.type == CSSToken::LeftBrace) braceDepth++;
         else if (t.type == CSSToken::RightBrace && braceDepth > 0) braceDepth--;
-
         bool isDelimiter = false;
         if (delimiter == ',' && t.type == CSSToken::Comma) isDelimiter = true;
         else if (delimiter == ';' && t.type == CSSToken::Semicolon) isDelimiter = true;
         else if (t.text.size() == 1 && t.text[0] == delimiter && t.type == CSSToken::Ident) isDelimiter = true;
-
         if (isDelimiter && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
             parts.push_back(trim(current));
             current.clear();
@@ -429,27 +352,22 @@ std::vector<std::string> StyleSheet::splitTopLevel(const std::string& value, cha
             current += t.text;
         }
     }
-
     if (!trim(current).empty()) {
         parts.push_back(trim(current));
     }
     return parts;
 }
-
 std::vector<std::string> StyleSheet::splitDeclarations(const std::string& body) {
     std::vector<std::string> declarations;
     auto tokens = tokenizeCSS(body);
-    
     std::string currentDecl;
     int parenDepth = 0;
     int bracketDepth = 0;
     int braceDepth = 0;
-
     for (const auto& t : tokens) {
         if (t.type == CSSToken::EndOfFile) {
             break;
         }
-
         if (t.type == CSSToken::LeftParenthesis) parenDepth++;
         else if (t.type == CSSToken::RightParenthesis && parenDepth > 0) parenDepth--;
         else if (t.type == CSSToken::LeftBracket) bracketDepth++;
@@ -467,7 +385,6 @@ std::vector<std::string> StyleSheet::splitDeclarations(const std::string& body) 
                 continue;
             }
         }
-
         if (t.type == CSSToken::Semicolon && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
             std::string item = trim(currentDecl);
             if (!item.empty()) {
@@ -478,14 +395,12 @@ std::vector<std::string> StyleSheet::splitDeclarations(const std::string& body) 
             currentDecl += t.text;
         }
     }
-
     std::string item = trim(currentDecl);
     if (!item.empty()) {
         declarations.push_back(item);
     }
     return declarations;
 }
-
 static bool hasClassName(std::string_view className, std::string_view wanted) {
     size_t pos = 0;
     while (pos < className.size()) {
@@ -497,7 +412,6 @@ static bool hasClassName(std::string_view className, std::string_view wanted) {
     }
     return false;
 }
-
 static bool equalIgnoreCase(std::string_view a, std::string_view b) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); ++i) {
@@ -507,26 +421,22 @@ static bool equalIgnoreCase(std::string_view a, std::string_view b) {
     }
     return true;
 }
-
 static std::string trimLocal(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\n\r");
     size_t end = s.find_last_not_of(" \t\n\r");
     return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
 }
-
 static std::string_view trimLocal(std::string_view s) {
     size_t start = s.find_first_not_of(" \t\n\r");
     size_t end = s.find_last_not_of(" \t\n\r");
     return (start == std::string_view::npos) ? std::string_view{} : s.substr(start, end - start + 1);
 }
-
 static std::string lowerAscii(std::string s) {
     for (char& c : s) {
         c = (char)std::tolower((unsigned char)c);
     }
     return s;
 }
-
 static std::string lowerAscii(std::string_view s) {
     std::string res(s);
     for (char& c : res) {
@@ -534,7 +444,6 @@ static std::string lowerAscii(std::string_view s) {
     }
     return res;
 }
-
 static void splitWhitespace(std::string_view val, std::string_view tokens[], int maxTokens, int& count) {
     count = 0;
     size_t i = 0;
@@ -550,24 +459,49 @@ static void splitWhitespace(std::string_view val, std::string_view tokens[], int
         tokens[count++] = val.substr(start, i - start);
     }
 }
-
+static std::vector<std::string> splitWhitespaceTopLevel(std::string_view val) {
+    std::vector<std::string> tokens;
+    std::string current;
+    int parenDepth = 0;
+    int bracketDepth = 0;
+    int braceDepth = 0;
+    for (size_t i = 0; i < val.size(); ++i) {
+        char c = val[i];
+        if (c == '(') parenDepth++;
+        else if (c == ')' && parenDepth > 0) parenDepth--;
+        else if (c == '[') bracketDepth++;
+        else if (c == ']' && bracketDepth > 0) bracketDepth--;
+        else if (c == '{') braceDepth++;
+        else if (c == '}' && braceDepth > 0) braceDepth--;
+        bool isWhitespace = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        if (isWhitespace && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
+            if (!current.empty()) {
+                tokens.push_back(current);
+                current.clear();
+            }
+        } else {
+            current += c;
+        }
+    }
+    if (!current.empty()) {
+        tokens.push_back(current);
+    }
+    return tokens;
+}
 static std::string functionInner(const std::string& value) {
     auto start = value.find('(');
     auto end = value.rfind(')');
     if (start == std::string::npos || end == std::string::npos || end <= start) return "";
     return value.substr(start + 1, end - start - 1);
 }
-
 static void splitSelectorChain(const std::string& selector,
                                std::vector<std::string>& parts,
                                std::vector<char>& combinators);
 static std::vector<std::string> splitSelectorListLocal(const std::string& selectorList);
-
 static std::string_view selectorBaseType(std::string_view type) {
     size_t sep = type.find('|');
     return sep == std::string_view::npos ? type : type.substr(0, sep);
 }
-
 static bool selectorHasFlag(std::string_view type, std::string_view flag) {
     size_t pos = 0;
     while (pos <= type.size()) {
@@ -581,7 +515,6 @@ static bool selectorHasFlag(std::string_view type, std::string_view flag) {
     }
     return false;
 }
-
 static std::string_view selectorAttributeValue(std::string_view type, std::string_view name) {
     size_t pos = 0;
     while (pos <= type.size()) {
@@ -598,7 +531,6 @@ static std::string_view selectorAttributeValue(std::string_view type, std::strin
     }
     return {};
 }
-
 static std::string normalizeAttributeValue(std::string value, bool keepCase = false) {
     value = trimLocal(value);
     if (value.size() >= 2 &&
@@ -608,12 +540,10 @@ static std::string normalizeAttributeValue(std::string value, bool keepCase = fa
     }
     return keepCase ? trimLocal(value) : lowerAscii(trimLocal(value));
 }
-
 static bool selectorTypeMatches(std::string_view requiredType, std::string_view actualType) {
     if (requiredType.empty()) return true;
     std::string_view actualBase = selectorBaseType(actualType);
     if (equalIgnoreCase(requiredType, actualBase)) return true;
-
     if (equalIgnoreCase(requiredType, "input")) {
         return equalIgnoreCase(actualBase, "checkbox") ||
                equalIgnoreCase(actualBase, "radio") ||
@@ -625,14 +555,11 @@ static bool selectorTypeMatches(std::string_view requiredType, std::string_view 
     }
     return false;
 }
-
 static bool selectorAttributeMatches(const std::string& selector,
                                      std::string_view actualType) {
     bool caseInsensitive = false;
     std::string body = trimLocal(selector);
     if (body.empty()) return false;
-    
-    // Check for case sensitivity flags (e.g. [attr="value" i])
     if (body.size() >= 2 && (body.substr(body.size() - 2) == " i" || body.substr(body.size() - 2) == " I")) {
         caseInsensitive = true;
         body = trimLocal(body.substr(0, body.size() - 2));
@@ -640,12 +567,10 @@ static bool selectorAttributeMatches(const std::string& selector,
         caseInsensitive = false;
         body = trimLocal(body.substr(0, body.size() - 2));
     }
-
     size_t eq = body.find('=');
     std::string op = "=";
     std::string name;
     std::string rawValue;
-
     if (eq == std::string::npos) {
         name = lowerAscii(trimLocal(body));
     } else {
@@ -657,22 +582,14 @@ static bool selectorAttributeMatches(const std::string& selector,
         name = lowerAscii(trimLocal(body.substr(0, nameEnd)));
         rawValue = body.substr(eq + 1);
     }
-
     if (name.empty()) return false;
-
-    // Retrieve actual value from actualType
     std::string_view actualValSV = selectorAttributeValue(actualType, name);
     bool isFlag = selectorHasFlag(actualType, name);
-    
-    // If no operator, check for existence of attribute or flag
     if (eq == std::string::npos) {
         if (name == "type" && selectorBaseType(actualType) == "input") return true;
         return !actualValSV.empty() || isFlag;
     }
-
-    // Clean required value
     std::string requiredValue = normalizeAttributeValue(rawValue, !caseInsensitive);
-    
     std::string actualValue;
     if (name == "type" && actualValSV.empty() && selectorBaseType(actualType) == "input") {
         actualValue = "text";
@@ -681,9 +598,7 @@ static bool selectorAttributeMatches(const std::string& selector,
     } else {
         actualValue = std::string(actualValSV);
     }
-    
     if (!caseInsensitive) {
-        // Class, ID, and Type properties match case-insensitively by default in HTML
         if (name == "class" || name == "id" || name == "type" || name == "dir") {
             actualValue = lowerAscii(actualValue);
             requiredValue = lowerAscii(requiredValue);
@@ -692,8 +607,6 @@ static bool selectorAttributeMatches(const std::string& selector,
         actualValue = lowerAscii(actualValue);
         requiredValue = lowerAscii(requiredValue);
     }
-
-    // Perform operators matching
     if (op == "=") {
         return actualValue == requiredValue;
     } else if (op == "~=") {
@@ -710,7 +623,6 @@ static bool selectorAttributeMatches(const std::string& selector,
             }
         }
         if (!current.empty()) words.push_back(current);
-        
         for (const auto& word : words) {
             if (word == requiredValue) return true;
         }
@@ -732,10 +644,8 @@ static bool selectorAttributeMatches(const std::string& selector,
         if (requiredValue.empty()) return false;
         return actualValue.find(requiredValue) != std::string::npos;
     }
-
     return false;
 }
-
 static bool selectorPseudoMatches(std::string_view pseudoName,
                                   std::string_view actualType,
                                   const Widget* widget = nullptr) {
@@ -775,13 +685,10 @@ static bool selectorPseudoMatches(std::string_view pseudoName,
     }
     return false;
 }
-
 static void splitSelectorChain(const std::string& selector,
                                std::vector<std::string>& parts,
                                std::vector<char>& combinators);
-
 static bool parseNth(std::string_view inner, int& a, int& b) {
-    // Trim spaces
     while (!inner.empty() && std::isspace((unsigned char)inner.front())) inner.remove_prefix(1);
     while (!inner.empty() && std::isspace((unsigned char)inner.back())) inner.remove_suffix(1);
     if (inner == "even") {
@@ -846,7 +753,6 @@ static bool parseNth(std::string_view inner, int& a, int& b) {
         return true;
     }
 }
-
 static bool matchNthIndex(int index, int a, int b) {
     if (a == 0) {
         return index == b;
@@ -856,12 +762,10 @@ static bool matchNthIndex(int index, int a, int b) {
     }
     return index <= b && (b - index) % (-a) == 0;
 }
-
 static int getSiblingIndex(const Widget* widget, bool ofType, bool fromEnd) {
     if (!widget || !widget->parent) return 1;
     const auto& siblings = widget->parent->children;
     std::string_view targetType = widget->selectorType();
-    
     int count = 0;
     int index = 0;
     for (const auto& sibling : siblings) {
@@ -877,7 +781,6 @@ static int getSiblingIndex(const Widget* widget, bool ofType, bool fromEnd) {
     }
     return index;
 }
-
 static bool widgetHasDescendantMatching(const Widget* root, const std::string& selector) {
     if (!root) return false;
     struct Traversal {
@@ -885,12 +788,10 @@ static bool widgetHasDescendantMatching(const Widget* root, const std::string& s
             for (const auto& childShared : current->children) {
                 const Widget* child = childShared.get();
                 if (!child) continue;
-                
                 std::vector<CSSSelectorNode> childAncestors;
                 for (const Widget* p = child->parent; p; p = p->parent) {
                     childAncestors.push_back({p->className, p->id, p->selectorType(), p});
                 }
-                
                 std::vector<std::string> parts;
                 std::vector<char> combinators;
                 splitSelectorChain(selector, parts, combinators);
@@ -898,11 +799,9 @@ static bool widgetHasDescendantMatching(const Widget* root, const std::string& s
                 rule.selector = selector;
                 rule.parts = parts;
                 rule.combinators = combinators;
-                
                 if (StyleSheet::selectorMatches(rule, child->className, child->id, child->selectorType(), childAncestors, nullptr, child)) {
                     return true;
                 }
-                
                 if (search(child, selector, limitRoot)) {
                     return true;
                 }
@@ -912,7 +811,6 @@ static bool widgetHasDescendantMatching(const Widget* root, const std::string& s
     };
     return Traversal::search(root, selector, root);
 }
-
 static bool matchCompoundSelector(std::string_view compound,
                                   std::string_view className,
                                   std::string_view id,
@@ -920,9 +818,7 @@ static bool matchCompoundSelector(std::string_view compound,
                                   const Widget* widget) {
     std::string_view s = trimLocal(compound);
     if (s.empty() || s == "*") return s == "*";
-
     bool hasAnySelector = false;
-
     size_t i = 0;
     while (i < s.size()) {
         if (s[i] == '.') {
@@ -967,7 +863,6 @@ static bool matchCompoundSelector(std::string_view compound,
                 hasAnySelector = true;
                 continue;
             }
-
             size_t innerStart = ++i;
             int depth = 1;
             while (i < s.size() && depth > 0) {
@@ -978,14 +873,12 @@ static bool matchCompoundSelector(std::string_view compound,
             if (i >= s.size()) return false;
             std::string inner = std::string(s.substr(innerStart, i - innerStart));
             ++i;
-
             if (pseudoName == "has") {
                 if (!widget) return false;
                 if (!widgetHasDescendantMatching(widget, inner)) return false;
                 hasAnySelector = true;
                 continue;
             }
-
             if (pseudoName == "nth-child" || pseudoName == "nth-last-child" ||
                 pseudoName == "nth-of-type" || pseudoName == "nth-last-of-type") {
                 if (!widget) return false;
@@ -998,12 +891,10 @@ static bool matchCompoundSelector(std::string_view compound,
                 hasAnySelector = true;
                 continue;
             }
-
             if (pseudoName != "is" && pseudoName != "where" &&
                 pseudoName != "-webkit-any" && pseudoName != "not") {
                 return false;
             }
-
             bool matchedAny = false;
             for (const auto& selector : splitSelectorListLocal(inner)) {
                 std::vector<std::string> parts;
@@ -1015,7 +906,6 @@ static bool matchCompoundSelector(std::string_view compound,
                     break;
                 }
             }
-
             if (pseudoName == "not") {
                 if (matchedAny) return false;
             } else if (!matchedAny) {
@@ -1051,10 +941,8 @@ static bool matchCompoundSelector(std::string_view compound,
             hasAnySelector = true;
         }
     }
-
     return hasAnySelector || s == "*";
 }
-
 static void splitSelectorChain(const std::string& selector,
                                std::vector<std::string>& parts,
                                std::vector<char>& combinators) {
@@ -1063,7 +951,6 @@ static void splitSelectorChain(const std::string& selector,
     char quote = 0;
     bool escaped = false;
     char pendingCombinator = 0;
-
     auto pushCurrent = [&]() {
         std::string part = trimLocal(current);
         if (part.empty()) return;
@@ -1074,7 +961,6 @@ static void splitSelectorChain(const std::string& selector,
         current.clear();
         pendingCombinator = 0;
     };
-
     for (size_t i = 0; i < selector.size(); ++i) {
         char c = selector[i];
         if (quote != 0) {
@@ -1113,14 +999,12 @@ static void splitSelectorChain(const std::string& selector,
     }
     pushCurrent();
 }
-
 static std::vector<std::string> splitSelectorListLocal(const std::string& selectorList) {
     std::vector<std::string> parts;
     std::string current;
     int depth = 0;
     char quote = 0;
     bool escaped = false;
-
     for (char c : selectorList) {
         if (quote != 0) {
             current += c;
@@ -1136,7 +1020,6 @@ static std::vector<std::string> splitSelectorListLocal(const std::string& select
         }
         if (c == '(' || c == '[') depth++;
         else if ((c == ')' || c == ']') && depth > 0) depth--;
-
         if (c == ',' && depth == 0) {
             std::string item = trimLocal(current);
             if (!item.empty()) parts.push_back(item);
@@ -1145,12 +1028,10 @@ static std::vector<std::string> splitSelectorListLocal(const std::string& select
             current += c;
         }
     }
-
     std::string item = trimLocal(current);
     if (!item.empty()) parts.push_back(item);
     return parts;
 }
-
 static bool extractTrailingStatePseudo(std::string& selector, std::string* pseudo) {
     int depth = 0;
     size_t colon = std::string::npos;
@@ -1160,9 +1041,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         else if ((c == ')' || c == ']') && depth > 0) depth--;
         else if (c == ':' && depth == 0) colon = i;
     }
-
     if (colon == std::string::npos) return false;
-
     size_t nameStart = colon + 1;
     if (nameStart < selector.size() && selector[nameStart] == ':') {
         nameStart++;
@@ -1177,7 +1056,6 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
     }
     return false;
 }
-
 static std::vector<std::string> splitColorTokens(const std::string& inner) {
     std::vector<std::string> tokens;
     std::string current;
@@ -1198,7 +1076,6 @@ static std::vector<std::string> splitColorTokens(const std::string& inner) {
     if (!current.empty()) tokens.push_back(trimLocal(current));
     return tokens;
 }
-
 static float parseNumberToken(std::string token, bool* isPercent = nullptr) {
     token = trimLocal(lowerAscii(token));
     bool percent = false;
@@ -1220,7 +1097,6 @@ static float parseNumberToken(std::string token, bool* isPercent = nullptr) {
         return 0.0f;
     }
 }
-
 static float parseRgbChannel(const std::string& token) {
     bool percent = false;
     float value = parseNumberToken(token, &percent);
@@ -1228,14 +1104,12 @@ static float parseRgbChannel(const std::string& token) {
     if (value > 1.0f) value /= 255.0f;
     return std::clamp(value, 0.0f, 1.0f);
 }
-
 static float parseAlphaChannel(const std::string& token) {
     bool percent = false;
     float value = parseNumberToken(token, &percent);
     if (percent) value /= 100.0f;
     return std::clamp(value, 0.0f, 1.0f);
 }
-
 static float parseHue(const std::string& token) {
     std::string v = trimLocal(lowerAscii(token));
     float hue = parseNumberToken(v);
@@ -1245,14 +1119,12 @@ static float parseHue(const std::string& token) {
     if (hue < 0.0f) hue += 360.0f;
     return hue;
 }
-
 static float parseHslPercent(const std::string& token) {
     bool percent = false;
     float value = parseNumberToken(token, &percent);
     if (percent || value > 1.0f) value /= 100.0f;
     return std::clamp(value, 0.0f, 1.0f);
 }
-
 StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
                                          std::string_view id,
                                          std::string_view type,
@@ -1260,7 +1132,6 @@ StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
                                          const Style* parentStyle) {
     uint64_t h1 = 14695981039346656037ULL;
     uint64_t h2 = 5381ULL;
-
     auto hashStr = [&](std::string_view sv) {
         for (char c : sv) {
             h1 ^= static_cast<uint64_t>(c);
@@ -1270,8 +1141,6 @@ StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
             h2 = ((h2 << 5) + h2) + static_cast<uint64_t>(c);
         }
     };
-
-    // Hash ancestors first (root-first)
     for (auto it = ancestors.rbegin(); it != ancestors.rend(); ++it) {
         const auto& ancestor = *it;
         h1 ^= 0xDDULL; h2 ^= 0xDDULL;
@@ -1281,22 +1150,17 @@ StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
         h1 ^= 0xBBULL; h2 ^= 0xBBULL;
         hashStr(ancestor.type);
     }
-
-    // Hash target widget last
     hashStr(className);
     h1 ^= 0xFFULL; h2 ^= 0xFFULL;
     hashStr(id);
     h1 ^= 0xEEULL; h2 ^= 0xEEULL;
     hashStr(type);
-
     if (parentStyle) {
         h1 ^= parentStyle->inheritedHash;
         h2 ^= ~parentStyle->inheritedHash;
     }
-
     return {h1, h2};
 }
-
 bool StyleSheet::selectorMatches(const CSSRule& rule,
                                  std::string_view className,
                                  std::string_view id,
@@ -1308,10 +1172,8 @@ bool StyleSheet::selectorMatches(const CSSRule& rule,
         *pseudo = rule.pseudoState;
     }
     if (rule.parts.empty()) return false;
-
     int last = (int)rule.parts.size() - 1;
     if (!matchCompoundSelector(rule.parts[(size_t)last], className, id, type, widget)) return false;
-
     if (widget) {
         const Widget* current = widget;
         for (int i = last - 1; i >= 0; --i) {
@@ -1423,10 +1285,8 @@ bool StyleSheet::selectorMatches(const CSSRule& rule,
             }
         }
     }
-
     return true;
 }
-
 void StyleSheet::appendClassTokens(std::string_view className, std::vector<std::string_view>& out) {
     size_t pos = 0;
     while (pos < className.size()) {
@@ -1437,16 +1297,13 @@ void StyleSheet::appendClassTokens(std::string_view className, std::vector<std::
         out.push_back(className.substr(start, pos - start));
     }
 }
-
 int StyleSheet::selectorSpecificity(const std::string& selector) {
     std::string s = trim(selector);
     if (s.empty() || s == "*") return 0;
-
     int ids = 0;
     int classes = 0;
     int types = 0;
     bool atTokenStart = true;
-
     for (size_t i = 0; i < s.size();) {
         char c = s[i];
         if (std::isspace((unsigned char)c) || c == '>' || c == '+' || c == '~' || c == ',') {
@@ -1454,7 +1311,6 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             ++i;
             continue;
         }
-
         if (c == '#') {
             ids++;
             ++i;
@@ -1462,7 +1318,6 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             atTokenStart = false;
             continue;
         }
-
         if (c == '.') {
             classes++;
             ++i;
@@ -1470,7 +1325,6 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             atTokenStart = false;
             continue;
         }
-
         if (c == '[') {
             classes++;
             int depth = 1;
@@ -1483,14 +1337,12 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             atTokenStart = false;
             continue;
         }
-
         if (c == ':') {
             bool pseudoElement = i + 1 < s.size() && s[i + 1] == ':';
             i += pseudoElement ? 2 : 1;
             size_t nameStart = i;
             while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
             std::string name = lowerAscii(s.substr(nameStart, i - nameStart));
-
             if (pseudoElement) {
                 types++;
             } else if (name == "is" || name == "not" || name == "has") {
@@ -1529,7 +1381,6 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             } else {
                 classes++;
             }
-
             if (i < s.size() && s[i] == '(') {
                 int depth = 1;
                 ++i;
@@ -1542,37 +1393,29 @@ int StyleSheet::selectorSpecificity(const std::string& selector) {
             atTokenStart = false;
             continue;
         }
-
         if (c == '*') {
             ++i;
             atTokenStart = false;
             continue;
         }
-
         if (atTokenStart && (std::isalpha((unsigned char)c) || c == '_')) {
             types++;
         }
         while (i < s.size() && (std::isalnum((unsigned char)s[i]) || s[i] == '-' || s[i] == '_')) ++i;
         atTokenStart = false;
     }
-
     return ids * 10000 + classes * 100 + types;
 }
-
 CSSRuleIndexKey StyleSheet::selectorIndexKey(const std::string& selector) {
     std::string s = trim(selector);
     extractTrailingStatePseudo(s, nullptr);
-
     std::vector<std::string> parts;
     std::vector<char> combinators;
     splitSelectorChain(s, parts, combinators);
     if (parts.empty()) return {};
-
     std::string rightmost = trim(parts.back());
     if (rightmost.empty() || rightmost == "*") return {};
-
     CSSRuleIndexKey key;
-
     for (size_t i = 0; i < rightmost.size();) {
         char c = rightmost[i];
         if (c == '#') {
@@ -1617,13 +1460,11 @@ CSSRuleIndexKey StyleSheet::selectorIndexKey(const std::string& selector) {
         }
         i++;
     }
-
     if (key.key.empty()) {
         key.bucket = CSSRuleBucket::Universal;
     }
     return key;
 }
-
 bool StyleSheet::stripImportant(std::string& value) {
     std::string trimmed = trim(value);
     std::string lower = lowerAscii(trimmed);
@@ -1635,7 +1476,6 @@ bool StyleSheet::stripImportant(std::string& value) {
     value = trimmed;
     return false;
 }
-
 bool StyleSheet::loadFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) return false;
@@ -1644,7 +1484,6 @@ bool StyleSheet::loadFile(const std::string& path) {
     parse(css);
     return true;
 }
-
 bool StyleSheet::setViewportSize(float width, float height) {
     width = std::max(0.0f, width);
     height = std::max(0.0f, height);
@@ -1657,65 +1496,57 @@ bool StyleSheet::setViewportSize(float width, float height) {
     currentEpoch_++;
     return true;
 }
-
 void StyleSheet::parse(const std::string& css) {
     currentEpoch_++;
     auto tokens = tokenizeCSS(css);
     parseRulesFromTokens(tokens, "");
     buildInvalidationSets();
 }
-
 void StyleSheet::registerLayer(const std::string& name) {
     if (name.empty()) return;
     if (std::find(layersOrder.begin(), layersOrder.end(), name) == layersOrder.end()) {
         layersOrder.push_back(name);
     }
 }
-
 int StyleSheet::getLayerPriority(const std::string& layerName) const {
     if (layerName.empty()) {
-        return (int)layersOrder.size(); // Unlayered has highest priority
+        return (int)layersOrder.size();
     }
     for (size_t i = 0; i < layersOrder.size(); ++i) {
         if (layersOrder[i] == layerName) {
             return (int)i;
         }
     }
-    return -1; // Unknown layer
+    return -1;
 }
-
 void StyleSheet::parseRules(const std::string& css, const std::string& mediaQuery, const std::string& currentLayer) {
     auto tokens = tokenizeCSS(css);
     parseRulesFromTokens(tokens, mediaQuery, currentLayer);
 }
-
 void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const std::string& mediaQuery, const std::string& currentLayer) {
     size_t index = 0;
     size_t n = tokens.size();
-
     auto consumeBalancedBlock = [](const std::vector<CSSToken>& tokens, size_t& index) {
         std::vector<CSSToken> content;
         if (index >= tokens.size() || tokens[index].type != CSSToken::LeftBrace) {
             return content;
         }
-        index++; // consume '{'
+        index++;
         int depth = 1;
         while (index < tokens.size() && depth > 0) {
             const auto& t = tokens[index];
             if (t.type == CSSToken::LeftBrace) depth++;
             else if (t.type == CSSToken::RightBrace) depth--;
-            
             if (depth > 0) {
                 content.push_back(t);
                 index++;
             }
         }
         if (index < tokens.size()) {
-            index++; // consume '}'
+            index++;
         }
         return content;
     };
-
     while (index < n) {
         if (tokens[index].type == CSSToken::Whitespace || tokens[index].type == CSSToken::Semicolon) {
             index++;
@@ -1724,20 +1555,17 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
         if (tokens[index].type == CSSToken::EndOfFile) {
             break;
         }
-
         std::vector<CSSToken> prelude;
         bool hasBlock = false;
         bool foundEnd = false;
         int parenDepth = 0;
         int bracketDepth = 0;
-
         while (index < n) {
             const auto& t = tokens[index];
             if (t.type == CSSToken::LeftParenthesis) parenDepth++;
             else if (t.type == CSSToken::RightParenthesis && parenDepth > 0) parenDepth--;
             else if (t.type == CSSToken::LeftBracket) bracketDepth++;
             else if (t.type == CSSToken::RightBracket && bracketDepth > 0) bracketDepth--;
-
             if (parenDepth == 0 && bracketDepth == 0) {
                 if (t.type == CSSToken::LeftBrace) {
                     hasBlock = true;
@@ -1746,27 +1574,23 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
                 }
                 if (t.type == CSSToken::Semicolon) {
                     foundEnd = true;
-                    index++; // consume ';'
+                    index++;
                     break;
                 }
             }
             prelude.push_back(t);
             index++;
         }
-
         if (!foundEnd) {
             break;
         }
-
         std::string preludeStr;
         for (const auto& t : prelude) {
             preludeStr += t.text;
         }
         preludeStr = trim(preludeStr);
-
         if (hasBlock) {
             std::vector<CSSToken> blockContent = consumeBalancedBlock(tokens, index);
-
             if (!preludeStr.empty() && preludeStr[0] == '@') {
                 std::string lowerPrelude = lowerAscii(preludeStr);
                 if (lowerPrelude.rfind("@media", 0) == 0) {
@@ -1845,50 +1669,39 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
         }
     }
 }
-
 void StyleSheet::parseRule(const std::string& selector, const std::string& body, const std::string& mediaQuery, const std::string& currentLayer) {
     std::vector<CSSProperty> properties;
     std::vector<std::string> nestedRules;
-
-    // Parse properties and nested rules
     for (std::string line : splitDeclarations(body)) {
         line = trim(line);
         if (line.empty()) continue;
-
         auto brace = line.find('{');
         if (brace != std::string::npos) {
             nestedRules.push_back(line);
             continue;
         }
-
         auto colon = line.find(':');
         if (colon == std::string::npos) continue;
-
         CSSProperty prop;
         prop.name = lowerAscii(trim(line.substr(0, colon)));
         prop.value = trim(line.substr(colon + 1));
         prop.sourceOrder = nextPropertyOrder_++;
         properties.push_back(prop);
     }
-
-    // Process nested rules recursively
     for (const std::string& nestedStr : nestedRules) {
         auto brace = nestedStr.find('{');
         std::string nestedSelector = trim(nestedStr.substr(0, brace));
         auto rbrace = nestedStr.rfind('}');
         if (rbrace == std::string::npos || rbrace <= brace) continue;
         std::string nestedBody = nestedStr.substr(brace + 1, rbrace - brace - 1);
-
         std::string resolvedSelector;
         std::vector<std::string> parentParts = splitTopLevel(selector, ',');
         std::vector<std::string> nestedParts = splitTopLevel(nestedSelector, ',');
-
         for (size_t i = 0; i < parentParts.size(); ++i) {
             std::string parentPart = trim(parentParts[i]);
             for (size_t j = 0; j < nestedParts.size(); ++j) {
                 std::string nestedPart = trim(nestedParts[j]);
                 if (!resolvedSelector.empty()) resolvedSelector += ", ";
-
                 size_t ampPos = nestedPart.find('&');
                 if (ampPos != std::string::npos) {
                     std::string part = nestedPart;
@@ -1901,7 +1714,6 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         }
         parseRule(resolvedSelector, nestedBody, mediaQuery, currentLayer);
     }
-
     for (const auto& sel : splitTopLevel(selector, ',')) {
         std::string cleanSelector = trim(sel);
         if (cleanSelector.empty()) continue;
@@ -1913,17 +1725,14 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
             }
             continue;
         }
-
         CSSRule rule;
         rule.selector = cleanSelector;
         rule.mediaQuery = mediaQuery;
         rule.layer = currentLayer;
         rule.specificity = selectorSpecificity(cleanSelector);
-
         rule.selectorWithoutPseudo = cleanSelector;
         extractTrailingStatePseudo(rule.selectorWithoutPseudo, &rule.pseudoState);
         splitSelectorChain(rule.selectorWithoutPseudo, rule.parts, rule.combinators);
-
         for (const auto& prop : properties) {
             rule.properties.push_back(prop);
         }
@@ -1933,10 +1742,8 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         }
     }
 }
-
 void StyleSheet::indexRule(size_t ruleIndex) {
     if (ruleIndex >= rules.size()) return;
-
     CSSRuleIndexKey key = selectorIndexKey(rules[ruleIndex].selector);
     switch (key.bucket) {
         case CSSRuleBucket::Id:
@@ -1962,7 +1769,6 @@ void StyleSheet::indexRule(size_t ruleIndex) {
     }
     universalRuleIndex_.push_back(ruleIndex);
 }
-
 std::string StyleSheet::resolveValue(const std::string& value,
                                      const std::unordered_map<std::string, std::string>& customProperties,
                                      bool* valid) const {
@@ -1971,7 +1777,6 @@ std::string StyleSheet::resolveValue(const std::string& value,
     if (valid) *valid = localValid;
     return resolved;
 }
-
 std::string StyleSheet::resolveValueInternal(const std::string& value,
                                              const std::unordered_map<std::string, std::string>* customProperties,
                                              bool* valid,
@@ -1980,17 +1785,14 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         if (valid) *valid = false;
         return "";
     }
-
     std::string out;
     size_t pos = 0;
-
     while (pos < value.size()) {
         size_t varStart = value.find("var(", pos);
         if (varStart == std::string::npos) {
             out += value.substr(pos);
             break;
         }
-
         out += value.substr(pos, varStart - pos);
         size_t cursor = varStart + 4;
         int depth = 1;
@@ -1999,12 +1801,10 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
             if (value[cursor] == ')') depth--;
             if (depth > 0) cursor++;
         }
-
         if (cursor >= value.size()) {
             out += value.substr(varStart);
             break;
         }
-
         std::string inner = trim(value.substr(varStart + 4, cursor - varStart - 4));
         std::string name = inner;
         std::string fallback;
@@ -2019,7 +1819,6 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
                 fallback = trim(fallback);
             }
         }
-
         if (customProperties) {
             auto customIt = customProperties->find(name);
             if (customIt != customProperties->end()) {
@@ -2028,16 +1827,12 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
                 continue;
             }
         }
-
         auto it = variables_.find(name);
         if (it != variables_.end()) {
             out += resolveValueInternal(it->second, customProperties, valid, depth + 1);
         } else if (!fallback.empty()) {
             out += resolveValueInternal(fallback, customProperties, valid, depth + 1);
         } else {
-            // @property initial-value fallback (Blink parity):
-            // If the variable has a registered @property definition with an initial-value,
-            // use that instead of failing the entire resolution.
             auto defIt = propertyDefinitions_.find(name);
             if (defIt != propertyDefinitions_.end() && !defIt->second.initialValue.empty()) {
                 out += resolveValueInternal(defIt->second.initialValue, customProperties, valid, depth + 1);
@@ -2048,40 +1843,33 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         }
         pos = cursor + 1;
     }
-
     return trim(out);
 }
-
 static bool applyCSSWideProperty(Style& target,
                                  const std::string& name,
                                  const std::string& keyword,
                                  const Style* parentStyle,
                                  const Style& initialStyle);
-
 Style StyleSheet::resolve(std::string_view className,
                           std::string_view id,
                           std::string_view type) const {
     static const std::vector<CSSSelectorNode> noAncestors;
     return resolve(className, id, type, noAncestors);
 }
-
 Style StyleSheet::resolve(std::string_view className,
                           std::string_view id,
                           std::string_view type,
                           const std::vector<CSSSelectorNode>& ancestors) const {
     return resolve(className, id, type, ancestors, nullptr);
 }
-
 struct CascadedProperty {
     const CSSProperty* property = nullptr;
     int specificity = 0;
     bool important = false;
     int layerPriority = 0;
 };
-
 uint64_t StyleSheet::computeInheritedHash(const Style& style) {
     uint64_t hash = 14695981039346656037ULL;
-
     auto hashBytes = [&hash](const void* data, size_t size) {
         const uint8_t* bytes = static_cast<const uint8_t*>(data);
         for (size_t i = 0; i < size; ++i) {
@@ -2089,7 +1877,6 @@ uint64_t StyleSheet::computeInheritedHash(const Style& style) {
             hash *= 1099511628211ULL;
         }
     };
-
     hashBytes(&style.color, sizeof(style.color));
     hashBytes(&style.fontSize, sizeof(style.fontSize));
     hashBytes(&style.fontWeight, sizeof(style.fontWeight));
@@ -2107,12 +1894,10 @@ uint64_t StyleSheet::computeInheritedHash(const Style& style) {
     hashBytes(&style.wordBreak, sizeof(style.wordBreak));
     hashBytes(&style.pointerEvents, sizeof(style.pointerEvents));
     hashBytes(&style.listStyleType, sizeof(style.listStyleType));
-
     for (char c : style.fontFamily) {
         hash ^= static_cast<uint64_t>(c);
         hash *= 1099511628211ULL;
     }
-
     if (!style.customProperties.empty()) {
         uint64_t customHash = 0;
         for (const auto& entry : style.customProperties) {
@@ -2131,10 +1916,8 @@ uint64_t StyleSheet::computeInheritedHash(const Style& style) {
         hash ^= customHash;
         hash *= 1099511628211ULL;
     }
-
     return hash;
 }
-
 enum class CascadeOrigin {
     UserAgentNormal = 0,
     UserNormal,
@@ -2147,7 +1930,6 @@ enum class CascadeOrigin {
     UserAgentImportant,
     Transition
 };
-
 static bool isHighPriorityProperty(const std::string& name) {
     return name == "font-size" ||
            name == "font" ||
@@ -2157,7 +1939,6 @@ static bool isHighPriorityProperty(const std::string& name) {
            name == "direction" ||
            name == "line-height";
 }
-
 struct StyleCascade {
     struct Entry {
         const CSSProperty* property = nullptr;
@@ -2166,47 +1947,39 @@ struct StyleCascade {
         CascadeOrigin origin = CascadeOrigin::AuthorNormal;
         uint32_t sourceOrder = 0;
         int layerPriority = 0;
-
         bool isWorseThan(const Entry& o) const {
             if (origin != o.origin) return origin < o.origin;
-            
             if (layerPriority != o.layerPriority) {
-                bool isImportant = (origin == CascadeOrigin::AuthorImportant || 
+                bool isImportant = (origin == CascadeOrigin::AuthorImportant ||
                                     origin == CascadeOrigin::InlineImportant ||
                                     origin == CascadeOrigin::UserImportant ||
                                     origin == CascadeOrigin::UserAgentImportant);
                 if (isImportant) {
-                    return layerPriority > o.layerPriority; // Reverse priority for important layers
+                    return layerPriority > o.layerPriority;
                 } else {
-                    return layerPriority < o.layerPriority; // Standard priority for normal layers
+                    return layerPriority < o.layerPriority;
                 }
             }
-
             if (specificity != o.specificity) return specificity < o.specificity;
             return sourceOrder < o.sourceOrder;
         }
     };
-
     std::unordered_map<std::string, Entry> baseProperties;
     std::unordered_map<std::string, Entry> hoverProperties;
     std::unordered_map<std::string, Entry> focusProperties;
     std::unordered_map<std::string, Entry> activeProperties;
-
     void add(const std::string& name, const CSSProperty* prop, const std::string& customVal, int specificity, CascadeOrigin origin, uint32_t sourceOrder, std::string_view pseudo, int layerPri = 0) {
         Entry entry{prop, customVal, specificity, origin, sourceOrder, layerPri};
-        
         std::unordered_map<std::string, Entry>* targetMap = &baseProperties;
         if (pseudo == "hover") targetMap = &hoverProperties;
         else if (pseudo == "focus" || pseudo == "focus-visible") targetMap = &focusProperties;
         else if (pseudo == "active") targetMap = &activeProperties;
-
         auto it = targetMap->find(name);
         if (it == targetMap->end() || it->second.isWorseThan(entry)) {
             (*targetMap)[name] = entry;
         }
     }
 };
-
 Style StyleSheet::resolve(std::string_view className,
                           std::string_view id,
                           std::string_view type,
@@ -2216,7 +1989,6 @@ Style StyleSheet::resolve(std::string_view className,
                           std::string_view targetPseudo) const {
     const auto* inheritedCustomProperties = parentStyle ? &parentStyle->customProperties : nullptr;
     StyleCacheKey key = buildCacheKey(className, id, type, ancestors, parentStyle);
-
 #if FLUXUI_STYLE_CACHE_SIZE > 0
     {
         size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
@@ -2225,15 +1997,12 @@ Style StyleSheet::resolve(std::string_view className,
         }
     }
 #endif
-
     Style style;
     if (parentStyle) {
         style.fontSize = parentStyle->fontSize;
     } else {
         style.fontSize = 16.0f;
     }
-
-    // Initialize custom properties with defaults and inherited variables
     for (const auto& entry : propertyDefinitions_) {
         if (!entry.second.initialValue.empty()) {
             style.customProperties[entry.second.name] = entry.second.initialValue;
@@ -2256,10 +2025,7 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
     }
-
     StyleCascade cascade;
-
-    // 1. Gather all matched User Agent rules
     const StyleSheet& uaSheet = getUaSheet();
     std::vector<size_t> uaCandidateRules;
     uaSheet.collectCandidateRules("", "", type, uaCandidateRules);
@@ -2275,7 +2041,6 @@ Style StyleSheet::resolve(std::string_view className,
             } else {
                 if (pseudo != targetPseudo) continue;
             }
-
             for (const auto& prop : rule.properties) {
                 std::string value = prop.value;
                 bool isImp = stripImportant(value);
@@ -2284,11 +2049,8 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
     }
-
-    // 2. Gather all matched Author rules
     std::vector<size_t> candidateRules;
     collectCandidateRules(className, id, type, candidateRules);
-
     bool insideBlinkDoc = false;
     if (className.find("blink-native-doc") != std::string_view::npos) {
         insideBlinkDoc = true;
@@ -2310,7 +2072,6 @@ Style StyleSheet::resolve(std::string_view className,
             cur = cur->parent;
         }
     }
-
     for (size_t ruleIndex : candidateRules) {
         if (ruleIndex >= rules.size()) continue;
         const auto& rule = rules[ruleIndex];
@@ -2333,7 +2094,6 @@ Style StyleSheet::resolve(std::string_view className,
             } else {
                 if (pseudo != targetPseudo) continue;
             }
-
             for (const auto& prop : rule.properties) {
                 std::string value = prop.value;
                 bool isImp = stripImportant(value);
@@ -2343,8 +2103,6 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
     }
-
-    // 3. Gather inline style properties (highest cascade priority)
     if (widget) {
         for (const auto& prop : widget->inlineProperties) {
             std::string value = prop.value;
@@ -2353,8 +2111,6 @@ Style StyleSheet::resolve(std::string_view className,
             cascade.add(prop.name.getString(), &prop, value, 1000000, origin, prop.sourceOrder, "");
         }
     }
-
-    // 4. Multi-pass cascade style resolution lambda
     Style initialStyle;
     auto applyProperties = [&](const std::unordered_map<std::string, StyleCascade::Entry>& map,
                                auto mergeFn,
@@ -2371,13 +2127,10 @@ Style StyleSheet::resolve(std::string_view className,
                 if (pass == 2 && !isHigh) continue;
                 if (pass == 3 && isHigh) continue;
             }
-
             bool valid = true;
             std::string value = resolveValueInternal(entry.customValue, customProperties.getMapPointer(), &valid);
             if (!valid) continue;
-
             if (pass == 1) {
-                // Syntax validation check
                 auto defIt = propertyDefinitions_.find(item.first);
                 if (defIt != propertyDefinitions_.end()) {
                     if (!isValidSyntax(value, defIt->second.syntax)) {
@@ -2397,22 +2150,13 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
     };
-
-    // --- BASE STATE RESOLUTION ---
-    // Pass 1: Custom variables
     applyProperties(cascade.baseProperties, [](Style&, const std::string&, const std::string&){}, style.customProperties, 1);
-
-    // Pass 2: High-priority typographical metrics (computes style.fontSize first)
     applyProperties(cascade.baseProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeProperty(target, name, value, target.fontSize);
     }, style.customProperties, 2);
-
-    // Pass 3: Standard dependent properties (calculates em/margins correctly using the resolved fontSize)
     applyProperties(cascade.baseProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeProperty(target, name, value, target.fontSize);
     }, style.customProperties, 3);
-
-    // --- HOVER STATE RESOLUTION ---
     auto hoverCustomProperties = style.customProperties;
     if (parentStyle && !parentStyle->hoverCustomProperties.empty()) {
         for (const auto& entry : parentStyle->hoverCustomProperties) {
@@ -2430,8 +2174,6 @@ Style StyleSheet::resolve(std::string_view className,
     applyProperties(cascade.hoverProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeHoverProperty(target, name, value);
     }, hoverCustomProperties, 3);
-
-    // --- FOCUS STATE RESOLUTION ---
     auto focusCustomProperties = style.customProperties;
     if (parentStyle && !parentStyle->focusCustomProperties.empty()) {
         for (const auto& entry : parentStyle->focusCustomProperties) {
@@ -2449,8 +2191,6 @@ Style StyleSheet::resolve(std::string_view className,
     applyProperties(cascade.focusProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeFocusProperty(target, name, value);
     }, focusCustomProperties, 3);
-
-    // --- ACTIVE STATE RESOLUTION ---
     auto activeCustomProperties = style.customProperties;
     if (parentStyle && !parentStyle->activeCustomProperties.empty()) {
         for (const auto& entry : parentStyle->activeCustomProperties) {
@@ -2468,11 +2208,9 @@ Style StyleSheet::resolve(std::string_view className,
     applyProperties(cascade.activeProperties, [](Style& target, const std::string& name, const std::string& value) {
         StyleSheet::mergeActiveProperty(target, name, value);
     }, activeCustomProperties, 3);
-
     style.hoverCustomProperties = hoverCustomProperties;
     style.focusCustomProperties = focusCustomProperties;
     style.activeCustomProperties = activeCustomProperties;
-
     style.inheritedHash = computeInheritedHash(style);
 #if FLUXUI_STYLE_CACHE_SIZE > 0
     {
@@ -2484,8 +2222,6 @@ Style StyleSheet::resolve(std::string_view className,
 #endif
     return style;
 }
-
-
 void StyleSheet::collectCandidateRules(std::string_view className,
                                        std::string_view id,
                                        std::string_view type,
@@ -2494,12 +2230,9 @@ void StyleSheet::collectCandidateRules(std::string_view className,
     if (rules.empty()) {
         return;
     }
-    
     std::vector<uint8_t> flagArray(rules.size(), 0);
-
     size_t minIdx = rules.size();
     size_t maxIdx = 0;
-
     auto markRule = [&](size_t idx) {
         if (idx < rules.size()) {
             flagArray[idx] = 1;
@@ -2507,21 +2240,17 @@ void StyleSheet::collectCandidateRules(std::string_view className,
             if (idx > maxIdx) maxIdx = idx;
         }
     };
-
     auto markRules = [&](const std::vector<size_t>& rulesForKey) {
         for (size_t idx : rulesForKey) {
             markRule(idx);
         }
     };
-
     markRules(universalRuleIndex_);
-
     if (!id.empty()) {
         std::string idKey(id);
         auto it = idRuleIndex_.find(idKey);
         if (it != idRuleIndex_.end()) markRules(it->second);
     }
-
     std::vector<std::string_view> classes;
     appendClassTokens(className, classes);
     for (const auto& cls : classes) {
@@ -2529,7 +2258,6 @@ void StyleSheet::collectCandidateRules(std::string_view className,
         auto it = classRuleIndex_.find(clsKey);
         if (it != classRuleIndex_.end()) markRules(it->second);
     }
-
     if (!type.empty()) {
         std::string typeKey;
         std::string_view baseType = selectorBaseType(type);
@@ -2539,7 +2267,6 @@ void StyleSheet::collectCandidateRules(std::string_view className,
         }
         auto it = typeRuleIndex_.find(typeKey);
         if (it != typeRuleIndex_.end()) markRules(it->second);
-
         std::string_view inputType = selectorAttributeValue(type, "type");
         if (baseType == "input" && !inputType.empty()) {
             typeKey.resize(inputType.size());
@@ -2550,7 +2277,6 @@ void StyleSheet::collectCandidateRules(std::string_view className,
             if (typedIt != typeRuleIndex_.end()) markRules(typedIt->second);
         }
     }
-
     if (minIdx <= maxIdx) {
         out.reserve(maxIdx - minIdx + 1);
         for (size_t i = minIdx; i <= maxIdx; ++i) {
@@ -2560,18 +2286,15 @@ void StyleSheet::collectCandidateRules(std::string_view className,
         }
     }
 }
-
 static std::vector<std::string> splitMediaAndClauses(const std::string& query) {
     std::vector<std::string> clauses;
     std::string current;
     int depth = 0;
     std::string lower = lowerAscii(query);
-
     for (size_t i = 0; i < query.size();) {
         char c = query[i];
         if (c == '(') depth++;
         else if (c == ')' && depth > 0) depth--;
-
         bool isAnd = depth == 0 &&
                      i + 5 <= query.size() &&
                      lower.compare(i, 5, " and ") == 0;
@@ -2582,16 +2305,13 @@ static std::vector<std::string> splitMediaAndClauses(const std::string& query) {
             i += 5;
             continue;
         }
-
         current += c;
         ++i;
     }
-
     std::string item = trimLocal(current);
     if (!item.empty()) clauses.push_back(item);
     return clauses;
 }
-
 static bool parseMediaFeature(const std::string& clause,
                               float viewportWidth,
                               float viewportHeight) {
@@ -2600,7 +2320,6 @@ static bool parseMediaFeature(const std::string& clause,
         c = trimLocal(c.substr(1, c.size() - 2));
     }
     if (c.empty()) return true;
-
     auto colon = c.find(':');
     if (colon != std::string::npos) {
         std::string name = trimLocal(c.substr(0, colon));
@@ -2626,7 +2345,6 @@ static bool parseMediaFeature(const std::string& clause,
         }
         return false;
     }
-
     auto compare = [&](const std::string& op, bool leftWidth) -> bool {
         auto pos = c.find(op);
         if (pos == std::string::npos) return false;
@@ -2658,7 +2376,6 @@ static bool parseMediaFeature(const std::string& clause,
         }
         return false;
     };
-
     if (c.find("width") != std::string::npos) {
         if (compare("<=", true) || compare(">=", true) ||
             compare("<", true) || compare(">", true)) {
@@ -2671,18 +2388,14 @@ static bool parseMediaFeature(const std::string& clause,
             return true;
         }
     }
-
     return false;
 }
-
 bool StyleSheet::mediaQueryMatches(const std::string& query) const {
     std::string trimmed = trim(query);
     if (trimmed.empty()) return true;
-
     for (std::string alternative : splitTopLevel(trimmed, ',')) {
         alternative = trimLocal(lowerAscii(alternative));
         if (alternative.empty()) continue;
-
         bool negate = false;
         if (alternative.rfind("not ", 0) == 0) {
             negate = true;
@@ -2691,7 +2404,6 @@ bool StyleSheet::mediaQueryMatches(const std::string& query) const {
         if (alternative.rfind("only ", 0) == 0) {
             alternative = trimLocal(alternative.substr(5));
         }
-
         bool matches = true;
         for (std::string clause : splitMediaAndClauses(alternative)) {
             clause = trimLocal(clause);
@@ -2707,14 +2419,11 @@ bool StyleSheet::mediaQueryMatches(const std::string& query) const {
                 break;
             }
         }
-
         if (negate) matches = !matches;
         if (matches) return true;
     }
-
     return false;
 }
-
 static bool isInheritedCSSProperty(const std::string& name) {
     return name == "color" || name == "font-size" ||
            name == "font-weight" || name == "font-style" ||
@@ -2727,7 +2436,6 @@ static bool isInheritedCSSProperty(const std::string& name) {
            name == "text-overflow" || name == "word-break" ||
            name == "pointer-events";
 }
-
 static const Style& cssWideSource(const std::string& name,
                                   const std::string& keyword,
                                   const Style* parentStyle,
@@ -2740,7 +2448,6 @@ static const Style& cssWideSource(const std::string& name,
     }
     return initialStyle;
 }
-
 static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto customProperties = std::move(target.customProperties);
     auto hoverCustomProperties = std::move(target.hoverCustomProperties);
@@ -2750,7 +2457,6 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto unresolvedColor = std::move(target.unresolvedColor);
     auto unresolvedBorderColor = std::move(target.unresolvedBorderColor);
     auto unresolvedBackgroundGradient = std::move(target.unresolvedBackgroundGradient);
-
     auto animationName              = std::move(target.animationName);
     auto animationDuration          = std::move(target.animationDuration);
     auto animationDelay             = std::move(target.animationDelay);
@@ -2765,9 +2471,7 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto transitionDelays           = std::move(target.transitionDelays);
     auto transitionTimingFunctions  = std::move(target.transitionTimingFunctions);
     auto transitionBehavior         = std::move(target.transitionBehavior);
-
     target = source;
-
     target.customProperties = std::move(customProperties);
     target.hoverCustomProperties = std::move(hoverCustomProperties);
     target.focusCustomProperties = std::move(focusCustomProperties);
@@ -2776,7 +2480,6 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     target.unresolvedColor = std::move(unresolvedColor);
     target.unresolvedBorderColor = std::move(unresolvedBorderColor);
     target.unresolvedBackgroundGradient = std::move(unresolvedBackgroundGradient);
-
     target.animationName              = std::move(animationName);
     target.animationDuration          = std::move(animationDuration);
     target.animationDelay             = std::move(animationDelay);
@@ -2792,7 +2495,6 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     target.transitionTimingFunctions  = std::move(transitionTimingFunctions);
     target.transitionBehavior         = std::move(transitionBehavior);
 }
-
 static bool applyCSSWideProperty(Style& target,
                                  const std::string& name,
                                  const std::string& keyword,
@@ -2801,7 +2503,6 @@ static bool applyCSSWideProperty(Style& target,
     if (keyword != "inherit" && keyword != "initial" && keyword != "unset") {
         return false;
     }
-
     const Style& source = cssWideSource(name, keyword, parentStyle, initialStyle);
     if (name == "all") {
         copyAllNonCustomProperties(target, source);
@@ -2969,8 +2670,30 @@ static bool applyCSSWideProperty(Style& target,
         target.animationTimingFunction = source.animationTimingFunction;
     } else if (name == "animation-composition") {
         target.animationComposition = source.animationComposition;
-    } else if (name == "scale" || name == "transform") {
+    } else if (name == "scale") {
         target.scale = source.scale;
+    } else if (name == "transform") {
+        target.transform = source.transform;
+        target.hasTransform = source.hasTransform;
+        target.scale = source.scale;
+    } else if (name == "transform-origin") {
+        target.transformOrigin = source.transformOrigin;
+        target.hasTransformOrigin = source.hasTransformOrigin;
+    } else if (name == "transform-style") {
+        target.transformStyle = source.transformStyle;
+        target.hasTransformStyle = source.hasTransformStyle;
+    } else if (name == "transform-box") {
+        target.transformBox = source.transformBox;
+        target.hasTransformBox = source.hasTransformBox;
+    } else if (name == "perspective") {
+        target.perspective = source.perspective;
+        target.hasPerspective = source.hasPerspective;
+    } else if (name == "perspective-origin") {
+        target.perspectiveOrigin = source.perspectiveOrigin;
+        target.hasPerspectiveOrigin = source.hasPerspectiveOrigin;
+    } else if (name == "backface-visibility") {
+        target.backfaceVisibility = source.backfaceVisibility;
+        target.hasBackfaceVisibility = source.hasBackfaceVisibility;
     } else if (name == "box-sizing") {
         target.boxSizing = source.boxSizing;
         target.hasBoxSizing = true;
@@ -3015,14 +2738,11 @@ static bool applyCSSWideProperty(Style& target,
     }
     return true;
 }
-
 const StyleSheet& StyleSheet::getUaSheet() {
     static StyleSheet uaSheet;
     static bool initialized = false;
     if (!initialized) {
-        // Parse a beautifully structured, comprehensive declarative UA default stylesheet string based on Blink html.css!
         uaSheet.parse(R"CSS(
-            /* Declarative UA defaults matching Blink html.css specifications */
             html { display: block; }
             body { display: block; margin: 8px; }
             p { display: block; margin-block-start: 1em; margin-block-end: 1em; }
@@ -3035,28 +2755,23 @@ const StyleSheet& StyleSheet::getUaSheet() {
             dd { display: block; margin-inline-start: 40px; }
             center { display: block; text-align: center; }
             hr { display: block; overflow: hidden; margin-block-start: 0.5em; margin-block-end: 0.5em; border: 1px solid rgb(128, 128, 128); }
-            
             h1 { display: block; font-size: 2em; margin-block-start: 0.67em; margin-block-end: 0.67em; font-weight: bold; }
             h2 { display: block; font-size: 1.5em; margin-block-start: 0.83em; margin-block-end: 0.83em; font-weight: bold; }
             h3 { display: block; font-size: 1.17em; margin-block-start: 1em; margin-block-end: 1em; font-weight: bold; }
             h4 { display: block; font-size: 1em; margin-block-start: 1.33em; margin-block-end: 1.33em; font-weight: bold; }
             h5 { display: block; font-size: 0.83em; margin-block-start: 1.67em; margin-block-end: 1.67em; font-weight: bold; }
             h6 { display: block; font-size: 0.67em; margin-block-start: 2.33em; margin-block-end: 2.33em; font-weight: bold; }
-            
             article h1, aside h1, nav h1, section h1 { font-size: 1.5em; margin-block-start: 0.83em; margin-block-end: 0.83em; }
             article article h1, article aside h1, article nav h1, article section h1,
             aside article h1, aside aside h1, aside nav h1, aside section h1,
             nav article h1, nav aside h1, nav nav h1, nav section h1,
             section article h1, section aside h1, section nav h1, section section h1 { font-size: 1.17em; margin-block-start: 1em; margin-block-end: 1em; }
-            
             ul, ol, menu, dir { display: block; margin-block-start: 1em; margin-block-end: 1em; padding-inline-start: 40px; }
             ol { list-style-type: decimal; }
             ul { list-style-type: disc; }
             ul ul, ol ul { list-style-type: circle; }
             ul ul ul, ol ul ul, ul ol ul, ol ol ul { list-style-type: square; }
-            
             li { display: list-item; }
-            
             table { display: table; border: 0px solid rgb(128, 128, 128); }
             thead { display: table-header-group; vertical-align: middle; }
             tbody { display: table-row-group; vertical-align: middle; }
@@ -3067,7 +2782,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
             caption { display: table-caption; text-align: center; }
             col { display: table-column; }
             colgroup { display: table-column-group; }
-            
             strong, b { display: inline; font-weight: bold; }
             a { display: inline; color: rgb(0, 0, 238); text-decoration: underline; cursor: pointer; }
             u, ins { display: inline; text-decoration: underline; }
@@ -3081,12 +2795,10 @@ const StyleSheet& StyleSheet::getUaSheet() {
             pre, xmp, plaintext, listing { display: block; margin-block-start: 1em; margin-block-end: 1em; font-family: monospace; white-space: pre; }
             code, kbd, samp, tt { display: inline; font-family: monospace; }
             nobr { display: inline; white-space: nowrap; }
-            
             img, svg, picture { display: inline-block; object-fit: fill; }
             canvas { display: inline-block; width: 300px; height: 150px; }
             video { display: inline-block; object-fit: contain; }
             rp, noframes { display: none; }
-            
             span, q, map, area, abbr, acronym, bdi, bdo, data, time, output, rb, rtc, ruby, audio, embed, iframe, object { display: inline; }
             iframe { border: 2px solid rgb(118, 118, 118); }
             bdi, output { unicode-bidi: isolate; }
@@ -3094,11 +2806,8 @@ const StyleSheet& StyleSheet::getUaSheet() {
             slot { display: contents; }
             rt { display: block; font-size: 8px; }
             label { display: inline; cursor: default; }
-            
             fieldset { display: block; margin: 0px 2px; padding: 5.6px 12px 10px 12px; border: 2px solid rgb(192, 192, 192); min-width: 0px; }
             legend { display: block; padding: 0px 2px; }
-            
-            /* Hidden inputs */
             input[type="hidden"] {
                 display: none !important;
                 appearance: auto;
@@ -3109,8 +2818,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 width: 0px;
                 height: 0px;
             }
-            
-            /* File, image and color pickers */
             input[type="file"] {
                 display: inline-block;
                 appearance: auto;
@@ -3167,8 +2874,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Text inputs (text, password, search, email, url, tel, number, etc.) */
             input[type="text"], input[type="password"], input[type="search"], input[type="number"], input[type="email"], input[type="url"], input[type="tel"], input[type="date"], input[type="time"], input[type="month"], input[type="week"], input[type="datetime-local"] {
                 display: inline-block;
                 appearance: textfield;
@@ -3190,12 +2895,9 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
             input[type="search"] {
                 appearance: searchfield;
             }
-            
-            /* Textarea */
             textarea {
                 display: inline-block;
                 appearance: auto;
@@ -3218,8 +2920,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Select */
             select {
                 display: inline-block;
                 appearance: menulist;
@@ -3239,8 +2939,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Option */
             option {
                 display: none;
                 padding: 0px 2px 1px 2px;
@@ -3256,8 +2954,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Checkbox */
             input[type="checkbox"] {
                 display: inline-block;
                 appearance: checkbox;
@@ -3278,8 +2974,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Radio */
             input[type="radio"] {
                 display: inline-block;
                 appearance: radio;
@@ -3300,8 +2994,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
-            /* Range */
             input[type="range"] {
                 display: inline-block;
                 appearance: slider-horizontal;
@@ -3321,7 +3013,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: left;
             }
-            
             button, input[type="button"], input[type="submit"], input[type="reset"] {
                 display: inline-block;
                 appearance: button;
@@ -3342,16 +3033,12 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 text-transform: none;
                 text-align: center;
             }
-            
-            /* Details / Summary */
             details { display: block; }
             summary { display: block; padding-left: 20px; cursor: pointer; }
             dialog { display: none; position: absolute; background-color: rgb(255, 255, 255); color: rgb(0, 0, 0); border: 1px solid rgb(0, 0, 0); padding: 20px; }
             meter { display: inline-block; width: 80px; height: 16px; background-color: rgb(229, 229, 229); border: 1px solid rgb(179, 179, 179); border-radius: 4px; }
             progress { display: inline-block; width: 160px; height: 16px; background-color: rgba(26, 26, 26, 0.1); border: 1px solid rgba(76, 76, 76, 0.3); border-radius: 8px; }
             br { display: block; width: 100%; height: 0px; }
-            
-            /* Directional attributes */
             [dir="rtl"] { direction: rtl; unicode-bidi: isolate; }
             [dir="ltr"] { direction: ltr; unicode-bidi: isolate; }
         )CSS");
@@ -3359,7 +3046,6 @@ const StyleSheet& StyleSheet::getUaSheet() {
     }
     return uaSheet;
 }
-
 void StyleSheet::applyUserAgentDefaults(Style& style,
                                         std::string_view type,
                                         const std::vector<CSSSelectorNode>& ancestors,
@@ -3367,20 +3053,16 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
     const StyleSheet& uaSheet = getUaSheet();
     std::vector<size_t> candidateRules;
     uaSheet.collectCandidateRules("", "", type, candidateRules);
-
     struct WinningProperty {
         const CSSProperty* property = nullptr;
         int specificity = 0;
         int sourceOrder = 0;
-
         bool isWorseThan(const WinningProperty& o) const {
             if (specificity != o.specificity) return specificity < o.specificity;
             return sourceOrder < o.sourceOrder;
         }
     };
-
     std::unordered_map<std::string, WinningProperty> winningProperties;
-
     for (size_t ruleIndex : candidateRules) {
         if (ruleIndex >= uaSheet.rules.size()) continue;
         const auto& rule = uaSheet.rules[ruleIndex];
@@ -3395,12 +3077,10 @@ void StyleSheet::applyUserAgentDefaults(Style& style,
             }
         }
     }
-
     for (const auto& entry : winningProperties) {
         StyleSheet::mergeProperty(style, entry.first, entry.second.property->value, style.fontSize);
     }
 }
-
 static Overflow parseOverflowKeyword(const std::string& value) {
     if (value == "hidden") return Overflow::Hidden;
     if (value == "scroll") return Overflow::Scroll;
@@ -3408,11 +3088,9 @@ static Overflow parseOverflowKeyword(const std::string& value) {
     if (value == "clip") return Overflow::Clip;
     return Overflow::Visible;
 }
-
 static bool isOverflowVisibleOrClip(Overflow overflow) {
     return overflow == Overflow::Visible || overflow == Overflow::Clip;
 }
-
 static Overflow normalizeOverflowAxis(Overflow axis, Overflow otherAxis) {
     if (!isOverflowVisibleOrClip(otherAxis)) {
         if (axis == Overflow::Visible) return Overflow::Auto;
@@ -3420,7 +3098,6 @@ static Overflow normalizeOverflowAxis(Overflow axis, Overflow otherAxis) {
     }
     return axis;
 }
-
 static void normalizeOverflowAxes(Style& style) {
     Overflow x = style.overflowX;
     Overflow y = style.overflowY;
@@ -3428,20 +3105,17 @@ static void normalizeOverflowAxes(Style& style) {
     style.overflowY = normalizeOverflowAxis(y, x);
     style.overflow = style.overflowY;
 }
-
 struct ObjectPositionAxis {
     float fraction = 0.5f;
     float offset = 0.0f;
     bool set = false;
 };
-
 static bool isObjectPositionLength(const std::string& token) {
     if (token.empty()) return false;
     char first = token[0];
     return first == '-' || first == '+' || first == '.' ||
            std::isdigit((unsigned char)first);
 }
-
 static bool setObjectPositionKeyword(const std::string& token,
                                      ObjectPositionAxis& x,
                                      ObjectPositionAxis& y) {
@@ -3483,13 +3157,11 @@ static bool setObjectPositionKeyword(const std::string& token,
     }
     return false;
 }
-
 static float parseObjectPositionFloat(const std::string& token) {
     char* end = nullptr;
     float value = parseLocaleIndependentFloat(token.c_str(), &end);
     return end == token.c_str() ? 0.0f : value;
 }
-
 static float parseObjectPositionLengthPixels(const std::string& token) {
     if (token.size() > 3 && token.substr(token.size() - 3) == "rem") {
         return parseObjectPositionFloat(token) * 16.0f;
@@ -3499,7 +3171,6 @@ static float parseObjectPositionLengthPixels(const std::string& token) {
     }
     return parseObjectPositionFloat(token);
 }
-
 static void setObjectPositionLength(const std::string& token,
                                     ObjectPositionAxis& axis,
                                     bool fromEnd) {
@@ -3513,7 +3184,6 @@ static void setObjectPositionLength(const std::string& token,
     }
     axis.set = true;
 }
-
 static bool parseObjectPosition(const std::string& value,
                                 Vec2& position,
                                 Vec2& offset) {
@@ -3522,11 +3192,9 @@ static bool parseObjectPosition(const std::string& value,
     std::string token;
     while (ss >> token) tokens.push_back(lowerAscii(token));
     if (tokens.empty() || tokens.size() > 4) return false;
-
     ObjectPositionAxis x;
     ObjectPositionAxis y;
     bool sawValidToken = false;
-
     for (size_t i = 0; i < tokens.size(); ++i) {
         const std::string& current = tokens[i];
         bool horizontalEnd = current == "right";
@@ -3562,13 +3230,11 @@ static bool parseObjectPosition(const std::string& value,
         }
         return false;
     }
-
     if (!sawValidToken) return false;
     position = {x.set ? x.fraction : 0.5f, y.set ? y.fraction : 0.5f};
     offset = {x.set ? x.offset : 0.0f, y.set ? y.offset : 0.0f};
     return true;
 }
-
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "padding") {
         style.hasPaddingInlineStart = false; style.hasPaddingInlineEnd = false;
@@ -3619,11 +3285,9 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.hasInsetInlineStart = false; style.hasInsetInlineEnd = false;
         style.hasInsetBlockStart = false; style.hasInsetBlockEnd = false;
     }
-
     mergePropertyPart1(style, name, value, emBase);
     mergePropertyPart2(style, name, value, emBase);
 }
-
 static bool isDynamicValue(const std::string& val) {
     return val.find("var(") != std::string::npos ||
            val.find("min(") != std::string::npos ||
@@ -3631,7 +3295,6 @@ static bool isDynamicValue(const std::string& val) {
            val.find("clamp(") != std::string::npos ||
            val.find("calc(") != std::string::npos;
 }
-
 bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name.rfind("--", 0) == 0) {
         style.customProperties[name] = value;
@@ -3968,7 +3631,6 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
     }
     return false;
 }
-
 void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "font-size") {
         style.fontSize = parseFontSizePixels(value, style.fontSize);
@@ -4248,39 +3910,26 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "se-resize" || value == "nwse-resize") style.cursor = CursorType::ResizeNWSE;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {
-        // Full `transition` shorthand (CSS Transitions Level 1 + 2):
-        //   <single-transition> = [ none | <single-transition-property> ]
-        //                         || <time> || <easing-function> || <time>
-        //   transition = <single-transition>#
-        // Tokens within a single transition are order-independent: classify each token
-        // by content (time, easing, or property name).
         auto parts = splitTopLevel(value, ',');
         std::vector<std::string> props;
         std::vector<float> durations;
         std::vector<float> delays;
         std::vector<TimingFunction> tfs;
         std::vector<TransitionBehavior> behaviors;
-
         for (const auto& part : parts) {
             std::string p = trim(part);
             if (p.empty()) continue;
-
             std::string property = "all";
             float dur = 0.0f;
             float del = 0.0f;
             TimingFunction tf = TimingFunction::ease();
             TransitionBehavior behavior = TransitionBehavior::Normal;
             int timeSlots = 0;
-
-            std::string_view toks[16];
-            int nTok = 0;
-            splitWhitespace(p, toks, 16, nTok);
-            for (int i = 0; i < nTok; ++i) {
-                std::string tok = std::string(toks[i]);
+            auto toks = splitWhitespaceTopLevel(p);
+            for (const auto& tok : toks) {
                 if (tok.empty()) continue;
                 std::string tl = tok;
                 for (char& c : tl) c = (char)std::tolower((unsigned char)c);
-
                 bool isMs = tl.size() > 2 && tl.substr(tl.size() - 2) == "ms";
                 bool isSec = tl.size() > 1 && tl.back() == 's' && !isMs;
                 if (isMs || isSec) {
@@ -4289,19 +3938,16 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
                     else                { del = t; timeSlots++; }
                     continue;
                 }
-                // Timing function keyword / function
                 if (tl == "linear" || tl == "ease" || tl == "ease-in" || tl == "ease-out" ||
                     tl == "ease-in-out" || tl == "step-start" || tl == "step-end" ||
                     tl.rfind("cubic-bezier(", 0) == 0 || tl.rfind("steps(", 0) == 0) {
                     tf = parseTimingFunction(tok);
                     continue;
                 }
-                // transition-behavior: allow-discrete
                 if (tl == "allow-discrete") {
                     behavior = TransitionBehavior::AllowDiscrete;
                     continue;
                 }
-                // Otherwise it must be a property name (or "none"/"all").
                 property = tl;
             }
             props.push_back(property);
@@ -4332,14 +3978,6 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
     } else if (name == "transition-behavior") {
         style.transitionBehavior = parseTransitionBehaviorList(value);
     } else if (name == "animation") {
-        // Full `animation` shorthand (CSS Animations Level 1):
-        //   <single-animation> = <time> || <easing-function> || <time>
-        //                        || <single-animation-iteration-count>
-        //                        || <single-animation-direction>
-        //                        || <single-animation-fill-mode>
-        //                        || <single-animation-play-state>
-        //                        || [ none | <keyframes-name> ]
-        //   animation = <single-animation>#
         auto parts = splitTopLevel(value, ',');
         std::vector<std::string> names;
         std::vector<float> durations, delays, iterationCounts;
@@ -4348,11 +3986,9 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         std::vector<AnimationPlayState> playStates;
         std::vector<TimingFunction> tfs;
         std::vector<AnimationComposition> compositions;
-
         for (const auto& part : parts) {
             std::string p = trim(part);
             if (p.empty()) continue;
-
             std::string name = "none";
             float dur = 0.0f;
             float del = 0.0f;
@@ -4364,16 +4000,11 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             AnimationComposition comp = AnimationComposition::Replace;
             int timeSlots = 0;
             bool nameSet = false;
-
-            std::string_view toks[16];
-            int nTok = 0;
-            splitWhitespace(p, toks, 16, nTok);
-            for (int i = 0; i < nTok; ++i) {
-                std::string tok = std::string(toks[i]);
+            auto toks = splitWhitespaceTopLevel(p);
+            for (const auto& tok : toks) {
                 if (tok.empty()) continue;
                 std::string tl = tok;
                 for (char& c : tl) c = (char)std::tolower((unsigned char)c);
-
                 bool isMs = tl.size() > 2 && tl.substr(tl.size() - 2) == "ms";
                 bool isSec = tl.size() > 1 && tl.back() == 's' && !isMs;
                 if (isMs || isSec) {
@@ -4383,48 +4014,37 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
                     continue;
                 }
                 if (tl == "infinite") { iter = -1.0f; continue; }
-
                 if (tl == "normal")             { dir   = AnimationDirection::Normal;            continue; }
                 if (tl == "reverse")            { dir   = AnimationDirection::Reverse;           continue; }
                 if (tl == "alternate")          { dir   = AnimationDirection::Alternate;         continue; }
                 if (tl == "alternate-reverse")  { dir   = AnimationDirection::AlternateReverse;  continue; }
-
                 if (tl == "none")      { fill = AnimationFillMode::None;      if (!nameSet) { name = "none"; nameSet = true; } continue; }
                 if (tl == "forwards")  { fill = AnimationFillMode::Forwards;  continue; }
                 if (tl == "backwards") { fill = AnimationFillMode::Backwards; continue; }
                 if (tl == "both")      { fill = AnimationFillMode::Both;      continue; }
-
                 if (tl == "running")  { play = AnimationPlayState::Running;  continue; }
                 if (tl == "paused")   { play = AnimationPlayState::Paused;   continue; }
-
                 if (tl == "add")        { comp = AnimationComposition::Add;        continue; }
                 if (tl == "accumulate") { comp = AnimationComposition::Accumulate; continue; }
-
                 if (tl == "linear" || tl == "ease" || tl == "ease-in" || tl == "ease-out" ||
                     tl == "ease-in-out" || tl == "step-start" || tl == "step-end" ||
                     tl.rfind("cubic-bezier(", 0) == 0 || tl.rfind("steps(", 0) == 0) {
                     tf = parseTimingFunction(tok);
                     continue;
                 }
-
-                // Iteration count: a bare number (or "0", "1.5", "infinite" handled above).
                 bool isNumber = true;
                 bool sawDigit = false;
                 size_t idx = 0;
                 if (idx < tl.size() && (tl[idx] == '+' || tl[idx] == '-')) idx++;
                 for (; idx < tl.size(); ++idx) {
                     if (tl[idx] >= '0' && tl[idx] <= '9') sawDigit = true;
-                    else if (tl[idx] == '.') { /* ok */ }
+                    else if (tl[idx] == '.') {  }
                     else { isNumber = false; break; }
                 }
                 if (isNumber && sawDigit) {
                     iter = parseFloat(tok);
                     continue;
                 }
-
-                // Otherwise it's the animation name (ident; case-sensitive in spec, but
-                // CSS Animations Level 1 says names are case-sensitive only for the
-                // "none" / "initial" / "inherit" keywords — we keep verbatim).
                 if (!nameSet) {
                     name = tok;
                     nameSet = true;
@@ -4456,7 +4076,6 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
     } else if (name == "animation-delay") {
         style.animationDelay = parseDurationList(value);
     } else if (name == "animation-iteration-count") {
-        // `infinite` or comma-list of numbers
         style.animationIterationCount.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
             std::string s = trim(part);
@@ -4523,10 +4142,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
                 op.type == TransformOperationType::Scale3d ||
                 op.type == TransformOperationType::ScaleX) {
                 if (!op.args.empty()) {
-                    float val = op.args[0].value;
-                    if (op.args[0].unit == CSSValue::Percent) {
-                        val /= 100.0f;
-                    }
+                    float val = op.args[0].resolve(1.0f);
                     style.scale = val;
                 }
             }
@@ -4550,7 +4166,6 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         style.backfaceVisibility = parseBackfaceVisibility(value);
         style.hasBackfaceVisibility = true;
     }
-    // Blink CSS properties: box-sizing, visibility, text-overflow, white-space, etc.
     else if (name == "box-sizing") {
         if (value == "border-box") style.boxSizing = BoxSizing::BorderBox;
         else style.boxSizing = BoxSizing::ContentBox;
@@ -4693,7 +4308,6 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else style.verticalAlign = VerticalAlign::Baseline;
         style.hasVerticalAlign = true;
     }
-    // Hover states (custom extension: hover-background-color, hover-color)
     else if (name == "hover-background-color" || name == "--hover-bg") {
         style.hoverBackgroundColor = parseColor(value);
         style.hasHoverBg = true;
@@ -4750,10 +4364,7 @@ void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const
                 op.type == TransformOperationType::Scale3d ||
                 op.type == TransformOperationType::ScaleX) {
                 if (!op.args.empty()) {
-                    float val = op.args[0].value;
-                    if (op.args[0].unit == CSSValue::Percent) {
-                        val /= 100.0f;
-                    }
+                    float val = op.args[0].resolve(1.0f);
                     style.hoverScale = val;
                 }
             }
@@ -4773,7 +4384,6 @@ void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const
         style.hoverScale = parseFloat(value);
     }
 }
-
 void StyleSheet::mergeFocusProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "background-color" || name == "background") {
         if (value.find("linear-gradient") != std::string::npos) {
@@ -4817,17 +4427,13 @@ void StyleSheet::mergeFocusProperty(Style& style, const std::string& name, const
                 op.type == TransformOperationType::Scale3d ||
                 op.type == TransformOperationType::ScaleX) {
                 if (!op.args.empty()) {
-                    float val = op.args[0].value;
-                    if (op.args[0].unit == CSSValue::Percent) {
-                        val /= 100.0f;
-                    }
+                    float val = op.args[0].resolve(1.0f);
                     style.focusScale = val;
                 }
             }
         }
     }
 }
-
 void StyleSheet::mergeActiveProperty(Style& style, const std::string& name, const std::string& value) {
     if (name == "background-color" || name == "background") {
         if (value.find("linear-gradient") != std::string::npos) {
@@ -4871,24 +4477,18 @@ void StyleSheet::mergeActiveProperty(Style& style, const std::string& name, cons
                 op.type == TransformOperationType::Scale3d ||
                 op.type == TransformOperationType::ScaleX) {
                 if (!op.args.empty()) {
-                    float val = op.args[0].value;
-                    if (op.args[0].unit == CSSValue::Percent) {
-                        val /= 100.0f;
-                    }
+                    float val = op.args[0].resolve(1.0f);
                     style.activeScale = val;
                 }
             }
         }
     }
 }
-
 bool StyleSheet::isValidSyntax(const std::string& value, const std::string& syntax) {
     std::string val = trim(value);
     std::string syn = trim(syntax);
     if (syn == "*") return true;
     if (syn.empty()) return true;
-
-    // Handle combinations like "left | right"
     if (syn.find('|') != std::string::npos) {
         std::istringstream ss(syn);
         std::string part;
@@ -4900,7 +4500,6 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         }
         return false;
     }
-
     if (syn == "<color>") {
         if (val.empty()) return false;
         if (val == "transparent" || val == "currentColor" || val == "inherit" || val == "initial" || val == "unset") return true;
@@ -4916,7 +4515,6 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         }
         return true;
     }
-
     if (syn == "<length>") {
         if (val.empty()) return false;
         if (val == "0") return true;
@@ -4924,20 +4522,17 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         size_t lastNum = lower.find_last_of("0123456789.");
         if (lastNum == std::string::npos) return false;
         std::string unit = lower.substr(lastNum + 1);
-        return unit == "px" || unit == "em" || unit == "rem" || unit == "vw" || unit == "vh" || 
+        return unit == "px" || unit == "em" || unit == "rem" || unit == "vw" || unit == "vh" ||
                unit == "ch" || unit == "lh" || unit == "vi" || unit == "vb" || unit == "dvw" || unit == "dvh" ||
                unit == "pt" || unit == "%" || unit == "in" || unit == "cm" || unit == "mm" || unit == "pc";
     }
-
     if (syn == "<percentage>") {
         if (val.empty()) return false;
         return val.back() == '%';
     }
-
     if (syn == "<length-percentage>") {
         return isValidSyntax(val, "<length>") || isValidSyntax(val, "<percentage>");
     }
-
     if (syn == "<number>" || syn == "<integer>") {
         if (val.empty()) return false;
         bool hasDecimal = false;
@@ -4955,7 +4550,6 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         }
         return true;
     }
-
     if (syn == "<angle>") {
         if (val.empty()) return false;
         if (val == "0") return true;
@@ -4965,7 +4559,6 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         std::string unit = lower.substr(lastNum + 1);
         return unit == "deg" || unit == "rad" || unit == "grad" || unit == "turn";
     }
-
     if (syn == "<time>") {
         if (val.empty()) return false;
         if (val == "0") return true;
@@ -4975,16 +4568,202 @@ bool StyleSheet::isValidSyntax(const std::string& value, const std::string& synt
         std::string unit = lower.substr(lastNum + 1);
         return unit == "s" || unit == "ms";
     }
-
+    if (syn == "<transform-list>" || syn == "<transform-origin>" || syn == "<perspective-origin>") {
+        return true;
+    }
     return lowerAscii(val) == lowerAscii(syn);
 }
-
-// ============================================================
-//  @property typed interpolation (Blink parity)
-//  Interpolates two resolved custom property values based on their
-//  registered @property syntax type. This enables smooth CSS transitions
-//  of custom properties, matching Chromium's CSSPropertyRegistration behavior.
-// ============================================================
+static std::string cssValueToString(const CSSValue& val) {
+    if (val.unit == CSSValue::Auto) return "auto";
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.4f", val.resolve(1.0f));
+    std::string numStr = buf;
+    if (numStr.find('.') != std::string::npos) {
+        while (!numStr.empty() && numStr.back() == '0') numStr.pop_back();
+        if (!numStr.empty() && numStr.back() == '.') numStr.pop_back();
+    }
+    if (numStr.empty()) numStr = "0";
+    switch (val.unit) {
+        case CSSValue::Px: return numStr + "px";
+        case CSSValue::Percent: return numStr + "%";
+        case CSSValue::Vw: return numStr + "vw";
+        case CSSValue::Vh: return numStr + "vh";
+        case CSSValue::Em: return numStr + "em";
+        case CSSValue::Rem: return numStr + "rem";
+        case CSSValue::Deg: return numStr + "deg";
+        case CSSValue::Rad: return numStr + "rad";
+        case CSSValue::Grad: return numStr + "grad";
+        case CSSValue::Turn: return numStr + "turn";
+        default: return numStr;
+    }
+}
+static CSSValue interpolateCSSValue(const CSSValue& fromVal, const CSSValue& toVal, float t) {
+    float f = fromVal.resolve(1.0f);
+    float o = toVal.resolve(1.0f);
+    if (fromVal.unit == toVal.unit) {
+        return CSSValue(f + (o - f) * t, fromVal.unit);
+    }
+    if (fromVal.unit == CSSValue::None) {
+        return CSSValue(f + (o - f) * t, toVal.unit);
+    }
+    if (toVal.unit == CSSValue::None) {
+        return CSSValue(f + (o - f) * t, fromVal.unit);
+    }
+    return t < 0.5f ? fromVal : toVal;
+}
+static TransformOperation getIdentityTransformOperation(TransformOperationType type, const TransformOperation& matchingOp) {
+    TransformOperation ident;
+    ident.type = type;
+    switch (type) {
+        case TransformOperationType::Translate:
+            ident.args = { CSSValue(0.0f, CSSValue::Px), CSSValue(0.0f, CSSValue::Px) };
+            break;
+        case TransformOperationType::Translate3d:
+            ident.args = { CSSValue(0.0f, CSSValue::Px), CSSValue(0.0f, CSSValue::Px), CSSValue(0.0f, CSSValue::Px) };
+            break;
+        case TransformOperationType::TranslateX:
+        case TransformOperationType::TranslateY:
+        case TransformOperationType::TranslateZ:
+            ident.args = { CSSValue(0.0f, CSSValue::Px) };
+            break;
+        case TransformOperationType::Scale:
+            ident.args = { CSSValue(1.0f, CSSValue::None), CSSValue(1.0f, CSSValue::None) };
+            break;
+        case TransformOperationType::Scale3d:
+            ident.args = { CSSValue(1.0f, CSSValue::None), CSSValue(1.0f, CSSValue::None), CSSValue(1.0f, CSSValue::None) };
+            break;
+        case TransformOperationType::ScaleX:
+        case TransformOperationType::ScaleY:
+        case TransformOperationType::ScaleZ:
+            ident.args = { CSSValue(1.0f, CSSValue::None) };
+            break;
+        case TransformOperationType::Rotate:
+        case TransformOperationType::RotateX:
+        case TransformOperationType::RotateY:
+        case TransformOperationType::RotateZ:
+            ident.args = { CSSValue(0.0f, CSSValue::Deg) };
+            break;
+        case TransformOperationType::Rotate3d:
+            if (matchingOp.args.size() == 4) {
+                ident.args = { matchingOp.args[0], matchingOp.args[1], matchingOp.args[2], CSSValue(0.0f, CSSValue::Deg) };
+            } else {
+                ident.args = { CSSValue(0.0f, CSSValue::None), CSSValue(0.0f, CSSValue::None), CSSValue(1.0f, CSSValue::None), CSSValue(0.0f, CSSValue::Deg) };
+            }
+            break;
+        case TransformOperationType::Skew:
+            ident.args = { CSSValue(0.0f, CSSValue::Deg), CSSValue(0.0f, CSSValue::Deg) };
+            break;
+        case TransformOperationType::SkewX:
+        case TransformOperationType::SkewY:
+            ident.args = { CSSValue(0.0f, CSSValue::Deg) };
+            break;
+        case TransformOperationType::Matrix:
+            ident.args = { CSSValue(1.0f, CSSValue::None), CSSValue(0.0f, CSSValue::None), CSSValue(0.0f, CSSValue::None),
+                           CSSValue(1.0f, CSSValue::None), CSSValue(0.0f, CSSValue::None), CSSValue(0.0f, CSSValue::None) };
+            break;
+        case TransformOperationType::Matrix3d:
+            ident.args.resize(16, CSSValue(0.0f, CSSValue::None));
+            ident.args[0] = CSSValue(1.0f, CSSValue::None);
+            ident.args[5] = CSSValue(1.0f, CSSValue::None);
+            ident.args[10] = CSSValue(1.0f, CSSValue::None);
+            ident.args[15] = CSSValue(1.0f, CSSValue::None);
+            break;
+        case TransformOperationType::Perspective:
+            ident.args = { CSSValue(0.0f, CSSValue::None) };
+            break;
+    }
+    ident.resolveFromArgs();
+    return ident;
+}
+static std::string transformOperationsToString(const std::vector<TransformOperation>& ops) {
+    std::string res;
+    for (size_t i = 0; i < ops.size(); ++i) {
+        if (i > 0) res += " ";
+        const auto& op = ops[i];
+        switch (op.type) {
+            case TransformOperationType::Translate: res += "translate"; break;
+            case TransformOperationType::Translate3d: res += "translate3d"; break;
+            case TransformOperationType::TranslateX: res += "translateX"; break;
+            case TransformOperationType::TranslateY: res += "translateY"; break;
+            case TransformOperationType::TranslateZ: res += "translateZ"; break;
+            case TransformOperationType::Scale: res += "scale"; break;
+            case TransformOperationType::Scale3d: res += "scale3d"; break;
+            case TransformOperationType::ScaleX: res += "scaleX"; break;
+            case TransformOperationType::ScaleY: res += "scaleY"; break;
+            case TransformOperationType::ScaleZ: res += "scaleZ"; break;
+            case TransformOperationType::Rotate: res += "rotate"; break;
+            case TransformOperationType::Rotate3d: res += "rotate3d"; break;
+            case TransformOperationType::RotateX: res += "rotateX"; break;
+            case TransformOperationType::RotateY: res += "rotateY"; break;
+            case TransformOperationType::RotateZ: res += "rotateZ"; break;
+            case TransformOperationType::Skew: res += "skew"; break;
+            case TransformOperationType::SkewX: res += "skewX"; break;
+            case TransformOperationType::SkewY: res += "skewY"; break;
+            case TransformOperationType::Matrix: res += "matrix"; break;
+            case TransformOperationType::Matrix3d: res += "matrix3d"; break;
+            case TransformOperationType::Perspective: res += "perspective"; break;
+        }
+        res += "(";
+        for (size_t j = 0; j < op.args.size(); ++j) {
+            if (j > 0) res += ", ";
+            res += cssValueToString(op.args[j]);
+        }
+        res += ")";
+    }
+    return res;
+}
+std::string StyleSheet::interpolateTransformList(const std::string& fromStr, const std::string& toStr, float t) {
+    std::vector<TransformOperation> fromOps = StyleSheet::parseTransformOperations(fromStr);
+    std::vector<TransformOperation> toOps = StyleSheet::parseTransformOperations(toStr);
+    if (fromOps.size() != toOps.size()) {
+        return t < 0.5f ? fromStr : toStr;
+    }
+    bool typesMatch = true;
+    for (size_t i = 0; i < fromOps.size(); ++i) {
+        if (fromOps[i].type != toOps[i].type) {
+            typesMatch = false;
+            break;
+        }
+    }
+    if (!typesMatch) {
+        return t < 0.5f ? fromStr : toStr;
+    }
+    std::vector<TransformOperation> resultOps;
+    for (size_t i = 0; i < fromOps.size(); ++i) {
+        const auto& fOp = fromOps[i];
+        const auto& tOp = toOps[i];
+        size_t maxArgs = std::max(fOp.args.size(), tOp.args.size());
+        std::vector<CSSValue> fArgs = fOp.args;
+        std::vector<CSSValue> tArgs = tOp.args;
+        fArgs.resize(maxArgs, CSSValue(0.0f, CSSValue::None));
+        tArgs.resize(maxArgs, CSSValue(0.0f, CSSValue::None));
+        std::vector<CSSValue> rArgs;
+        for (size_t j = 0; j < maxArgs; ++j) {
+            rArgs.push_back(interpolateCSSValue(fArgs[j], tArgs[j], t));
+        }
+        TransformOperation op;
+        op.type = fOp.type;
+        op.args = rArgs;
+        op.resolveFromArgs();
+        resultOps.push_back(op);
+    }
+    return transformOperationsToString(resultOps);
+}
+static std::string interpolateTransformOrigin(const std::string& fromStr, const std::string& toStr, float t) {
+    TransformOrigin fromOrig = StyleSheet::parseTransformOrigin(fromStr);
+    TransformOrigin toOrig = StyleSheet::parseTransformOrigin(toStr);
+    CSSValue rX = interpolateCSSValue(fromOrig.x, toOrig.x, t);
+    CSSValue rY = interpolateCSSValue(fromOrig.y, toOrig.y, t);
+    CSSValue rZ = interpolateCSSValue(fromOrig.z, toOrig.z, t);
+    return cssValueToString(rX) + " " + cssValueToString(rY) + " " + cssValueToString(rZ);
+}
+static std::string interpolatePerspectiveOrigin(const std::string& fromStr, const std::string& toStr, float t) {
+    PerspectiveOrigin fromOrig = StyleSheet::parsePerspectiveOrigin(fromStr);
+    PerspectiveOrigin toOrig = StyleSheet::parsePerspectiveOrigin(toStr);
+    CSSValue rX = interpolateCSSValue(fromOrig.x, toOrig.x, t);
+    CSSValue rY = interpolateCSSValue(fromOrig.y, toOrig.y, t);
+    return cssValueToString(rX) + " " + cssValueToString(rY);
+}
 std::string StyleSheet::interpolateTypedValue(const std::string& from,
                                               const std::string& to,
                                               float t,
@@ -4992,17 +4771,20 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
     if (t <= 0.0f) return from;
     if (t >= 1.0f) return to;
     if (from == to) return from;
-
     std::string syn = trim(syntax);
-
-    // Universal syntax "*" — not interpolable, discrete swap
     if (syn == "*" || syn.empty()) {
         return t < 0.5f ? from : to;
     }
-
-    // Handle "|" alternatives: try each component type
+    if (syn == "<transform-list>") {
+        return interpolateTransformList(from, to, t);
+    }
+    if (syn == "<transform-origin>") {
+        return interpolateTransformOrigin(from, to, t);
+    }
+    if (syn == "<perspective-origin>") {
+        return interpolatePerspectiveOrigin(from, to, t);
+    }
     if (syn.find('|') != std::string::npos) {
-        // Find which component type both values match
         std::istringstream ss(syn);
         std::string part;
         while (std::getline(ss, part, '|')) {
@@ -5012,16 +4794,12 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
                 return interpolateTypedValue(from, to, t, part);
             }
         }
-        // No matching interpolable type — discrete
         return t < 0.5f ? from : to;
     }
-
-    // <color> — use Color::lerp for smooth RGBA interpolation
     if (syn == "<color>") {
         Color cFrom = parseColor(from);
         Color cTo = parseColor(to);
         Color result = Color::lerp(cFrom, cTo, t);
-        // Output as rgba() string for full precision
         int r = static_cast<int>(result.r * 255.0f + 0.5f);
         int g = static_cast<int>(result.g * 255.0f + 0.5f);
         int b = static_cast<int>(result.b * 255.0f + 0.5f);
@@ -5035,8 +4813,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
             return buf;
         }
     }
-
-    // <number> / <integer> — numeric lerp
     if (syn == "<number>" || syn == "<integer>") {
         float vFrom = parseFloat(from);
         float vTo = parseFloat(to);
@@ -5048,12 +4824,9 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4g", result);
         return buf;
     }
-
-    // <length> — numeric lerp preserving unit
     if (syn == "<length>") {
         std::string fromLower = lowerAscii(trim(from));
         std::string toLower = lowerAscii(trim(to));
-        // Extract numeric part and unit
         auto extractUnit = [](const std::string& v) -> std::pair<float, std::string> {
             if (v == "0") return {0.0f, "px"};
             size_t lastNum = v.find_last_of("0123456789.");
@@ -5067,12 +4840,10 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         };
         auto [vFrom, unitFrom] = extractUnit(fromLower);
         auto [vTo, unitTo] = extractUnit(toLower);
-        // Only interpolate if units match (or one is zero)
         std::string unit = unitFrom;
         if (vFrom == 0.0f) unit = unitTo;
         else if (vTo == 0.0f) unit = unitFrom;
         else if (unitFrom != unitTo) {
-            // Different units — convert both to pixels, lerp, output as px
             float pxFrom = parseLengthPixels(from);
             float pxTo = parseLengthPixels(to);
             float result = pxFrom + (pxTo - pxFrom) * t;
@@ -5085,8 +4856,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4g%s", result, unit.c_str());
         return buf;
     }
-
-    // <percentage>
     if (syn == "<percentage>") {
         float vFrom = parseFloat(from);
         float vTo = parseFloat(to);
@@ -5095,8 +4864,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4g%%", result);
         return buf;
     }
-
-    // <length-percentage> — try matching
     if (syn == "<length-percentage>") {
         if (isValidSyntax(from, "<length>") && isValidSyntax(to, "<length>")) {
             return interpolateTypedValue(from, to, t, "<length>");
@@ -5104,7 +4871,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         if (isValidSyntax(from, "<percentage>") && isValidSyntax(to, "<percentage>")) {
             return interpolateTypedValue(from, to, t, "<percentage>");
         }
-        // Mixed length/percentage — convert to px
         float pxFrom = parseLengthPixels(from);
         float pxTo = parseLengthPixels(to);
         float result = pxFrom + (pxTo - pxFrom) * t;
@@ -5112,8 +4878,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4gpx", result);
         return buf;
     }
-
-    // <angle>
     if (syn == "<angle>") {
         auto extractAngle = [](const std::string& v) -> std::pair<float, std::string> {
             if (v == "0") return {0.0f, "deg"};
@@ -5132,7 +4896,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         auto [vTo, unitTo] = extractAngle(trim(to));
         std::string unit = unitFrom;
         if (unitFrom != unitTo) {
-            // Normalize to degrees
             auto toDeg = [](float v, const std::string& u) -> float {
                 if (u == "rad") return v * 180.0f / 3.14159265358979f;
                 if (u == "grad") return v * 0.9f;
@@ -5148,8 +4911,6 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4g%s", result, unit.c_str());
         return buf;
     }
-
-    // <time>
     if (syn == "<time>") {
         float msFrom = parseDuration(from) * 1000.0f;
         float msTo = parseDuration(to) * 1000.0f;
@@ -5158,20 +4919,13 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
         snprintf(buf, sizeof(buf), "%.4gms", result);
         return buf;
     }
-
-    // Not interpolable — discrete
     return t < 0.5f ? from : to;
 }
-
 Color StyleSheet::parseColor(const std::string& val) {
     std::string v = trim(val);
     if (v.empty()) return Color();
     std::string lower = lowerAscii(v);
-
-    // Hex colors
     if (v[0] == '#') return Color::fromHex(v);
-
-    // All 148 CSS named colors (matching Blink css_value_keywords.json5)
     static const std::unordered_map<std::string, uint32_t> namedColors = {
         {"transparent",0x00000000},{"aliceblue",0xFFF0F8FF},{"antiquewhite",0xFFFAEBD7},
         {"aqua",0xFF00FFFF},{"aquamarine",0xFF7FFFD4},{"azure",0xFFF0FFFF},
@@ -5225,7 +4979,6 @@ Color StyleSheet::parseColor(const std::string& val) {
         {"white",0xFFFFFFFF},{"whitesmoke",0xFFF5F5F5},{"yellow",0xFFFFFF00},
         {"yellowgreen",0xFF9ACD32}
     };
-
     auto it = namedColors.find(lower);
     if (it != namedColors.end()) {
         uint32_t c = it->second;
@@ -5235,11 +4988,7 @@ Color StyleSheet::parseColor(const std::string& val) {
         float b = ((c) & 0xFF) / 255.0f;
         return Color(r, g, b, a);
     }
-
-    // currentcolor keyword (Blink supports this)
-    if (lower == "currentcolor") return Color(1, 1, 1, 1); // placeholder, resolved later
-
-    // rgb()/rgba() with comma or modern space-slash syntax.
+    if (lower == "currentcolor") return Color(1, 1, 1, 1);
     if (lower.rfind("rgb", 0) == 0) {
         auto tokens = splitColorTokens(functionInner(v));
         if (tokens.size() >= 3) {
@@ -5250,8 +4999,6 @@ Color StyleSheet::parseColor(const std::string& val) {
                          a);
         }
     }
-
-    // hsl()/hsla() with comma or modern space-slash syntax.
     if (lower.rfind("hsl", 0) == 0) {
         auto tokens = splitColorTokens(functionInner(v));
         if (tokens.size() >= 3) {
@@ -5262,67 +5009,47 @@ Color StyleSheet::parseColor(const std::string& val) {
                                   a);
         }
     }
-
     return Color();
 }
-
 CSSValue StyleSheet::parseCSSValue(const std::string& val) {
     std::string v = trim(val);
     std::string lower = lowerAscii(v);
     if (lower == "auto") return CSSValue::autoVal();
     if (v.empty()) return CSSValue();
-
-    // Intrinsic sizing keywords (Blink)
     if (lower == "min-content") return CSSValue::minContent();
     if (lower == "max-content") return CSSValue::maxContent();
     if (lower == "fit-content") return CSSValue::fitContent();
-
-    // Parse calc(), min(), max(), clamp(), as well as single values containing units using the robust CSSMathExpressionParser
     if (auto expr = CSSMathExpressionParser::parse(v)) {
         return CSSValue(expr);
     }
-
     if (v.back() == '%') {
         return CSSValue::pct(std::stof(v.substr(0, v.size() - 1)));
     }
-
-    // Remove px suffix
     std::string numStr = v;
     auto pxPos = v.find("px");
     if (pxPos != std::string::npos) numStr = v.substr(0, pxPos);
-
     try {
         return CSSValue::px(std::stof(numStr));
     } catch (...) {
         return CSSValue();
     }
 }
-
 float StyleSheet::parseLengthPixels(const std::string& val, float emBase) {
     std::string v = trim(val);
     if (v.empty() || lowerAscii(v) == "auto") return 0.0f;
-
-    // Call parseCSSValue to get a rich CSSValue (handles all calc(), min(), max(), clamp(), all units)
     CSSValue cssVal = parseCSSValue(v);
-
     float vpW = 1920.0f;
     float vpH = 1080.0f;
     if (auto* app = Application::instance()) {
         vpW = app->stylesheet().viewportWidth();
         vpH = app->stylesheet().viewportHeight();
     }
-
-    // Special handling for backward compatibility with legacy internal units like __qem
     std::string lower = lowerAscii(v);
     if (lower.find("__qem") != std::string::npos) {
         return parseFloat(lower) * emBase;
     }
-
-    // Resolve the CSSValue. Since it is a margin/padding/fontsize/border length,
-    // a percentage value is relative to the emBase of the element.
     return cssVal.resolve(emBase, vpW, vpH, emBase);
 }
-
 float StyleSheet::parseFontSizePixels(const std::string& val, float currentSize) {
     std::string lower = lowerAscii(trim(val));
     if (lower == "xx-small") return 9.0f;
@@ -5337,7 +5064,6 @@ float StyleSheet::parseFontSizePixels(const std::string& val, float currentSize)
     if (lower == "larger") return currentSize * 1.2f;
     return parseLengthPixels(lower, currentSize);
 }
-
 float StyleSheet::parseLineHeight(const std::string& val, float fontSize) {
     std::string v = trim(val);
     std::string lower = lowerAscii(v);
@@ -5351,7 +5077,6 @@ float StyleSheet::parseLineHeight(const std::string& val, float fontSize) {
     }
     return parseFloat(lower);
 }
-
 EdgeInsets StyleSheet::parseEdgeInsets(const std::string& val, float emBase) {
     float values[4] = {0, 0, 0, 0};
     int count = 0;
@@ -5368,14 +5093,12 @@ EdgeInsets StyleSheet::parseEdgeInsets(const std::string& val, float emBase) {
         std::string token(val.data() + start, i - start);
         values[count++] = parseLengthPixels(token, emBase);
     }
-
     if (count == 1) return EdgeInsets(values[0]);
     if (count == 2) return EdgeInsets(values[0], values[1]);
     if (count == 3) return EdgeInsets(values[0], values[1], values[2], values[1]);
     if (count >= 4) return EdgeInsets(values[0], values[1], values[2], values[3]);
     return EdgeInsets();
 }
-
 BorderRadius StyleSheet::parseBorderRadius(const std::string& val, float emBase) {
     float values[4] = {0, 0, 0, 0};
     int count = 0;
@@ -5392,7 +5115,6 @@ BorderRadius StyleSheet::parseBorderRadius(const std::string& val, float emBase)
         std::string token(val.data() + start, i - start);
         values[count++] = parseLengthPixels(token, emBase);
     }
-
     if (count == 1) return BorderRadius(values[0]);
     if (count == 2) {
         BorderRadius br;
@@ -5408,13 +5130,11 @@ BorderRadius StyleSheet::parseBorderRadius(const std::string& val, float emBase)
     }
     return BorderRadius();
 }
-
 Border StyleSheet::parseBorder(const std::string& val, float emBase) {
     std::string v = trim(val);
     if (v.empty() || v == "none" || v == "0" || v == "0px") {
         return Border();
     }
-
     std::string colorStr;
     auto varPos = v.find("var(");
     if (varPos == std::string::npos) varPos = v.find("min(");
@@ -5452,7 +5172,6 @@ Border StyleSheet::parseBorder(const std::string& val, float emBase) {
             }
         }
     }
-
     std::istringstream ss(v);
     std::string token;
     Border border;
@@ -5476,26 +5195,18 @@ Border StyleSheet::parseBorder(const std::string& val, float emBase) {
     }
     return border;
 }
-
 BoxShadow StyleSheet::parseBoxShadow(const std::string& val, float emBase) {
     BoxShadow shadow;
     if (val == "none") return shadow;
-
-    // box-shadow: offsetX offsetY blur spread color
     std::string v = val;
-
-    // Check for inset
     if (v.find("inset") != std::string::npos) {
         shadow.inset = true;
         auto pos = v.find("inset");
         v = v.substr(0, pos) + v.substr(pos + 5);
     }
-
-    // Find color (starts with # or rgb/rgba/hsl)
     std::string colorStr;
     auto hashPos = v.find('#');
     if (hashPos != std::string::npos) {
-        // Extract from # to next space or end
         auto end = v.find(' ', hashPos + 1);
         if (end == std::string::npos) end = v.size();
         colorStr = v.substr(hashPos, end - hashPos);
@@ -5512,37 +5223,27 @@ BoxShadow StyleSheet::parseBoxShadow(const std::string& val, float emBase) {
             }
         }
     }
-
-    // Parse numeric values
     std::istringstream ss(trim(v));
     std::vector<float> vals;
     std::string token;
     while (ss >> token) {
         vals.push_back(parseLengthPixels(token, emBase));
     }
-
     if (vals.size() >= 1) shadow.offsetX = vals[0];
     if (vals.size() >= 2) shadow.offsetY = vals[1];
     if (vals.size() >= 3) shadow.blur = vals[2];
     if (vals.size() >= 4) shadow.spread = vals[3];
     if (!colorStr.empty()) shadow.color = parseColor(colorStr);
-
     return shadow;
 }
-
 Gradient StyleSheet::parseGradient(const std::string& val) {
     Gradient grad;
     if (val.find("linear-gradient") == std::string::npos) return grad;
-
     grad.type = Gradient::Linear;
-
     auto start = val.find('(');
     auto end = val.rfind(')');
     if (start == std::string::npos || end == std::string::npos) return grad;
-
     std::string inner = val.substr(start + 1, end - start - 1);
-
-    // Split by commas (respecting parentheses)
     std::vector<std::string> parts;
     std::string current;
     int depth = 0;
@@ -5557,8 +5258,6 @@ Gradient StyleSheet::parseGradient(const std::string& val) {
         }
     }
     if (!current.empty()) parts.push_back(trim(current));
-
-    // First part might be angle
     size_t colorStart = 0;
     if (!parts.empty()) {
         std::string first = parts[0];
@@ -5579,38 +5278,27 @@ Gradient StyleSheet::parseGradient(const std::string& val) {
             colorStart = 1;
         }
     }
-
-    // Parse color stops
     float autoPos = 0;
     float autoStep = (parts.size() > colorStart + 1) ?
         1.0f / (float)(parts.size() - colorStart - 1) : 1.0f;
-
     for (size_t i = colorStart; i < parts.size(); i++) {
         std::string part = trim(parts[i]);
-        // Try to find a percentage at the end
         float pos = autoPos;
-
-        // Check if there's a percentage
         auto pctPos = part.rfind('%');
         if (pctPos != std::string::npos) {
-            // Find the number before %
             auto numStart = part.rfind(' ', pctPos);
             if (numStart != std::string::npos) {
                 pos = std::stof(part.substr(numStart + 1, pctPos - numStart - 1)) / 100.0f;
                 part = trim(part.substr(0, numStart));
             }
         }
-
         grad.stops.push_back({parseColor(part), pos});
         autoPos += autoStep;
     }
-
     return grad;
 }
-
 float StyleSheet::parseFloat(const std::string& val) {
     std::string v = trim(val);
-    // Remove common suffixes
     for (auto& suffix : {"px", "rem", "em", "deg", "ms", "s", "%"}) {
         auto pos = v.find(suffix);
         if (pos != std::string::npos) {
@@ -5624,7 +5312,6 @@ float StyleSheet::parseFloat(const std::string& val) {
         return 0;
     }
 }
-
 float StyleSheet::parseDuration(const std::string& val) {
     std::string v = trim(val);
     if (v.size() > 2 && v.substr(v.size() - 2) == "ms") {
@@ -5635,7 +5322,6 @@ float StyleSheet::parseDuration(const std::string& val) {
     }
     return parseFloat(v);
 }
-
 static bool supportsFeatureMatches(std::string_view feature) {
     while (!feature.empty() && feature.front() == '(') {
         if (feature.back() == ')') {
@@ -5647,18 +5333,13 @@ static bool supportsFeatureMatches(std::string_view feature) {
     }
     while (!feature.empty() && std::isspace((unsigned char)feature.front())) feature.remove_prefix(1);
     while (!feature.empty() && std::isspace((unsigned char)feature.back())) feature.remove_suffix(1);
-    
     if (feature.empty()) return false;
-    
     size_t colon = feature.find(':');
     if (colon == std::string_view::npos) return false;
-    
     std::string prop = StyleSheet::trim(std::string(feature.substr(0, colon)));
     std::string val = StyleSheet::trim(std::string(feature.substr(colon + 1)));
-    
     for (char& c : prop) c = std::tolower((unsigned char)c);
     for (char& c : val) c = std::tolower((unsigned char)c);
-    
     if (prop == "display") {
         return val == "block" || val == "flex" || val == "inline-block" ||
                val == "inline" || val == "none" || val == "grid" ||
@@ -5681,18 +5362,14 @@ static bool supportsFeatureMatches(std::string_view feature) {
            prop == "max-width" || prop == "max-height" || prop == "gap" || prop == "row-gap" ||
            prop == "column-gap" || prop == "flex-grow" || prop == "flex-shrink" || prop == "flex-basis";
 }
-
 static bool supportsConditionMatches(std::string_view cond) {
     while (!cond.empty() && std::isspace((unsigned char)cond.front())) cond.remove_prefix(1);
     while (!cond.empty() && std::isspace((unsigned char)cond.back())) cond.remove_suffix(1);
-    
     if (cond.empty()) return false;
-    
     if (cond.rfind("not ", 0) == 0 || cond.rfind("not(", 0) == 0) {
         size_t skip = cond[3] == '(' ? 3 : 4;
         return !supportsConditionMatches(cond.substr(skip));
     }
-    
     int depth = 0;
     for (size_t i = 0; i < cond.size(); ++i) {
         if (cond[i] == '(') depth++;
@@ -5708,14 +5385,11 @@ static bool supportsConditionMatches(std::string_view cond) {
             }
         }
     }
-    
     if (cond.front() == '(' && cond.back() == ')') {
         return supportsConditionMatches(cond.substr(1, cond.size() - 2));
     }
-    
     return supportsFeatureMatches(cond);
 }
-
 void StyleSheet::parseFontFace(const std::string& body) {
     std::string fontFamily;
     std::string src;
@@ -5749,26 +5423,20 @@ void StyleSheet::parseFontFace(const std::string& body) {
             }
         }
     }
-    
     if (!fontFamily.empty() && !src.empty()) {
         fontFaces.push_back({fontFamily, src});
     }
 }
-
 void StyleSheet::parsePropertyRule(const std::string& name, const std::string& body) {
     CSSPropertyDefinition def;
     def.name = name;
-    
-    // Parse declarations inside the body
     auto declarations = splitDeclarations(body);
     for (const auto& decl : declarations) {
         size_t colon = decl.find(':');
         if (colon == std::string::npos) continue;
         std::string propName = lowerAscii(trim(decl.substr(0, colon)));
         std::string propValue = trim(decl.substr(colon + 1));
-        
         if (propName == "syntax") {
-            // Strip quotes around syntax string if present
             if (propValue.size() >= 2 && (propValue.front() == '"' || propValue.front() == '\'') && propValue.front() == propValue.back()) {
                 propValue = propValue.substr(1, propValue.size() - 2);
             }
@@ -5779,11 +5447,8 @@ void StyleSheet::parsePropertyRule(const std::string& name, const std::string& b
             def.initialValue = propValue;
         }
     }
-    
     propertyDefinitions_[name] = def;
 }
-
-
 static void extractSelectorFeatures(const std::string& part,
                                     std::vector<std::string>& classes,
                                     std::vector<std::string>& ids,
@@ -5799,7 +5464,6 @@ static void extractSelectorFeatures(const std::string& part,
             types.push_back(type);
         }
     }
-    
     while (i < part.size()) {
         if (part[i] == '.') {
             i++;
@@ -5827,24 +5491,18 @@ static void extractSelectorFeatures(const std::string& part,
         }
     }
 }
-
 void StyleSheet::buildInvalidationSets() {
     classInvalidationSets_.clear();
     idInvalidationSets_.clear();
     typeInvalidationSets_.clear();
-
     for (const auto& rule : rules) {
         if (rule.parts.size() <= 1) continue;
-
         size_t K = rule.parts.size() - 1;
         for (size_t i = 0; i < K; ++i) {
             std::vector<std::string> srcClasses, srcIds, srcTypes;
             extractSelectorFeatures(rule.parts[i], srcClasses, srcIds, srcTypes);
-
             for (size_t j = i + 1; j <= K; ++j) {
-                // Determine the relationship between i and j
-                char relationship = ' '; // default to descendant
-                
+                char relationship = ' ';
                 if (j == i + 1) {
                     relationship = rule.combinators[i];
                 } else {
@@ -5862,13 +5520,11 @@ void StyleSheet::buildInvalidationSets() {
                     } else if (hasDescendant) {
                         relationship = ' ';
                     } else {
-                        relationship = ' '; // treat general multi-child combinator paths as descendant
+                        relationship = ' ';
                     }
                 }
-
                 std::vector<std::string> tgtClasses, tgtIds, tgtTypes;
                 extractSelectorFeatures(rule.parts[j], tgtClasses, tgtIds, tgtTypes);
-
                 if (tgtClasses.empty() && tgtIds.empty() && tgtTypes.empty()) {
                     auto addAllToInvalidationSet = [&](InvalidationSet& set) {
                         if (relationship == ' ') {
@@ -5904,7 +5560,6 @@ void StyleSheet::buildInvalidationSets() {
                             for (const auto& t : tgtTypes) set.siblingTypes.insert(t);
                         }
                     };
-
                     for (const auto& c : srcClasses) addToInvalidationSet(classInvalidationSets_[c]);
                     for (const auto& idVal : srcIds) addToInvalidationSet(idInvalidationSets_[idVal]);
                     for (const auto& t : srcTypes) addToInvalidationSet(typeInvalidationSets_[t]);
@@ -5913,7 +5568,6 @@ void StyleSheet::buildInvalidationSets() {
         }
     }
 }
-
 const StyleSheet::InvalidationSet* StyleSheet::getClassInvalidationSet(const std::string& className) const {
     auto it = classInvalidationSets_.find(className);
     if (it != classInvalidationSets_.end()) {
@@ -5921,7 +5575,6 @@ const StyleSheet::InvalidationSet* StyleSheet::getClassInvalidationSet(const std
     }
     return nullptr;
 }
-
 const StyleSheet::InvalidationSet* StyleSheet::getIdInvalidationSet(const std::string& id) const {
     auto it = idInvalidationSets_.find(id);
     if (it != idInvalidationSets_.end()) {
@@ -5929,13 +5582,6 @@ const StyleSheet::InvalidationSet* StyleSheet::getIdInvalidationSet(const std::s
     }
     return nullptr;
 }
-
-// ============================================================
-//  CSS Animations & Transitions (Blink css_animations.cc parity)
-// ============================================================
-
-// Parse a single keyframe selector token (e.g. "from", "to", "0%", "50%", "0.5")
-// into an offset in [0,1]. Returns -1.0f on failure.
 static float parseKeyframeOffset(std::string_view sel) {
     std::string s = StyleSheet::trim(std::string(sel));
     if (s.empty()) return -1.0f;
@@ -5950,26 +5596,19 @@ static float parseKeyframeOffset(std::string_view sel) {
     if (v < 0.0f) return -1.0f;
     return std::clamp(v, 0.0f, 1.0f);
 }
-
 void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CSSToken>& block) {
     std::string name = trim(prelude);
     if (name.empty()) return;
-
     CSSKeyframesRule rule;
     rule.name = name;
-
-    // Re-parse the inner block to extract selector group + declarations.
     size_t i = 0;
     const size_t n = block.size();
     while (i < n) {
-        // Skip whitespace and stray semicolons
         while (i < n && (block[i].type == CSSToken::Whitespace ||
                          block[i].type == CSSToken::Semicolon)) {
             i++;
         }
         if (i >= n) break;
-
-        // Read selector list up to '{' (commas separate selectors in a group)
         std::string selectorList;
         int parenDepth = 0;
         while (i < n) {
@@ -5981,9 +5620,7 @@ void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CS
             i++;
         }
         if (i >= n || block[i].type != CSSToken::LeftBrace) break;
-        i++; // consume '{'
-
-        // Collect declaration text up to matching '}'
+        i++;
         std::string body;
         int braceDepth = 1;
         while (i < n && braceDepth > 0) {
@@ -5996,8 +5633,6 @@ void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CS
             body += t.text;
             i++;
         }
-
-        // Parse offsets for this selector list (e.g. "0%, 50%, 100%")
         CSSKeyframeRule kf;
         std::string group = selectorList;
         size_t start = 0;
@@ -6013,9 +5648,7 @@ void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CS
             if (comma == std::string::npos) break;
             start = comma + 1;
         }
-        if (!anyOffset) continue; // invalid selector, skip
-
-        // Parse declarations within this keyframe body
+        if (!anyOffset) continue;
         for (std::string line : splitDeclarations(body)) {
             line = trim(line);
             if (line.empty()) continue;
@@ -6027,21 +5660,16 @@ void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CS
             prop.sourceOrder = nextPropertyOrder_++;
             kf.properties.push_back(std::move(prop));
         }
-
         if (!kf.properties.empty()) {
             rule.keyframes.push_back(std::move(kf));
         }
     }
-
-    // Sort by minimum offset so we can binary-search
     std::sort(rule.keyframes.begin(), rule.keyframes.end(),
               [](const CSSKeyframeRule& a, const CSSKeyframeRule& b) {
                   float ma = a.keyTimes.empty() ? 0.0f : *std::min_element(a.keyTimes.begin(), a.keyTimes.end());
                   float mb = b.keyTimes.empty() ? 0.0f : *std::min_element(b.keyTimes.begin(), b.keyTimes.end());
                   return ma < mb;
               });
-
-    // Replace any previous @keyframes with the same name (last-wins, Blink behavior)
     for (auto& existing : keyframesRules) {
         if (existing.name == rule.name) {
             existing = std::move(rule);
@@ -6050,16 +5678,12 @@ void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CS
     }
     keyframesRules.push_back(std::move(rule));
 }
-
 const CSSKeyframesRule* StyleSheet::findKeyframes(const std::string& name) const {
     for (const auto& kf : keyframesRules) {
         if (kf.name == name) return &kf;
     }
     return nullptr;
 }
-
-// ---- Timing function parsers (Blink CSSAnimationData::ParseTimingFunction) ----
-
 static std::vector<std::string> splitTopLevelLocal(const std::string& value, char delimiter) {
     std::vector<std::string> out;
     std::string current;
@@ -6077,15 +5701,11 @@ static std::vector<std::string> splitTopLevelLocal(const std::string& value, cha
     out.push_back(current);
     return out;
 }
-
 static TimingFunction parseTimingFunctionToken(std::string_view tok);
-
 static TimingFunction parseTimingFunctionToken(std::string tok) {
-    // Trim
     tok = StyleSheet::trim(std::string(tok));
     if (tok.empty()) return TimingFunction::ease();
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
-
     if (tok == "linear")      return TimingFunction::linear();
     if (tok == "ease")        return TimingFunction::ease();
     if (tok == "ease-in")     return TimingFunction::easeIn();
@@ -6093,8 +5713,6 @@ static TimingFunction parseTimingFunctionToken(std::string tok) {
     if (tok == "ease-in-out") return TimingFunction::easeInOut();
     if (tok == "step-start")  return TimingFunction::stepStart();
     if (tok == "step-end")    return TimingFunction::stepEnd();
-
-    // cubic-bezier(x1, y1, x2, y2)
     if (tok.rfind("cubic-bezier(", 0) == 0 && tok.back() == ')') {
         std::string inner = tok.substr(13, tok.size() - 14);
         std::vector<std::string> parts = splitTopLevelLocal(inner, ',');
@@ -6104,8 +5722,6 @@ static TimingFunction parseTimingFunctionToken(std::string tok) {
             return TimingFunction::bezier(v[0], v[1], v[2], v[3]);
         }
     }
-
-    // steps(n, jump-start|jump-end|jump-none|jump-both|start|end)
     if (tok.rfind("steps(", 0) == 0 && tok.back() == ')') {
         std::string inner = tok.substr(6, tok.size() - 7);
         std::vector<std::string> parts = splitTopLevelLocal(inner, ',');
@@ -6122,14 +5738,11 @@ static TimingFunction parseTimingFunctionToken(std::string tok) {
         }
         return TimingFunction::steps(n, pos);
     }
-
     return TimingFunction::ease();
 }
-
 TimingFunction StyleSheet::parseTimingFunction(const std::string& value) {
     return parseTimingFunctionToken(value);
 }
-
 std::vector<TimingFunction> StyleSheet::parseTimingFunctionList(const std::string& value) {
     std::vector<TimingFunction> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6137,7 +5750,6 @@ std::vector<TimingFunction> StyleSheet::parseTimingFunctionList(const std::strin
     }
     return out;
 }
-
 std::vector<float> StyleSheet::parseDurationList(const std::string& value) {
     std::vector<float> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6145,9 +5757,6 @@ std::vector<float> StyleSheet::parseDurationList(const std::string& value) {
     }
     return out;
 }
-
-// Animation names: a comma-separated list of identifiers or `none`. Strings like
-// `from-to` are not valid; reserved keywords like `none`, `initial`, `inherit` are passed through.
 std::vector<std::string> StyleSheet::parseAnimationNameList(const std::string& value) {
     std::vector<std::string> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6157,7 +5766,6 @@ std::vector<std::string> StyleSheet::parseAnimationNameList(const std::string& v
     }
     return out;
 }
-
 static AnimationDirection parseAnimationDirectionKeyword(std::string tok) {
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
     tok = StyleSheet::trim(tok);
@@ -6167,7 +5775,6 @@ static AnimationDirection parseAnimationDirectionKeyword(std::string tok) {
     if (tok == "alternate-reverse")  return AnimationDirection::AlternateReverse;
     return AnimationDirection::Normal;
 }
-
 std::vector<AnimationDirection> StyleSheet::parseAnimationDirectionList(const std::string& value) {
     std::vector<AnimationDirection> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6175,7 +5782,6 @@ std::vector<AnimationDirection> StyleSheet::parseAnimationDirectionList(const st
     }
     return out;
 }
-
 static AnimationFillMode parseAnimationFillModeKeyword(std::string tok) {
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
     tok = StyleSheet::trim(tok);
@@ -6185,7 +5791,6 @@ static AnimationFillMode parseAnimationFillModeKeyword(std::string tok) {
     if (tok == "both")      return AnimationFillMode::Both;
     return AnimationFillMode::None;
 }
-
 std::vector<AnimationFillMode> StyleSheet::parseAnimationFillModeList(const std::string& value) {
     std::vector<AnimationFillMode> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6193,14 +5798,12 @@ std::vector<AnimationFillMode> StyleSheet::parseAnimationFillModeList(const std:
     }
     return out;
 }
-
 static AnimationPlayState parseAnimationPlayStateKeyword(std::string tok) {
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
     tok = StyleSheet::trim(tok);
     if (tok == "paused")  return AnimationPlayState::Paused;
     return AnimationPlayState::Running;
 }
-
 std::vector<AnimationPlayState> StyleSheet::parseAnimationPlayStateList(const std::string& value) {
     std::vector<AnimationPlayState> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6208,7 +5811,6 @@ std::vector<AnimationPlayState> StyleSheet::parseAnimationPlayStateList(const st
     }
     return out;
 }
-
 static AnimationComposition parseAnimationCompositionKeyword(std::string tok) {
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
     tok = StyleSheet::trim(tok);
@@ -6216,7 +5818,6 @@ static AnimationComposition parseAnimationCompositionKeyword(std::string tok) {
     if (tok == "accumulate") return AnimationComposition::Accumulate;
     return AnimationComposition::Replace;
 }
-
 std::vector<AnimationComposition> StyleSheet::parseAnimationCompositionList(const std::string& value) {
     std::vector<AnimationComposition> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6224,14 +5825,12 @@ std::vector<AnimationComposition> StyleSheet::parseAnimationCompositionList(cons
     }
     return out;
 }
-
 static TransitionBehavior parseTransitionBehaviorKeyword(std::string tok) {
     for (char& c : tok) c = (char)std::tolower((unsigned char)c);
     tok = StyleSheet::trim(tok);
     if (tok == "allow-discrete") return TransitionBehavior::AllowDiscrete;
     return TransitionBehavior::Normal;
 }
-
 std::vector<TransitionBehavior> StyleSheet::parseTransitionBehaviorList(const std::string& value) {
     std::vector<TransitionBehavior> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6239,7 +5838,6 @@ std::vector<TransitionBehavior> StyleSheet::parseTransitionBehaviorList(const st
     }
     return out;
 }
-
 std::vector<std::string> StyleSheet::parseTransitionPropertyList(const std::string& value) {
     std::vector<std::string> out;
     for (const auto& part : splitTopLevel(value, ',')) {
@@ -6249,7 +5847,6 @@ std::vector<std::string> StyleSheet::parseTransitionPropertyList(const std::stri
     }
     return out;
 }
-
 std::string StyleSheet::serializeTimingFunction(const TimingFunction& tf) {
     switch (tf.kind) {
         case TimingFunction::Linear:    return "linear";
@@ -6276,14 +5873,9 @@ std::string StyleSheet::serializeTimingFunction(const TimingFunction& tf) {
     }
     return "ease";
 }
-
-// Sample a TimingFunction at progress `t` in [0,1] and return the eased value in [0,1].
-// Mirrors Blink's CSSAnimationData::EvaluateTimingFunction for cubic-bezier,
-// and applies the steps() staircase per CSS Easing Functions Level 1.
 float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
     if (t <= 0.0f) return 0.0f;
     if (t >= 1.0f) return 1.0f;
-
     switch (tf.kind) {
         case TimingFunction::Linear:
             return t;
@@ -6292,7 +5884,6 @@ float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
         case TimingFunction::EaseOut:
         case TimingFunction::EaseInOut:
         case TimingFunction::CubicBezier: {
-            // Newton-Raphson solve of cubic-bezier, mirror of compositor's evaluateCubicBezier.
             float x1 = tf.params[0], y1 = tf.params[1];
             float x2 = tf.params[2], y2 = tf.params[3];
             float cx = 3.0f * x1;
@@ -6301,11 +5892,9 @@ float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
             float cy = 3.0f * y1;
             float by = 3.0f * (y2 - y1) - cy;
             float ay = 1.0f - cy - by;
-
             auto sampleX = [&](float v) { return ((ax * v + bx) * v + cx) * v; };
             auto sampleY = [&](float v) { return ((ay * v + by) * v + cy) * v; };
             auto sampleDX = [&](float v) { return (3.0f * ax * v + 2.0f * bx) * v + cx; };
-
             float x = t;
             float t_guess = t;
             for (int i = 0; i < 8; ++i) {
@@ -6360,40 +5949,30 @@ float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
     }
     return t;
 }
-
 std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::string& value) {
     std::vector<TransformOperation> operations;
     std::string trimmedVal = trim(value);
     if (trimmedVal == "none" || trimmedVal.empty()) {
         return operations;
     }
-    
     size_t pos = 0;
     while (pos < trimmedVal.size()) {
-        // Skip whitespace
         while (pos < trimmedVal.size() && std::isspace(static_cast<unsigned char>(trimmedVal[pos]))) {
             pos++;
         }
         if (pos >= trimmedVal.size()) break;
-        
-        // Find the function name
         size_t nameStart = pos;
         while (pos < trimmedVal.size() && (std::isalnum(static_cast<unsigned char>(trimmedVal[pos])) || trimmedVal[pos] == '-')) {
             pos++;
         }
         std::string name = trimmedVal.substr(nameStart, pos - nameStart);
-        
-        // Skip whitespace before '('
         while (pos < trimmedVal.size() && std::isspace(static_cast<unsigned char>(trimmedVal[pos]))) {
             pos++;
         }
-        
         if (pos >= trimmedVal.size() || trimmedVal[pos] != '(') {
             break;
         }
-        pos++; // consume '('
-        
-        // Find the matching ')'
+        pos++;
         size_t argsStart = pos;
         int depth = 1;
         while (pos < trimmedVal.size() && depth > 0) {
@@ -6405,8 +5984,6 @@ std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::
             break;
         }
         std::string argsStr = trimmedVal.substr(argsStart, pos - 1 - argsStart);
-        
-        // Split arguments by comma
         std::vector<std::string> rawArgs;
         size_t argPos = 0;
         int argDepth = 0;
@@ -6421,8 +5998,6 @@ std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::
             argPos++;
         }
         rawArgs.push_back(trim(argsStr.substr(lastStart)));
-        
-        // Parse arguments into CSSValue
         std::vector<CSSValue> args;
         for (const auto& rawArg : rawArgs) {
             if (!rawArg.empty()) {
@@ -6440,7 +6015,6 @@ std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::
                 }
             }
         }
-        
         TransformOperationType type;
         bool valid = true;
         if (name == "translate") {
@@ -6514,21 +6088,22 @@ std::vector<TransformOperation> StyleSheet::parseTransformOperations(const std::
         } else {
             valid = false;
         }
-        
         if (valid) {
-            operations.push_back({type, args});
+            TransformOperation op;
+            op.type = type;
+            op.args = args;
+            op.resolveFromArgs();
+            operations.push_back(op);
         }
     }
     return operations;
 }
-
 TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
     TransformOrigin origin;
     std::string_view tokens[3];
     int count = 0;
     splitWhitespace(value, tokens, 3, count);
     if (count == 0) return origin;
-
     auto parseX = [](std::string_view tok, bool& ok) -> CSSValue {
         std::string s = lowerAscii(tok);
         ok = true;
@@ -6538,7 +6113,6 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
         ok = false;
         return CSSValue::pct(50.0f);
     };
-
     auto parseY = [](std::string_view tok, bool& ok) -> CSSValue {
         std::string s = lowerAscii(tok);
         ok = true;
@@ -6548,7 +6122,6 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
         ok = false;
         return CSSValue::pct(50.0f);
     };
-
     if (count == 1) {
         bool ok = false;
         CSSValue val = parseX(tokens[0], ok);
@@ -6571,22 +6144,16 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
         bool secondIsX = false;
         bool firstIsX = false;
         bool secondIsY = false;
-
         CSSValue xVal, yVal;
-        
         bool ok;
         CSSValue testX1 = parseX(tokens[0], ok);
         if (ok) { firstIsX = true; xVal = testX1; }
-        
         CSSValue testY1 = parseY(tokens[0], ok);
         if (ok) { firstIsY = true; yVal = testY1; }
-
         CSSValue testX2 = parseX(tokens[1], ok);
         if (ok) { secondIsX = true; xVal = testX2; }
-        
         CSSValue testY2 = parseY(tokens[1], ok);
         if (ok) { secondIsY = true; yVal = testY2; }
-
         if (firstIsY && secondIsX) {
             origin.x = xVal;
             origin.y = yVal;
@@ -6596,7 +6163,6 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
             } else {
                 origin.x = parseCSSValue(std::string(tokens[0]));
             }
-            
             if (secondIsY) {
                 origin.y = yVal;
             } else {
@@ -6609,22 +6175,16 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
         bool secondIsX = false;
         bool firstIsX = false;
         bool secondIsY = false;
-
         CSSValue xVal, yVal;
-        
         bool ok;
         CSSValue testX1 = parseX(tokens[0], ok);
         if (ok) { firstIsX = true; xVal = testX1; }
-        
         CSSValue testY1 = parseY(tokens[0], ok);
         if (ok) { firstIsY = true; yVal = testY1; }
-
         CSSValue testX2 = parseX(tokens[1], ok);
         if (ok) { secondIsX = true; xVal = testX2; }
-        
         CSSValue testY2 = parseY(tokens[1], ok);
         if (ok) { secondIsY = true; yVal = testY2; }
-
         if (firstIsY && secondIsX) {
             origin.x = xVal;
             origin.y = yVal;
@@ -6634,7 +6194,6 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
             } else {
                 origin.x = parseCSSValue(std::string(tokens[0]));
             }
-            
             if (secondIsY) {
                 origin.y = yVal;
             } else {
@@ -6645,13 +6204,11 @@ TransformOrigin StyleSheet::parseTransformOrigin(const std::string& value) {
     }
     return origin;
 }
-
 TransformStyle StyleSheet::parseTransformStyle(const std::string& value) {
     std::string s = lowerAscii(trim(value));
     if (s == "preserve-3d") return TransformStyle::Preserve3D;
     return TransformStyle::Flat;
 }
-
 TransformBox StyleSheet::parseTransformBox(const std::string& value) {
     std::string s = lowerAscii(trim(value));
     if (s == "content-box") return TransformBox::ContentBox;
@@ -6660,7 +6217,6 @@ TransformBox StyleSheet::parseTransformBox(const std::string& value) {
     if (s == "view-box") return TransformBox::ViewBox;
     return TransformBox::BorderBox;
 }
-
 CSSValue StyleSheet::parsePerspective(const std::string& value) {
     std::string s = lowerAscii(trim(value));
     if (s == "none" || s.empty()) {
@@ -6668,14 +6224,12 @@ CSSValue StyleSheet::parsePerspective(const std::string& value) {
     }
     return parseCSSValue(s);
 }
-
 PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
     PerspectiveOrigin origin;
     std::string_view tokens[2];
     int count = 0;
     splitWhitespace(value, tokens, 2, count);
     if (count == 0) return origin;
-
     auto parseX = [](std::string_view tok, bool& ok) -> CSSValue {
         std::string s = lowerAscii(tok);
         ok = true;
@@ -6685,7 +6239,6 @@ PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
         ok = false;
         return CSSValue::pct(50.0f);
     };
-
     auto parseY = [](std::string_view tok, bool& ok) -> CSSValue {
         std::string s = lowerAscii(tok);
         ok = true;
@@ -6695,7 +6248,6 @@ PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
         ok = false;
         return CSSValue::pct(50.0f);
     };
-
     if (count == 1) {
         bool ok = false;
         CSSValue val = parseX(tokens[0], ok);
@@ -6716,22 +6268,16 @@ PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
         bool secondIsX = false;
         bool firstIsX = false;
         bool secondIsY = false;
-
         CSSValue xVal, yVal;
-        
         bool ok;
         CSSValue testX1 = parseX(tokens[0], ok);
         if (ok) { firstIsX = true; xVal = testX1; }
-        
         CSSValue testY1 = parseY(tokens[0], ok);
         if (ok) { firstIsY = true; yVal = testY1; }
-
         CSSValue testX2 = parseX(tokens[1], ok);
         if (ok) { secondIsX = true; xVal = testX2; }
-        
         CSSValue testY2 = parseY(tokens[1], ok);
         if (ok) { secondIsY = true; yVal = testY2; }
-
         if (firstIsY && secondIsX) {
             origin.x = xVal;
             origin.y = yVal;
@@ -6741,7 +6287,6 @@ PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
             } else {
                 origin.x = parseCSSValue(std::string(tokens[0]));
             }
-            
             if (secondIsY) {
                 origin.y = yVal;
             } else {
@@ -6751,23 +6296,18 @@ PerspectiveOrigin StyleSheet::parsePerspectiveOrigin(const std::string& value) {
     }
     return origin;
 }
-
 BackfaceVisibility StyleSheet::parseBackfaceVisibility(const std::string& value) {
     std::string s = lowerAscii(trim(value));
     if (s == "hidden") return BackfaceVisibility::Hidden;
     return BackfaceVisibility::Visible;
 }
-
 float StyleSheet::parseAngleDegrees(const std::string& value) {
     std::string lower = lowerAscii(trim(value));
     if (lower == "0") return 0.0f;
-    
     size_t lastNum = lower.find_last_of("0123456789.-+");
     if (lastNum == std::string::npos) return 0.0f;
-    
     float num = std::stof(lower.substr(0, lastNum + 1));
     std::string unit = lower.substr(lastNum + 1);
-    
     if (unit == "deg" || unit.empty()) {
         return num;
     } else if (unit == "rad") {
@@ -6779,5 +6319,57 @@ float StyleSheet::parseAngleDegrees(const std::string& value) {
     }
     return 0.0f;
 }
-
-} // namespace FluxUI
+std::vector<TransformOperation> StyleSheet::parseTransformList(const std::string& value) {
+    return parseTransformOperations(value);
+}
+bool StyleSheet::parseTransformOrigin(const std::string& value, Vec2& xy, float& z) {
+    TransformOrigin origin = parseTransformOrigin(value);
+    auto toFloat = [](const CSSValue& val) -> float {
+        return val.resolve(1.0f);
+    };
+    xy.x = toFloat(origin.x);
+    xy.y = toFloat(origin.y);
+    z = toFloat(origin.z);
+    return true;
+}
+bool StyleSheet::parseTransformStyle(const std::string& value, TransformStyle& out) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "preserve-3d") {
+        out = TransformStyle::Preserve3D;
+        return true;
+    }
+    if (s == "flat") {
+        out = TransformStyle::Flat;
+        return true;
+    }
+    return false;
+}
+bool StyleSheet::parseTransformBox(const std::string& value, TransformBox& out) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "content-box") { out = TransformBox::ContentBox; return true; }
+    if (s == "fill-box") { out = TransformBox::FillBox; return true; }
+    if (s == "stroke-box") { out = TransformBox::StrokeBox; return true; }
+    if (s == "view-box") { out = TransformBox::ViewBox; return true; }
+    if (s == "border-box") { out = TransformBox::BorderBox; return true; }
+    return false;
+}
+bool StyleSheet::parsePerspective(const std::string& value, float& out) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "none") {
+        out = 0.0f;
+        return true;
+    }
+    CSSValue val = parseCSSValue(s);
+    if (val.isSet()) {
+        out = val.resolve(1.0f);
+        return true;
+    }
+    return false;
+}
+bool StyleSheet::parseBackfaceVisibility(const std::string& value, BackfaceVisibility& out) {
+    std::string s = lowerAscii(trim(value));
+    if (s == "visible") { out = BackfaceVisibility::Visible; return true; }
+    if (s == "hidden") { out = BackfaceVisibility::Hidden; return true; }
+    return false;
+}
+}
