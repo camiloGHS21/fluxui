@@ -945,6 +945,22 @@ impl Widget {
         unsafe { sys::fluxui_widget_get_bounds(self.raw.as_ptr()) }
     }
 
+    pub fn set_id(self, id: &str) -> Result<()> {
+        let id = cstring(id)?;
+        unsafe { sys::fluxui_widget_set_id(self.raw.as_ptr(), id.as_ptr()) }
+        Ok(())
+    }
+
+    pub fn set_class(self, class_name: &str) -> Result<()> {
+        let class_name = cstring(class_name)?;
+        unsafe { sys::fluxui_widget_set_class(self.raw.as_ptr(), class_name.as_ptr()) }
+        Ok(())
+    }
+
+    pub fn set_visible(self, visible: bool) {
+        unsafe { sys::fluxui_widget_set_visible(self.raw.as_ptr(), if visible { 1 } else { 0 }) }
+    }
+
     pub fn set_text_input_type(self, input_type: &str) -> Result<()> {
         let input_type = cstring(input_type)?;
         unsafe { sys::fluxui_text_input_set_type(self.raw.as_ptr(), input_type.as_ptr()) }
@@ -1027,6 +1043,21 @@ impl Widget {
         user_data: *mut c_void,
     ) {
         unsafe { sys::fluxui_widget_set_on_click(self.raw.as_ptr(), Some(callback), user_data) }
+    }
+
+    pub fn set_on_click<F>(self, callback: F)
+    where
+        F: Fn(Widget) + 'static,
+    {
+        let boxed = Box::new(callback);
+        let ptr = Box::into_raw(boxed);
+        unsafe {
+            sys::fluxui_widget_set_on_click(
+                self.raw.as_ptr(),
+                Some(rust_click_callback::<F>),
+                ptr as *mut c_void,
+            );
+        }
     }
 
     pub fn set_on_click_stop_app(self, app: &App) {
@@ -1163,4 +1194,15 @@ pub extern "C" fn rust_draw_callback<F>(
     let w = Widget { raw: NonNull::new(widget).unwrap() };
     let r = Renderer { raw: renderer_ptr };
     closure(w, &r, bounds);
+}
+
+pub extern "C" fn rust_click_callback<F>(
+    widget: *mut sys::FluxUIWidget,
+    user_data: *mut c_void,
+) where
+    F: Fn(Widget) + 'static,
+{
+    let closure = unsafe { &*(user_data as *const F) };
+    let w = Widget { raw: NonNull::new(widget).unwrap() };
+    closure(w);
 }

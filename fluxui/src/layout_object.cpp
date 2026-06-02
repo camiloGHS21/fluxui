@@ -191,6 +191,10 @@ namespace FluxUI {
                 // Render into FBO target
                 renderer.pushRenderTarget(paintLayer_->fbo(), w, h);
 
+                // Save parent translation by pushing a translation that offsets it to 0
+                Vec2 parentTranslation = renderer.getTranslation();
+                renderer.pushTranslation({-parentTranslation.x, -parentTranslation.y});
+
                 // Push translation so (bounds_.x, bounds_.y) maps to (0, 0) in the FBO
                 renderer.pushTranslation({-bounds_.x, -bounds_.y});
 
@@ -205,7 +209,8 @@ namespace FluxUI {
                 paintInternal(renderer);
                 node_->useGPUCompositing = true;
 
-                renderer.popTranslation();
+                renderer.popTranslation(); // Pop FBO translation
+                renderer.popTranslation(); // Pop parent translation offset
                 renderer.popRenderTarget();
 
                 paintLayer_->markClean();
