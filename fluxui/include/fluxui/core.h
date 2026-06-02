@@ -407,6 +407,77 @@ enum ContainmentFlags : uint8_t {
     kContainStrict = kContainSize | kContainLayout | kContainPaint | kContainStyle
 };
 
+// ============================================================
+//  CSS Animations & Transitions (Blink css_animations.cc parity)
+// ============================================================
+
+enum class AnimationDirection {
+    Normal,
+    Reverse,
+    Alternate,
+    AlternateReverse
+};
+
+enum class AnimationFillMode {
+    None,
+    Forwards,
+    Backwards,
+    Both
+};
+
+enum class AnimationPlayState {
+    Running,
+    Paused
+};
+
+enum class AnimationComposition {
+    Replace,
+    Add,
+    Accumulate
+};
+
+enum class TransitionBehavior {
+    Normal,
+    AllowDiscrete
+};
+
+struct TimingFunction {
+    enum Kind {
+        Linear,
+        Ease,
+        EaseIn,
+        EaseOut,
+        EaseInOut,
+        CubicBezier,
+        StepStart,
+        StepEnd,
+        Steps
+    };
+    Kind kind = Kind::Ease;
+    // Cubic-bezier(x1, y1, x2, y2) — defaults match CSS "ease"
+    float params[4] = {0.25f, 0.1f, 0.25f, 1.0f};
+    // Steps(n, jump-start|jump-end|jump-none|jump-both|start|end)
+    int stepCount = 1;
+    enum StepPosition { JumpStart, JumpEnd, JumpNone, JumpBoth, Start, End };
+    StepPosition stepPosition = JumpEnd;
+
+    static TimingFunction linear()    { TimingFunction t; t.kind = Linear;    return t; }
+    static TimingFunction ease()      { TimingFunction t; t.kind = Ease;      return t; }
+    static TimingFunction easeIn()    { TimingFunction t; t.kind = EaseIn;    t.params[0]=0.42f; t.params[1]=0.0f; t.params[2]=1.0f; t.params[3]=1.0f; return t; }
+    static TimingFunction easeOut()   { TimingFunction t; t.kind = EaseOut;   t.params[0]=0.0f;  t.params[1]=0.0f; t.params[2]=0.58f; t.params[3]=1.0f; return t; }
+    static TimingFunction easeInOut() { TimingFunction t; t.kind = EaseInOut; t.params[0]=0.42f; t.params[1]=0.0f; t.params[2]=0.58f; t.params[3]=1.0f; return t; }
+    static TimingFunction stepStart() { TimingFunction t; t.kind = StepStart; return t; }
+    static TimingFunction stepEnd()   { TimingFunction t; t.kind = StepEnd;   return t; }
+    static TimingFunction steps(int n, StepPosition pos = JumpEnd) {
+        TimingFunction t; t.kind = Steps; t.stepCount = std::max(1, n); t.stepPosition = pos; return t;
+    }
+    static TimingFunction bezier(float x1, float y1, float x2, float y2) {
+        TimingFunction t; t.kind = CubicBezier;
+        t.params[0] = x1; t.params[1] = y1; t.params[2] = x2; t.params[3] = y2;
+        return t;
+    }
+};
+
 
 class CSSMathExpressionNode;
 
@@ -1583,10 +1654,30 @@ struct Style {
 
     // Interaction
     CursorType cursor = CursorType::Default;
-    float transitionDuration = 0.15f; // seconds
+    float transitionDuration = 0.15f; // seconds (legacy scalar; populated from transitionDurations[0])
     float scale = 1.0f; // 1.0 = normal size
     float springStiffness = 180.0f;  // for physics-based animations
     float springDamping = 18.0f;     // for physics-based animations
+
+    // Animations (CSS Animations Level 1 + Level 2 parity with Blink css_animations.cc)
+    // Parallel arrays, one entry per animation in animation-* lists.
+    std::vector<std::string> animationName;
+    std::vector<float> animationDuration;        // seconds
+    std::vector<float> animationDelay;           // seconds
+    std::vector<float> animationIterationCount;  // -1 == infinite
+    std::vector<AnimationDirection> animationDirection;
+    std::vector<AnimationFillMode> animationFillMode;
+    std::vector<AnimationPlayState> animationPlayState;
+    std::vector<TimingFunction> animationTimingFunction;
+    std::vector<AnimationComposition> animationComposition;
+
+    // Transitions (CSS Transitions Level 1 + Level 2)
+    // Parallel arrays, one entry per transition in transition-* lists.
+    std::vector<std::string> transitionProperty; // e.g. {"opacity", "transform", "background-color", ...}
+    std::vector<float> transitionDurations;       // seconds
+    std::vector<float> transitionDelays;          // seconds
+    std::vector<TimingFunction> transitionTimingFunctions;
+    std::vector<TransitionBehavior> transitionBehavior;
 
     // Hover state overrides
     Color hoverBackgroundColor;

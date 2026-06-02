@@ -29,6 +29,7 @@
 #include <stb_image.h>
 #include "fluxui/platform.h"
 #include <nlohmann/json.hpp>
+#include <unordered_map>
 namespace FluxUI {
 
 PropertyTrees g_activePropertyTrees;
@@ -1835,6 +1836,7 @@ void Widget::updateStyleAndLayout() {
 }
 
 void Widget::resolveStyles(const StyleSheet& sheet) {
+    currentSheet = &sheet;
     if (!subtreeStyleDirty) {
         return;
     }
@@ -3394,6 +3396,14 @@ void Widget::update(const InputState& input) {
             app->requestRedraw();
         }
     }
+
+    // Drive CSS @keyframes animations (CSS Animations Level 1, 4).
+    // Each frame, advance every active animation effect, interpolate the relevant
+    // properties along the resolved keyframe timeline, and write the instantaneous
+    // value back into this widget's computed style + the compositor (Blink
+    // animation-compositor pattern). Subclasses that override update() should call
+    // tickAnimations() at the end of their frame loop.
+    tickAnimations(input);
 }
 CursorType Widget::cursorAt(Vec2 point) const {
     if (!canHitTestWidget(this)) {
@@ -8274,6 +8284,369 @@ void Video::setAttribute(const std::string& name, const std::string& value) {
         } catch (...) {}
     } else if (name == "controls") {
         controls = (value != "false" && value != "0");
+    }
+}
+
+// ============================================================
+//  CSS @keyframes animation runtime
+//  (parity with Blink css_animations.cc / KeyframeEffect / Animation)
+// ============================================================
+
+// Apply a single keyframe property value to a local mutable Style, returning true if
+// the property was recognized. Recognized animatable properties (per CSS Animations
+// Level 1 §2 + Web Animations spec table) include opacity, color, background-color,
+// border-color, transform (scale), width/height, font-size, margin/padding, etc.
+bool Widget::applyKeyframePropertyOverride(const std::string& name, const std::string& value) {
+    if (name.empty() || value.empty()) return false;
+
+    if (name == "opacity") {
+        computedStyle.ensureMutable().opacity = StyleSheet::parseFloat(value);
+        return true;
+    }
+    if (name == "color") {
+        computedStyle.ensureMutable().color = StyleSheet::parseColor(value);
+        computedStyle.ensureMutable().hasColor = true;
+        return true;
+    }
+    if (name == "background-color" || name == "background") {
+        Color c = StyleSheet::parseColor(value);
+        if (c.a > 0.0f) {
+            computedStyle.ensureMutable().backgroundColor = c;
+        }
+        return true;
+    }
+    if (name == "border-color") {
+        computedStyle.ensureMutable().border.color = StyleSheet::parseColor(value);
+        return true;
+    }
+    if (name == "scale" || name == "transform") {
+        // Basic scale(X) extraction (parity with mergeProperty for `transform`).
+        // Full transform list support (rotate, translate, matrix) is layered on top of
+        // the existing scale-only transform pipeline; expand this if needed.
+        auto scalePos = value.find("scale(");
+        if (scalePos != std::string::npos) {
+            auto start = scalePos + 6;
+            auto end = value.find(')', start);
+            if (end != std::string::npos) {
+                computedStyle.ensureMutable().scale = StyleSheet::parseFloat(value.substr(start, end - start));
+            }
+        } else {
+            computedStyle.ensureMutable().scale = StyleSheet::parseFloat(value);
+        }
+        return true;
+    }
+    if (name == "width") {
+        computedStyle.ensureMutable().width = StyleSheet::parseCSSValue(value);
+        computedStyle.ensureMutable().hasWidthVal = true;
+        return true;
+    }
+    if (name == "height") {
+        computedStyle.ensureMutable().height = StyleSheet::parseCSSValue(value);
+        computedStyle.ensureMutable().hasHeightVal = true;
+        return true;
+    }
+    if (name == "font-size") {
+        computedStyle.ensureMutable().fontSize = StyleSheet::parseFontSizePixels(value, computedStyle->fontSize);
+        computedStyle.ensureMutable().hasFontSize = true;
+        return true;
+    }
+    if (name == "padding") {
+        computedStyle.ensureMutable().padding = StyleSheet::parseEdgeInsets(value, computedStyle->fontSize);
+        return true;
+    }
+    if (name == "margin") {
+        computedStyle.ensureMutable().margin = StyleSheet::parseEdgeInsets(value, computedStyle->fontSize);
+        return true;
+    }
+    if (name == "border-radius") {
+        computedStyle.ensureMutable().borderRadius = StyleSheet::parseBorderRadius(value, computedStyle->fontSize);
+        return true;
+    }
+    if (name == "filter") {
+        // Only the simple `blur(Npx)` form is supported in keyframes for now; full
+        // filter-function grammar can be added when filter is wired through paint.
+        auto pos = value.find("blur(");
+        if (pos != std::string::npos) {
+            auto start = pos + 5;
+            auto end = value.find(')', start);
+            if (end != std::string::npos) {
+                computedStyle.ensureMutable().backdropFilterBlur =
+                    StyleSheet::parseLengthPixels(value.substr(start, end - start), computedStyle->fontSize);
+                computedStyle.ensureMutable().hasBackdropFilterBlur = true;
+            }
+        }
+        return true;
+    }
+    if (name == "top") {
+        computedStyle.ensureMutable().top = StyleSheet::parseCSSValue(value);
+        return true;
+    }
+    if (name == "left") {
+        computedStyle.ensureMutable().left = StyleSheet::parseCSSValue(value);
+        return true;
+    }
+    if (name == "right") {
+        computedStyle.ensureMutable().right = StyleSheet::parseCSSValue(value);
+        return true;
+    }
+    if (name == "bottom") {
+        computedStyle.ensureMutable().bottom = StyleSheet::parseCSSValue(value);
+        return true;
+    }
+    return false;
+}
+
+static std::string resolveKeyframeValueVars(const StyleSheet& sheet, const std::string& value) {
+    if (value.find("var(") == std::string::npos) return value;
+    static const std::unordered_map<std::string, std::string> emptyCustomProps;
+    return sheet.resolveValue(value, emptyCustomProps);
+}
+
+void Widget::clearAnimationOverrides() {
+    CompositorEngine::instance().clearKeyframeOverrides(reinterpret_cast<uintptr_t>(this));
+    activeAnimations.clear();
+    firstUpdate = true;
+    localClock = 0.0f;
+}
+
+static std::string serializeAnimationNameList(const std::vector<std::string>& v) {
+    std::string out;
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i) out += ',';
+        out += v[i];
+    }
+    return out;
+}
+
+void Widget::tickAnimations(const InputState& input) {
+    if (!currentSheet) return;
+    const Style& s = *computedStyle;
+    if (s.animationName.empty()) {
+        if (!activeAnimations.empty()) {
+            // Animation list cleared (style change removed all animations): wipe.
+            clearAnimationOverrides();
+        }
+        return;
+    }
+
+    // Advance local clock
+    float dt = std::clamp(input.deltaTime, 0.001f, 0.1f);
+    if (firstUpdate) { localClock = 0.0f; firstUpdate = false; }
+    else              { localClock += dt; }
+
+    // Reconcile the running animation list with the current style. New names spawn a
+    // fresh ActiveAnimation; missing names have their compositor overrides cleared.
+    std::string sig = serializeAnimationNameList(s.animationName);
+    if (sig != lastAnimationSignature) {
+        // Mark all existing as not-yet-restarted so we can detect name disappearance
+        // without wiping overrides mid-frame.
+        std::vector<bool> keep(s.animationName.size(), false);
+        for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
+            const std::string& want = s.animationName[ni];
+            if (want.empty() || want == "none") continue;
+            for (auto& existing : activeAnimations) {
+                if (existing.name == want) { keep[ni] = true; break; }
+            }
+        }
+        // Remove animations no longer in the list
+        activeAnimations.erase(
+            std::remove_if(activeAnimations.begin(), activeAnimations.end(),
+                [&](const ActiveAnimation& a) {
+                    for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
+                        if (s.animationName[ni] == a.name) return false;
+                    }
+                    return true;
+                }),
+            activeAnimations.end());
+
+        // Spawn missing ones
+        for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
+            const std::string& want = s.animationName[ni];
+            if (want.empty() || want == "none") continue;
+            bool found = false;
+            for (auto& existing : activeAnimations) {
+                if (existing.name == want) { found = true; break; }
+            }
+            if (found) continue;
+            ActiveAnimation aa;
+            aa.name = want;
+            aa.duration  = ni < s.animationDuration.size()        ? s.animationDuration[ni]        : 0.0f;
+            aa.delay     = ni < s.animationDelay.size()           ? s.animationDelay[ni]           : 0.0f;
+            aa.iterationCount = ni < s.animationIterationCount.size() ? s.animationIterationCount[ni] : 1.0f;
+            aa.direction  = ni < s.animationDirection.size()       ? s.animationDirection[ni]       : AnimationDirection::Normal;
+            aa.fillMode   = ni < s.animationFillMode.size()        ? s.animationFillMode[ni]        : AnimationFillMode::None;
+            aa.playState  = ni < s.animationPlayState.size()       ? s.animationPlayState[ni]       : AnimationPlayState::Running;
+            aa.timingFunction = ni < s.animationTimingFunction.size() ? s.animationTimingFunction[ni] : TimingFunction::ease();
+            aa.composition = ni < s.animationComposition.size()    ? s.animationComposition[ni]    : AnimationComposition::Replace;
+            aa.startTime = localClock;
+            activeAnimations.push_back(aa);
+        }
+        lastAnimationSignature = sig;
+    }
+
+    // Tick each active animation
+    auto& engine = CompositorEngine::instance();
+    const uintptr_t wid = reinterpret_cast<uintptr_t>(this);
+    bool anyChange = false;
+
+    for (auto& aa : activeAnimations) {
+        if (aa.finished) continue;
+        if (aa.playState == AnimationPlayState::Paused) continue;
+
+        const CSSKeyframesRule* kfRule = currentSheet->findKeyframes(aa.name);
+        if (!kfRule || kfRule->keyframes.empty()) {
+            aa.finished = true;
+            continue;
+        }
+        if (aa.duration <= 0.0f) {
+            // CSS spec: if duration is 0, the animation completes immediately
+            aa.currentTime = 0.0f;
+            aa.currentIteration = 0;
+            aa.finished = true;
+            continue;
+        }
+
+        float localT = localClock - aa.startTime - aa.delay;
+        if (localT < 0.0f) {
+            // In delay window. Apply 0% keyframe values if fill-mode is backwards/both.
+            if (aa.fillMode == AnimationFillMode::Backwards || aa.fillMode == AnimationFillMode::Both) {
+                for (const auto& kf : kfRule->keyframes) {
+                    if (kf.keyTimes.empty()) continue;
+                    float minT = *std::min_element(kf.keyTimes.begin(), kf.keyTimes.end());
+                    if (minT <= 0.0f) {
+                        for (const auto& prop : kf.properties) {
+                            std::string val = resolveKeyframeValueVars(*currentSheet, prop.value);
+                            if (applyKeyframePropertyOverride(std::string(prop.name), val)) anyChange = true;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        int totalIterations = (aa.iterationCount < 0.0f) ? -1 : (int)aa.iterationCount;
+        int currentIteration = (int)std::floor(localT / aa.duration);
+        if (totalIterations >= 0 && currentIteration >= totalIterations) {
+            // Animation is over
+            aa.finished = true;
+            aa.currentIteration = totalIterations;
+            if (aa.fillMode == AnimationFillMode::Forwards || aa.fillMode == AnimationFillMode::Both) {
+                // Apply 100% (or last available) keyframe values
+                const CSSKeyframeRule* lastKf = &kfRule->keyframes.back();
+                for (const auto& prop : lastKf->properties) {
+                    std::string val = resolveKeyframeValueVars(*currentSheet, prop.value);
+                    if (applyKeyframePropertyOverride(std::string(prop.name), val)) anyChange = true;
+                }
+            } else {
+                // fill: none — wipe overrides so the underlying value is restored on the
+                // next styleDirty resolve.
+                engine.clearKeyframeOverrides(wid);
+                markStyleDirty();
+            }
+            continue;
+        }
+        aa.currentIteration = currentIteration;
+
+        // Within an iteration: compute [0,1] progress, then apply direction.
+        float progress = (localT - currentIteration * aa.duration) / aa.duration;
+        if (aa.direction == AnimationDirection::Reverse) {
+            progress = 1.0f - progress;
+        } else if (aa.direction == AnimationDirection::Alternate) {
+            if (currentIteration % 2 == 1) progress = 1.0f - progress;
+        } else if (aa.direction == AnimationDirection::AlternateReverse) {
+            if (currentIteration % 2 == 0) progress = 1.0f - progress;
+        }
+        progress = std::clamp(progress, 0.0f, 1.0f);
+
+        // Find the surrounding keyframe pair
+        const CSSKeyframeRule* kfA = nullptr;
+        const CSSKeyframeRule* kfB = nullptr;
+        float tA = 0.0f, tB = 1.0f;
+        // Sort kfRule->keyframes by min offset (they're already sorted in parseKeyframes,
+        // but we re-derive tA/tB per key to support comma-grouped selectors).
+        const CSSKeyframeRule* prev = nullptr;
+        for (const auto& kf : kfRule->keyframes) {
+            if (kf.keyTimes.empty()) continue;
+            float minT = *std::min_element(kf.keyTimes.begin(), kf.keyTimes.end());
+            float maxT = *std::max_element(kf.keyTimes.begin(), kf.keyTimes.end());
+            if (minT <= progress && progress <= maxT) {
+                // Within this comma-grouped selector
+                kfA = &kf;
+                tA = minT;
+                tB = maxT;
+                break;
+            }
+            if (minT > progress) {
+                kfB = &kf;
+                tA = (prev ? (*std::max_element(prev->keyTimes.begin(), prev->keyTimes.end())) : 0.0f);
+                tB = minT;
+                kfA = prev;
+                break;
+            }
+            prev = &kf;
+        }
+        if (!kfA && !kfB) {
+            // progress is at the very end and not matched
+            kfA = &kfRule->keyframes.back();
+            kfB = kfA;
+            tA = tB = 1.0f;
+        } else if (kfA && !kfB) {
+            kfB = kfA;
+        } else if (!kfA && kfB) {
+            kfA = kfB;
+            tA = tB = 0.0f;
+        }
+
+        // If both points coincide, apply directly
+        float segmentT = 0.0f;
+        if (tB > tA) {
+            segmentT = (progress - tA) / (tB - tA);
+        } else {
+            segmentT = 0.0f;
+        }
+        float easedT = StyleSheet::sampleTimingFunction(aa.timingFunction, segmentT);
+
+        // For each property in either keyframe, interpolate.
+        // Build property→value map per keyframe.
+        std::unordered_map<std::string, std::string> mapA, mapB;
+        if (kfA) for (const auto& p : kfA->properties) mapA[std::string(p.name)] = p.value;
+        if (kfB) for (const auto& p : kfB->properties) mapB[std::string(p.name)] = p.value;
+        // Union of properties
+        std::vector<std::string> allProps;
+        for (const auto& kv : mapA) allProps.push_back(kv.first);
+        for (const auto& kv : mapB) {
+            if (mapA.find(kv.first) == mapA.end()) allProps.push_back(kv.first);
+        }
+        for (const std::string& prop : allProps) {
+            auto itA = mapA.find(prop);
+            auto itB = mapB.find(prop);
+            std::string valA = (itA != mapA.end()) ? itA->second : std::string();
+            std::string valB = (itB != mapB.end()) ? itB->second : std::string();
+            // If one side is empty, treat it as the other side (no animation effect on
+            // this prop during this segment).
+            if (valA.empty() || valB.empty()) {
+                std::string use = valA.empty() ? valB : valA;
+                if (use.empty()) continue;
+                std::string val = resolveKeyframeValueVars(*currentSheet, use);
+                if (applyKeyframePropertyOverride(prop, val)) anyChange = true;
+                continue;
+            }
+            std::string resolvedA = resolveKeyframeValueVars(*currentSheet, valA);
+            std::string resolvedB = resolveKeyframeValueVars(*currentSheet, valB);
+            std::string syntax;
+            auto defIt = currentSheet->getPropertyDefinitions().find(prop);
+            if (defIt != currentSheet->getPropertyDefinitions().end()) {
+                syntax = defIt->second.syntax;
+            }
+            std::string interp = StyleSheet::interpolateTypedValue(resolvedA, resolvedB, easedT, syntax);
+            if (applyKeyframePropertyOverride(prop, interp)) anyChange = true;
+        }
+    }
+
+    if (anyChange) {
+        if (auto* app = Application::instance()) {
+            app->requestRedraw();
+        }
     }
 }
 

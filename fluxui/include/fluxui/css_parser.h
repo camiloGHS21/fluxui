@@ -27,6 +27,21 @@ struct CSSFontFace {
     std::string src;
 };
 
+// CSS @keyframes rule: a single keyframe (e.g. `from { ... }`, `50% { ... }`, `to { ... }`,
+// or a comma-grouped selector like `0%, 100% { ... }`). All selectors within a single
+// CSSKeyframeRule share the same declarations (CSS Animations Level 1, 2.2).
+struct CSSKeyframeRule {
+    // Offsets in [0, 1]. Multiple values indicate a comma-grouped selector like `0%, 100%`.
+    std::vector<float> keyTimes;
+    std::vector<CSSProperty> properties;
+};
+
+// A @keyframes rule: named timeline of keyframes (CSS Animations Level 1, 4).
+struct CSSKeyframesRule {
+    std::string name;
+    std::vector<CSSKeyframeRule> keyframes; // sorted ascending by first keyTime
+};
+
 struct CSSRule {
     std::string selector; // e.g. ".sidebar", "#dashboard", "button"
     std::vector<CSSProperty> properties;
@@ -94,6 +109,7 @@ public:
 
     std::vector<CSSRule> rules;
     std::vector<CSSFontFace> fontFaces;
+    std::vector<CSSKeyframesRule> keyframesRules;
     std::vector<std::string> layersOrder;
 
     const std::unordered_map<std::string, CSSPropertyDefinition>& getPropertyDefinitions() const {
@@ -294,6 +310,10 @@ private:
     static void mergeActiveProperty(Style& style, const std::string& name, const std::string& value);
     static bool isValidSyntax(const std::string& value, const std::string& syntax);
 public:
+    // Public @keyframes accessors (Blink CSSAnimations::FindKeyframesRule parity).
+    const CSSKeyframesRule* findKeyframes(const std::string& name) const;
+    const std::vector<CSSKeyframesRule>& getKeyframesRules() const { return keyframesRules; }
+    void parseKeyframes(const std::string& prelude, const std::vector<CSSToken>& block);
     static Color parseColor(const std::string& val);
     static CSSValue parseCSSValue(const std::string& val);
     static float parseLengthPixels(const std::string& val, float emBase = 16.0f);
@@ -315,6 +335,21 @@ public:
                                              const std::string& to,
                                              float t,
                                              const std::string& syntax);
+
+    // Parsers for animation/transition timing functions and lists (Blink css_animations.cc).
+    static TimingFunction parseTimingFunction(const std::string& value);
+    static std::vector<TimingFunction> parseTimingFunctionList(const std::string& value);
+    static std::vector<float> parseDurationList(const std::string& value);
+    static std::vector<std::string> parseAnimationNameList(const std::string& value);
+    static std::vector<AnimationDirection> parseAnimationDirectionList(const std::string& value);
+    static std::vector<AnimationFillMode> parseAnimationFillModeList(const std::string& value);
+    static std::vector<AnimationPlayState> parseAnimationPlayStateList(const std::string& value);
+    static std::vector<AnimationComposition> parseAnimationCompositionList(const std::string& value);
+    static std::vector<TransitionBehavior> parseTransitionBehaviorList(const std::string& value);
+    static std::vector<std::string> parseTransitionPropertyList(const std::string& value);
+    static std::string serializeTimingFunction(const TimingFunction& tf);
+    // Sample a timing function at progress t in [0,1] and return the eased t in [0,1].
+    static float sampleTimingFunction(const TimingFunction& tf, float t);
 };
 
 // ============================================================

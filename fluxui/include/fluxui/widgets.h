@@ -346,6 +346,34 @@ public:
     bool skipDOMChildrenPaint = false;
     int colspan = 1;
     int rowspan = 1;
+
+    // ============================================================
+    //  CSS @keyframes animation runtime (Blink Animation/KeyframeEffect parity)
+    // ============================================================
+    struct ActiveAnimation {
+        std::string name;                       // resolved @keyframes rule name
+        std::string keyframesOrigin;            // cache key (last @keyframes pointer tag)
+        float startTime = 0.0f;                 // local time when started
+        float currentTime = 0.0f;               // accumulated since start, in seconds
+        float duration = 0.0f;                  // total animation duration (one iteration)
+        float delay = 0.0f;
+        float iterationCount = 1.0f;            // -1 = infinite
+        AnimationDirection direction = AnimationDirection::Normal;
+        AnimationFillMode fillMode = AnimationFillMode::None;
+        AnimationPlayState playState = AnimationPlayState::Running;
+        AnimationComposition composition = AnimationComposition::Replace;
+        TimingFunction timingFunction = TimingFunction::ease();
+        bool started = false;
+        bool finished = false;                  // one-shot completion (no more iterations left)
+        int currentIteration = 0;               // 0-based current iteration
+        bool hasStartedFilling = false;         // for fill-mode forwards/both past finish
+    };
+    std::vector<ActiveAnimation> activeAnimations;
+    float localClock = 0.0f;                    // monotonic seconds since first update
+    bool firstUpdate = true;
+    std::string lastAnimationSignature;        // cache: serialized form of last applied animationName list
+    const StyleSheet* currentSheet = nullptr;   // non-owning, set by resolveStyles
+
     void attachLayoutTree();
     void detachLayoutTree();
     virtual std::unique_ptr<LayoutObject> createLayoutObject();
@@ -526,6 +554,15 @@ public:
     void checkFocusChanges();
     bool hasActiveAnimations() const;
     void resetTransientMotion();
+    // Drive all @keyframes animation effects for this widget. Called from update().
+    void tickAnimations(const InputState& input);
+    // Cancel any active @keyframes overrides in the compositor (used when a widget
+    // is removed from the tree or its animation list changes).
+    void clearAnimationOverrides();
+    // Apply a keyframe-defined property override to the local style without mutating
+    // shared computedStyle. Returns true if the property was a known animatable prop.
+    bool applyKeyframePropertyOverride(const std::string& name, const std::string& value);
+
     virtual void update(const InputState& input);
     virtual CursorType cursorAt(Vec2 point) const;
     virtual Widget* hitTest(Vec2 point, bool interactiveOnly = false);

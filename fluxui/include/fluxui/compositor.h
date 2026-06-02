@@ -73,6 +73,15 @@ public:
     bool getAnimatedFloat(uintptr_t widgetId, const std::string& propName, float& outValue);
     bool getAnimatedValue(uintptr_t widgetId, const std::string& propName, std::string& outValue);
 
+    // Keyframe-animation override layer (Blink animation-compositor). These store
+    // instantaneous values written by an @keyframes animation effect (no tween) and are
+    // preferred over the tweened "animations_" entries when read from paint code.
+    void setKeyframeFloat(uintptr_t widgetId, const std::string& propName, float value);
+    void setKeyframeValue(uintptr_t widgetId, const std::string& propName, const std::string& value);
+    bool getKeyframeFloat(uintptr_t widgetId, const std::string& propName, float& outValue) const;
+    bool getKeyframeValue(uintptr_t widgetId, const std::string& propName, std::string& outValue) const;
+    void clearKeyframeOverrides(uintptr_t widgetId);
+
     // Check if widget is currently being animated on the compositor
     bool hasAnimations(uintptr_t widgetId);
 
@@ -94,9 +103,17 @@ private:
 
     std::thread thread_;
     std::atomic<bool> running_{false};
-    std::mutex mutex_;
+    mutable std::mutex mutex_;
     std::unordered_map<std::string, CompositorAnimation> animations_; // Key: "widgetId:propName"
-    
+
+    // Keyframe-driven @keyframes override layer. The set/get path takes the same lock
+    // as `animations_` so a write here is visible to the read path immediately.
+    struct KeyframeOverride {
+        std::unordered_map<std::string, float> floats;
+        std::unordered_map<std::string, std::string> values;
+    };
+    std::unordered_map<uintptr_t, KeyframeOverride> keyframeOverrides_;
+
     struct CompositorScroll {
         uintptr_t widgetId = 0;
         Rect bounds;

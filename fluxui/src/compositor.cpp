@@ -190,6 +190,44 @@ bool CompositorEngine::getAnimatedValue(uintptr_t widgetId, const std::string& p
     return false;
 }
 
+void CompositorEngine::setKeyframeFloat(uintptr_t widgetId, const std::string& propName, float value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    keyframeOverrides_[widgetId].floats[propName] = value;
+    // A keyframe write supersedes any in-flight tween for the same property.
+    animations_.erase(std::to_string(widgetId) + ":" + propName);
+}
+
+void CompositorEngine::setKeyframeValue(uintptr_t widgetId, const std::string& propName, const std::string& value) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    keyframeOverrides_[widgetId].values[propName] = value;
+    animations_.erase(std::to_string(widgetId) + ":" + propName);
+}
+
+bool CompositorEngine::getKeyframeFloat(uintptr_t widgetId, const std::string& propName, float& outValue) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = keyframeOverrides_.find(widgetId);
+    if (it == keyframeOverrides_.end()) return false;
+    auto fit = it->second.floats.find(propName);
+    if (fit == it->second.floats.end()) return false;
+    outValue = fit->second;
+    return true;
+}
+
+bool CompositorEngine::getKeyframeValue(uintptr_t widgetId, const std::string& propName, std::string& outValue) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = keyframeOverrides_.find(widgetId);
+    if (it == keyframeOverrides_.end()) return false;
+    auto vit = it->second.values.find(propName);
+    if (vit == it->second.values.end()) return false;
+    outValue = vit->second;
+    return true;
+}
+
+void CompositorEngine::clearKeyframeOverrides(uintptr_t widgetId) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    keyframeOverrides_.erase(widgetId);
+}
+
 bool CompositorEngine::hasAnimations(uintptr_t widgetId) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::string prefix = std::to_string(widgetId) + ":";
@@ -197,6 +235,9 @@ bool CompositorEngine::hasAnimations(uintptr_t widgetId) {
         if (anim.active && key.rfind(prefix, 0) == 0) {
             return true;
         }
+    }
+    if (keyframeOverrides_.count(widgetId) > 0) {
+        return true;
     }
     return false;
 }

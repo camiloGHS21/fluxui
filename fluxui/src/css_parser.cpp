@@ -1795,6 +1795,13 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
                         bodyStr += t.text;
                     }
                     parsePropertyRule(propName, bodyStr);
+                } else if (lowerPrelude.rfind("@keyframes", 0) == 0 ||
+                           lowerPrelude.rfind("@-webkit-keyframes", 0) == 0) {
+                    size_t offset = (lowerPrelude.rfind("@-webkit-keyframes", 0) == 0) ? 18 : 10;
+                    std::string name = trim(preludeStr.substr(offset));
+                    if (!name.empty()) {
+                        parseKeyframes(name, blockContent);
+                    }
                 } else if (lowerPrelude.rfind("@layer", 0) == 0) {
                     std::string layerName = trim(preludeStr.substr(6));
                     std::string nestedLayerName;
@@ -2744,6 +2751,21 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto unresolvedBorderColor = std::move(target.unresolvedBorderColor);
     auto unresolvedBackgroundGradient = std::move(target.unresolvedBackgroundGradient);
 
+    auto animationName              = std::move(target.animationName);
+    auto animationDuration          = std::move(target.animationDuration);
+    auto animationDelay             = std::move(target.animationDelay);
+    auto animationIterationCount    = std::move(target.animationIterationCount);
+    auto animationDirection         = std::move(target.animationDirection);
+    auto animationFillMode          = std::move(target.animationFillMode);
+    auto animationPlayState         = std::move(target.animationPlayState);
+    auto animationTimingFunction    = std::move(target.animationTimingFunction);
+    auto animationComposition       = std::move(target.animationComposition);
+    auto transitionProperty         = std::move(target.transitionProperty);
+    auto transitionDurations        = std::move(target.transitionDurations);
+    auto transitionDelays           = std::move(target.transitionDelays);
+    auto transitionTimingFunctions  = std::move(target.transitionTimingFunctions);
+    auto transitionBehavior         = std::move(target.transitionBehavior);
+
     target = source;
 
     target.customProperties = std::move(customProperties);
@@ -2754,6 +2776,21 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     target.unresolvedColor = std::move(unresolvedColor);
     target.unresolvedBorderColor = std::move(unresolvedBorderColor);
     target.unresolvedBackgroundGradient = std::move(unresolvedBackgroundGradient);
+
+    target.animationName              = std::move(animationName);
+    target.animationDuration          = std::move(animationDuration);
+    target.animationDelay             = std::move(animationDelay);
+    target.animationIterationCount    = std::move(animationIterationCount);
+    target.animationDirection         = std::move(animationDirection);
+    target.animationFillMode          = std::move(animationFillMode);
+    target.animationPlayState         = std::move(animationPlayState);
+    target.animationTimingFunction    = std::move(animationTimingFunction);
+    target.animationComposition       = std::move(animationComposition);
+    target.transitionProperty         = std::move(transitionProperty);
+    target.transitionDurations        = std::move(transitionDurations);
+    target.transitionDelays           = std::move(transitionDelays);
+    target.transitionTimingFunctions  = std::move(transitionTimingFunctions);
+    target.transitionBehavior         = std::move(transitionBehavior);
 }
 
 static bool applyCSSWideProperty(Style& target,
@@ -2887,7 +2924,51 @@ static bool applyCSSWideProperty(Style& target,
     } else if (name == "cursor") {
         target.cursor = source.cursor;
     } else if (name == "transition") {
+        target.transitionDurations = source.transitionDurations;
+        target.transitionProperty = source.transitionProperty;
+        target.transitionDelays = source.transitionDelays;
+        target.transitionTimingFunctions = source.transitionTimingFunctions;
+        target.transitionBehavior = source.transitionBehavior;
         target.transitionDuration = source.transitionDuration;
+    } else if (name == "transition-property") {
+        target.transitionProperty = source.transitionProperty;
+    } else if (name == "transition-duration") {
+        target.transitionDurations = source.transitionDurations;
+        target.transitionDuration = source.transitionDuration;
+    } else if (name == "transition-delay") {
+        target.transitionDelays = source.transitionDelays;
+    } else if (name == "transition-timing-function") {
+        target.transitionTimingFunctions = source.transitionTimingFunctions;
+    } else if (name == "transition-behavior") {
+        target.transitionBehavior = source.transitionBehavior;
+    } else if (name == "animation") {
+        target.animationName = source.animationName;
+        target.animationDuration = source.animationDuration;
+        target.animationDelay = source.animationDelay;
+        target.animationIterationCount = source.animationIterationCount;
+        target.animationDirection = source.animationDirection;
+        target.animationFillMode = source.animationFillMode;
+        target.animationPlayState = source.animationPlayState;
+        target.animationTimingFunction = source.animationTimingFunction;
+        target.animationComposition = source.animationComposition;
+    } else if (name == "animation-name") {
+        target.animationName = source.animationName;
+    } else if (name == "animation-duration") {
+        target.animationDuration = source.animationDuration;
+    } else if (name == "animation-delay") {
+        target.animationDelay = source.animationDelay;
+    } else if (name == "animation-iteration-count") {
+        target.animationIterationCount = source.animationIterationCount;
+    } else if (name == "animation-direction") {
+        target.animationDirection = source.animationDirection;
+    } else if (name == "animation-fill-mode") {
+        target.animationFillMode = source.animationFillMode;
+    } else if (name == "animation-play-state") {
+        target.animationPlayState = source.animationPlayState;
+    } else if (name == "animation-timing-function") {
+        target.animationTimingFunction = source.animationTimingFunction;
+    } else if (name == "animation-composition") {
+        target.animationComposition = source.animationComposition;
     } else if (name == "scale" || name == "transform") {
         target.scale = source.scale;
     } else if (name == "box-sizing") {
@@ -4167,20 +4248,232 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "se-resize" || value == "nwse-resize") style.cursor = CursorType::ResizeNWSE;
         else style.cursor = CursorType::Default;
     } else if (name == "transition") {
-        for (const auto& part : splitTopLevel(value, ',')) {
-            std::string_view tokens[4];
-            int count = 0;
-            splitWhitespace(part, tokens, 4, count);
-            for (int idx = 0; idx < count; idx++) {
-                std::string_view token = tokens[idx];
-                bool isMs = token.size() > 2 && token.substr(token.size() - 2) == "ms";
-                bool isSec = token.size() > 1 && token.back() == 's' && !isMs;
+        // Full `transition` shorthand (CSS Transitions Level 1 + 2):
+        //   <single-transition> = [ none | <single-transition-property> ]
+        //                         || <time> || <easing-function> || <time>
+        //   transition = <single-transition>#
+        // Tokens within a single transition are order-independent: classify each token
+        // by content (time, easing, or property name).
+        auto parts = splitTopLevel(value, ',');
+        std::vector<std::string> props;
+        std::vector<float> durations;
+        std::vector<float> delays;
+        std::vector<TimingFunction> tfs;
+        std::vector<TransitionBehavior> behaviors;
+
+        for (const auto& part : parts) {
+            std::string p = trim(part);
+            if (p.empty()) continue;
+
+            std::string property = "all";
+            float dur = 0.0f;
+            float del = 0.0f;
+            TimingFunction tf = TimingFunction::ease();
+            TransitionBehavior behavior = TransitionBehavior::Normal;
+            int timeSlots = 0;
+
+            std::string_view toks[16];
+            int nTok = 0;
+            splitWhitespace(p, toks, 16, nTok);
+            for (int i = 0; i < nTok; ++i) {
+                std::string tok = std::string(toks[i]);
+                if (tok.empty()) continue;
+                std::string tl = tok;
+                for (char& c : tl) c = (char)std::tolower((unsigned char)c);
+
+                bool isMs = tl.size() > 2 && tl.substr(tl.size() - 2) == "ms";
+                bool isSec = tl.size() > 1 && tl.back() == 's' && !isMs;
                 if (isMs || isSec) {
-                    style.transitionDuration = parseDuration(std::string(token));
-                    return;
+                    float t = parseDuration(tok);
+                    if (timeSlots == 0) { dur = t; timeSlots++; }
+                    else                { del = t; timeSlots++; }
+                    continue;
+                }
+                // Timing function keyword / function
+                if (tl == "linear" || tl == "ease" || tl == "ease-in" || tl == "ease-out" ||
+                    tl == "ease-in-out" || tl == "step-start" || tl == "step-end" ||
+                    tl.rfind("cubic-bezier(", 0) == 0 || tl.rfind("steps(", 0) == 0) {
+                    tf = parseTimingFunction(tok);
+                    continue;
+                }
+                // transition-behavior: allow-discrete
+                if (tl == "allow-discrete") {
+                    behavior = TransitionBehavior::AllowDiscrete;
+                    continue;
+                }
+                // Otherwise it must be a property name (or "none"/"all").
+                property = tl;
+            }
+            props.push_back(property);
+            durations.push_back(dur);
+            delays.push_back(del);
+            tfs.push_back(tf);
+            behaviors.push_back(behavior);
+        }
+        style.transitionProperty         = std::move(props);
+        style.transitionDurations        = std::move(durations);
+        style.transitionDelays           = std::move(delays);
+        style.transitionTimingFunctions  = std::move(tfs);
+        style.transitionBehavior         = std::move(behaviors);
+        if (!style.transitionDurations.empty()) {
+            style.transitionDuration = style.transitionDurations[0];
+        }
+    } else if (name == "transition-property") {
+        style.transitionProperty = parseTransitionPropertyList(value);
+    } else if (name == "transition-duration") {
+        style.transitionDurations = parseDurationList(value);
+        if (!style.transitionDurations.empty()) {
+            style.transitionDuration = style.transitionDurations[0];
+        }
+    } else if (name == "transition-delay") {
+        style.transitionDelays = parseDurationList(value);
+    } else if (name == "transition-timing-function") {
+        style.transitionTimingFunctions = parseTimingFunctionList(value);
+    } else if (name == "transition-behavior") {
+        style.transitionBehavior = parseTransitionBehaviorList(value);
+    } else if (name == "animation") {
+        // Full `animation` shorthand (CSS Animations Level 1):
+        //   <single-animation> = <time> || <easing-function> || <time>
+        //                        || <single-animation-iteration-count>
+        //                        || <single-animation-direction>
+        //                        || <single-animation-fill-mode>
+        //                        || <single-animation-play-state>
+        //                        || [ none | <keyframes-name> ]
+        //   animation = <single-animation>#
+        auto parts = splitTopLevel(value, ',');
+        std::vector<std::string> names;
+        std::vector<float> durations, delays, iterationCounts;
+        std::vector<AnimationDirection> directions;
+        std::vector<AnimationFillMode> fillModes;
+        std::vector<AnimationPlayState> playStates;
+        std::vector<TimingFunction> tfs;
+        std::vector<AnimationComposition> compositions;
+
+        for (const auto& part : parts) {
+            std::string p = trim(part);
+            if (p.empty()) continue;
+
+            std::string name = "none";
+            float dur = 0.0f;
+            float del = 0.0f;
+            float iter = 1.0f;
+            AnimationDirection dir = AnimationDirection::Normal;
+            AnimationFillMode fill = AnimationFillMode::None;
+            AnimationPlayState play = AnimationPlayState::Running;
+            TimingFunction tf = TimingFunction::ease();
+            AnimationComposition comp = AnimationComposition::Replace;
+            int timeSlots = 0;
+            bool nameSet = false;
+
+            std::string_view toks[16];
+            int nTok = 0;
+            splitWhitespace(p, toks, 16, nTok);
+            for (int i = 0; i < nTok; ++i) {
+                std::string tok = std::string(toks[i]);
+                if (tok.empty()) continue;
+                std::string tl = tok;
+                for (char& c : tl) c = (char)std::tolower((unsigned char)c);
+
+                bool isMs = tl.size() > 2 && tl.substr(tl.size() - 2) == "ms";
+                bool isSec = tl.size() > 1 && tl.back() == 's' && !isMs;
+                if (isMs || isSec) {
+                    float t = parseDuration(tok);
+                    if (timeSlots == 0) { dur = t; timeSlots++; }
+                    else                { del = t; timeSlots++; }
+                    continue;
+                }
+                if (tl == "infinite") { iter = -1.0f; continue; }
+
+                if (tl == "normal")             { dir   = AnimationDirection::Normal;            continue; }
+                if (tl == "reverse")            { dir   = AnimationDirection::Reverse;           continue; }
+                if (tl == "alternate")          { dir   = AnimationDirection::Alternate;         continue; }
+                if (tl == "alternate-reverse")  { dir   = AnimationDirection::AlternateReverse;  continue; }
+
+                if (tl == "none")      { fill = AnimationFillMode::None;      if (!nameSet) { name = "none"; nameSet = true; } continue; }
+                if (tl == "forwards")  { fill = AnimationFillMode::Forwards;  continue; }
+                if (tl == "backwards") { fill = AnimationFillMode::Backwards; continue; }
+                if (tl == "both")      { fill = AnimationFillMode::Both;      continue; }
+
+                if (tl == "running")  { play = AnimationPlayState::Running;  continue; }
+                if (tl == "paused")   { play = AnimationPlayState::Paused;   continue; }
+
+                if (tl == "add")        { comp = AnimationComposition::Add;        continue; }
+                if (tl == "accumulate") { comp = AnimationComposition::Accumulate; continue; }
+
+                if (tl == "linear" || tl == "ease" || tl == "ease-in" || tl == "ease-out" ||
+                    tl == "ease-in-out" || tl == "step-start" || tl == "step-end" ||
+                    tl.rfind("cubic-bezier(", 0) == 0 || tl.rfind("steps(", 0) == 0) {
+                    tf = parseTimingFunction(tok);
+                    continue;
+                }
+
+                // Iteration count: a bare number (or "0", "1.5", "infinite" handled above).
+                bool isNumber = true;
+                bool sawDigit = false;
+                size_t idx = 0;
+                if (idx < tl.size() && (tl[idx] == '+' || tl[idx] == '-')) idx++;
+                for (; idx < tl.size(); ++idx) {
+                    if (tl[idx] >= '0' && tl[idx] <= '9') sawDigit = true;
+                    else if (tl[idx] == '.') { /* ok */ }
+                    else { isNumber = false; break; }
+                }
+                if (isNumber && sawDigit) {
+                    iter = parseFloat(tok);
+                    continue;
+                }
+
+                // Otherwise it's the animation name (ident; case-sensitive in spec, but
+                // CSS Animations Level 1 says names are case-sensitive only for the
+                // "none" / "initial" / "inherit" keywords — we keep verbatim).
+                if (!nameSet) {
+                    name = tok;
+                    nameSet = true;
                 }
             }
+            names.push_back(name);
+            durations.push_back(dur);
+            delays.push_back(del);
+            iterationCounts.push_back(iter);
+            directions.push_back(dir);
+            fillModes.push_back(fill);
+            playStates.push_back(play);
+            tfs.push_back(tf);
+            compositions.push_back(comp);
         }
+        style.animationName           = std::move(names);
+        style.animationDuration       = std::move(durations);
+        style.animationDelay          = std::move(delays);
+        style.animationIterationCount = std::move(iterationCounts);
+        style.animationDirection      = std::move(directions);
+        style.animationFillMode       = std::move(fillModes);
+        style.animationPlayState      = std::move(playStates);
+        style.animationTimingFunction = std::move(tfs);
+        style.animationComposition    = std::move(compositions);
+    } else if (name == "animation-name") {
+        style.animationName = parseAnimationNameList(value);
+    } else if (name == "animation-duration") {
+        style.animationDuration = parseDurationList(value);
+    } else if (name == "animation-delay") {
+        style.animationDelay = parseDurationList(value);
+    } else if (name == "animation-iteration-count") {
+        // `infinite` or comma-list of numbers
+        style.animationIterationCount.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            std::string s = trim(part);
+            for (char& c : s) c = (char)std::tolower((unsigned char)c);
+            if (s == "infinite") style.animationIterationCount.push_back(-1.0f);
+            else                 style.animationIterationCount.push_back(parseFloat(s));
+        }
+    } else if (name == "animation-direction") {
+        style.animationDirection = parseAnimationDirectionList(value);
+    } else if (name == "animation-fill-mode") {
+        style.animationFillMode = parseAnimationFillModeList(value);
+    } else if (name == "animation-play-state") {
+        style.animationPlayState = parseAnimationPlayStateList(value);
+    } else if (name == "animation-timing-function") {
+        style.animationTimingFunction = parseTimingFunctionList(value);
+    } else if (name == "animation-composition") {
+        style.animationComposition = parseAnimationCompositionList(value);
     } else if (name == "position") {
         if (value == "relative") style.position = Position::Relative;
         else if (value == "absolute") style.position = Position::Absolute;
@@ -5592,6 +5885,437 @@ const StyleSheet::InvalidationSet* StyleSheet::getIdInvalidationSet(const std::s
         return &it->second;
     }
     return nullptr;
+}
+
+// ============================================================
+//  CSS Animations & Transitions (Blink css_animations.cc parity)
+// ============================================================
+
+// Parse a single keyframe selector token (e.g. "from", "to", "0%", "50%", "0.5")
+// into an offset in [0,1]. Returns -1.0f on failure.
+static float parseKeyframeOffset(std::string_view sel) {
+    std::string s = StyleSheet::trim(std::string(sel));
+    if (s.empty()) return -1.0f;
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    if (s == "from") return 0.0f;
+    if (s == "to")   return 1.0f;
+    if (!s.empty() && s.back() == '%') {
+        s.pop_back();
+        return std::clamp(StyleSheet::parseFloat(s) / 100.0f, 0.0f, 1.0f);
+    }
+    float v = StyleSheet::parseFloat(s);
+    if (v < 0.0f) return -1.0f;
+    return std::clamp(v, 0.0f, 1.0f);
+}
+
+void StyleSheet::parseKeyframes(const std::string& prelude, const std::vector<CSSToken>& block) {
+    std::string name = trim(prelude);
+    if (name.empty()) return;
+
+    CSSKeyframesRule rule;
+    rule.name = name;
+
+    // Re-parse the inner block to extract selector group + declarations.
+    size_t i = 0;
+    const size_t n = block.size();
+    while (i < n) {
+        // Skip whitespace and stray semicolons
+        while (i < n && (block[i].type == CSSToken::Whitespace ||
+                         block[i].type == CSSToken::Semicolon)) {
+            i++;
+        }
+        if (i >= n) break;
+
+        // Read selector list up to '{' (commas separate selectors in a group)
+        std::string selectorList;
+        int parenDepth = 0;
+        while (i < n) {
+            const auto& t = block[i];
+            if (t.type == CSSToken::LeftParenthesis) parenDepth++;
+            else if (t.type == CSSToken::RightParenthesis && parenDepth > 0) parenDepth--;
+            if (parenDepth == 0 && t.type == CSSToken::LeftBrace) break;
+            selectorList += t.text;
+            i++;
+        }
+        if (i >= n || block[i].type != CSSToken::LeftBrace) break;
+        i++; // consume '{'
+
+        // Collect declaration text up to matching '}'
+        std::string body;
+        int braceDepth = 1;
+        while (i < n && braceDepth > 0) {
+            const auto& t = block[i];
+            if (t.type == CSSToken::LeftBrace) braceDepth++;
+            else if (t.type == CSSToken::RightBrace) {
+                braceDepth--;
+                if (braceDepth == 0) { i++; break; }
+            }
+            body += t.text;
+            i++;
+        }
+
+        // Parse offsets for this selector list (e.g. "0%, 50%, 100%")
+        CSSKeyframeRule kf;
+        std::string group = selectorList;
+        size_t start = 0;
+        bool anyOffset = false;
+        while (start <= group.size()) {
+            size_t comma = group.find(',', start);
+            std::string part = trim(group.substr(start, comma == std::string::npos ? std::string::npos : comma - start));
+            float off = parseKeyframeOffset(part);
+            if (off >= 0.0f) {
+                kf.keyTimes.push_back(off);
+                anyOffset = true;
+            }
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+        if (!anyOffset) continue; // invalid selector, skip
+
+        // Parse declarations within this keyframe body
+        for (std::string line : splitDeclarations(body)) {
+            line = trim(line);
+            if (line.empty()) continue;
+            auto colon = line.find(':');
+            if (colon == std::string::npos) continue;
+            CSSProperty prop;
+            prop.name = lowerAscii(trim(line.substr(0, colon)));
+            prop.value = trim(line.substr(colon + 1));
+            prop.sourceOrder = nextPropertyOrder_++;
+            kf.properties.push_back(std::move(prop));
+        }
+
+        if (!kf.properties.empty()) {
+            rule.keyframes.push_back(std::move(kf));
+        }
+    }
+
+    // Sort by minimum offset so we can binary-search
+    std::sort(rule.keyframes.begin(), rule.keyframes.end(),
+              [](const CSSKeyframeRule& a, const CSSKeyframeRule& b) {
+                  float ma = a.keyTimes.empty() ? 0.0f : *std::min_element(a.keyTimes.begin(), a.keyTimes.end());
+                  float mb = b.keyTimes.empty() ? 0.0f : *std::min_element(b.keyTimes.begin(), b.keyTimes.end());
+                  return ma < mb;
+              });
+
+    // Replace any previous @keyframes with the same name (last-wins, Blink behavior)
+    for (auto& existing : keyframesRules) {
+        if (existing.name == rule.name) {
+            existing = std::move(rule);
+            return;
+        }
+    }
+    keyframesRules.push_back(std::move(rule));
+}
+
+const CSSKeyframesRule* StyleSheet::findKeyframes(const std::string& name) const {
+    for (const auto& kf : keyframesRules) {
+        if (kf.name == name) return &kf;
+    }
+    return nullptr;
+}
+
+// ---- Timing function parsers (Blink CSSAnimationData::ParseTimingFunction) ----
+
+static std::vector<std::string> splitTopLevelLocal(const std::string& value, char delimiter) {
+    std::vector<std::string> out;
+    std::string current;
+    int depth = 0;
+    for (char c : value) {
+        if (c == '(' || c == '[') depth++;
+        else if (c == ')' || c == ']') depth--;
+        if (c == delimiter && depth == 0) {
+            out.push_back(current);
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+    out.push_back(current);
+    return out;
+}
+
+static TimingFunction parseTimingFunctionToken(std::string_view tok);
+
+static TimingFunction parseTimingFunctionToken(std::string tok) {
+    // Trim
+    tok = StyleSheet::trim(std::string(tok));
+    if (tok.empty()) return TimingFunction::ease();
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+
+    if (tok == "linear")      return TimingFunction::linear();
+    if (tok == "ease")        return TimingFunction::ease();
+    if (tok == "ease-in")     return TimingFunction::easeIn();
+    if (tok == "ease-out")    return TimingFunction::easeOut();
+    if (tok == "ease-in-out") return TimingFunction::easeInOut();
+    if (tok == "step-start")  return TimingFunction::stepStart();
+    if (tok == "step-end")    return TimingFunction::stepEnd();
+
+    // cubic-bezier(x1, y1, x2, y2)
+    if (tok.rfind("cubic-bezier(", 0) == 0 && tok.back() == ')') {
+        std::string inner = tok.substr(13, tok.size() - 14);
+        std::vector<std::string> parts = splitTopLevelLocal(inner, ',');
+        if (parts.size() == 4) {
+            float v[4];
+            for (int i = 0; i < 4; ++i) v[i] = StyleSheet::parseFloat(parts[i]);
+            return TimingFunction::bezier(v[0], v[1], v[2], v[3]);
+        }
+    }
+
+    // steps(n, jump-start|jump-end|jump-none|jump-both|start|end)
+    if (tok.rfind("steps(", 0) == 0 && tok.back() == ')') {
+        std::string inner = tok.substr(6, tok.size() - 7);
+        std::vector<std::string> parts = splitTopLevelLocal(inner, ',');
+        int n = parts.empty() ? 1 : (int)StyleSheet::parseFloat(parts[0]);
+        if (n < 1) n = 1;
+        TimingFunction::StepPosition pos = TimingFunction::JumpEnd;
+        if (parts.size() >= 2) {
+            std::string p = StyleSheet::trim(parts[1]);
+            for (char& c : p) c = (char)std::tolower((unsigned char)c);
+            if      (p == "jump-start" || p == "start")     pos = TimingFunction::JumpStart;
+            else if (p == "jump-end"   || p == "end")       pos = TimingFunction::JumpEnd;
+            else if (p == "jump-none")                      pos = TimingFunction::JumpNone;
+            else if (p == "jump-both" || p == "both")      pos = TimingFunction::JumpBoth;
+        }
+        return TimingFunction::steps(n, pos);
+    }
+
+    return TimingFunction::ease();
+}
+
+TimingFunction StyleSheet::parseTimingFunction(const std::string& value) {
+    return parseTimingFunctionToken(value);
+}
+
+std::vector<TimingFunction> StyleSheet::parseTimingFunctionList(const std::string& value) {
+    std::vector<TimingFunction> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseTimingFunctionToken(part));
+    }
+    return out;
+}
+
+std::vector<float> StyleSheet::parseDurationList(const std::string& value) {
+    std::vector<float> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseDuration(part));
+    }
+    return out;
+}
+
+// Animation names: a comma-separated list of identifiers or `none`. Strings like
+// `from-to` are not valid; reserved keywords like `none`, `initial`, `inherit` are passed through.
+std::vector<std::string> StyleSheet::parseAnimationNameList(const std::string& value) {
+    std::vector<std::string> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        std::string s = trim(part);
+        if (s.empty()) continue;
+        out.push_back(s);
+    }
+    return out;
+}
+
+static AnimationDirection parseAnimationDirectionKeyword(std::string tok) {
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+    tok = StyleSheet::trim(tok);
+    if (tok == "normal")             return AnimationDirection::Normal;
+    if (tok == "reverse")            return AnimationDirection::Reverse;
+    if (tok == "alternate")          return AnimationDirection::Alternate;
+    if (tok == "alternate-reverse")  return AnimationDirection::AlternateReverse;
+    return AnimationDirection::Normal;
+}
+
+std::vector<AnimationDirection> StyleSheet::parseAnimationDirectionList(const std::string& value) {
+    std::vector<AnimationDirection> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseAnimationDirectionKeyword(part));
+    }
+    return out;
+}
+
+static AnimationFillMode parseAnimationFillModeKeyword(std::string tok) {
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+    tok = StyleSheet::trim(tok);
+    if (tok == "none")      return AnimationFillMode::None;
+    if (tok == "forwards")  return AnimationFillMode::Forwards;
+    if (tok == "backwards") return AnimationFillMode::Backwards;
+    if (tok == "both")      return AnimationFillMode::Both;
+    return AnimationFillMode::None;
+}
+
+std::vector<AnimationFillMode> StyleSheet::parseAnimationFillModeList(const std::string& value) {
+    std::vector<AnimationFillMode> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseAnimationFillModeKeyword(part));
+    }
+    return out;
+}
+
+static AnimationPlayState parseAnimationPlayStateKeyword(std::string tok) {
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+    tok = StyleSheet::trim(tok);
+    if (tok == "paused")  return AnimationPlayState::Paused;
+    return AnimationPlayState::Running;
+}
+
+std::vector<AnimationPlayState> StyleSheet::parseAnimationPlayStateList(const std::string& value) {
+    std::vector<AnimationPlayState> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseAnimationPlayStateKeyword(part));
+    }
+    return out;
+}
+
+static AnimationComposition parseAnimationCompositionKeyword(std::string tok) {
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+    tok = StyleSheet::trim(tok);
+    if (tok == "add")        return AnimationComposition::Add;
+    if (tok == "accumulate") return AnimationComposition::Accumulate;
+    return AnimationComposition::Replace;
+}
+
+std::vector<AnimationComposition> StyleSheet::parseAnimationCompositionList(const std::string& value) {
+    std::vector<AnimationComposition> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseAnimationCompositionKeyword(part));
+    }
+    return out;
+}
+
+static TransitionBehavior parseTransitionBehaviorKeyword(std::string tok) {
+    for (char& c : tok) c = (char)std::tolower((unsigned char)c);
+    tok = StyleSheet::trim(tok);
+    if (tok == "allow-discrete") return TransitionBehavior::AllowDiscrete;
+    return TransitionBehavior::Normal;
+}
+
+std::vector<TransitionBehavior> StyleSheet::parseTransitionBehaviorList(const std::string& value) {
+    std::vector<TransitionBehavior> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        out.push_back(parseTransitionBehaviorKeyword(part));
+    }
+    return out;
+}
+
+std::vector<std::string> StyleSheet::parseTransitionPropertyList(const std::string& value) {
+    std::vector<std::string> out;
+    for (const auto& part : splitTopLevel(value, ',')) {
+        std::string s = trim(part);
+        for (char& c : s) c = (char)std::tolower((unsigned char)c);
+        if (!s.empty()) out.push_back(s);
+    }
+    return out;
+}
+
+std::string StyleSheet::serializeTimingFunction(const TimingFunction& tf) {
+    switch (tf.kind) {
+        case TimingFunction::Linear:    return "linear";
+        case TimingFunction::Ease:      return "ease";
+        case TimingFunction::EaseIn:    return "ease-in";
+        case TimingFunction::EaseOut:   return "ease-out";
+        case TimingFunction::EaseInOut: return "ease-in-out";
+        case TimingFunction::StepStart: return "step-start";
+        case TimingFunction::StepEnd:   return "step-end";
+        case TimingFunction::CubicBezier: {
+            char buf[96];
+            std::snprintf(buf, sizeof(buf), "cubic-bezier(%g, %g, %g, %g)",
+                          tf.params[0], tf.params[1], tf.params[2], tf.params[3]);
+            return buf;
+        }
+        case TimingFunction::Steps: {
+            const char* posNames[] = {"jump-start", "jump-end", "jump-none", "jump-both", "start", "end"};
+            int idx = (int)tf.stepPosition;
+            if (idx < 0 || idx > 5) idx = 1;
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "steps(%d, %s)", tf.stepCount, posNames[idx]);
+            return buf;
+        }
+    }
+    return "ease";
+}
+
+// Sample a TimingFunction at progress `t` in [0,1] and return the eased value in [0,1].
+// Mirrors Blink's CSSAnimationData::EvaluateTimingFunction for cubic-bezier,
+// and applies the steps() staircase per CSS Easing Functions Level 1.
+float StyleSheet::sampleTimingFunction(const TimingFunction& tf, float t) {
+    if (t <= 0.0f) return 0.0f;
+    if (t >= 1.0f) return 1.0f;
+
+    switch (tf.kind) {
+        case TimingFunction::Linear:
+            return t;
+        case TimingFunction::Ease:
+        case TimingFunction::EaseIn:
+        case TimingFunction::EaseOut:
+        case TimingFunction::EaseInOut:
+        case TimingFunction::CubicBezier: {
+            // Newton-Raphson solve of cubic-bezier, mirror of compositor's evaluateCubicBezier.
+            float x1 = tf.params[0], y1 = tf.params[1];
+            float x2 = tf.params[2], y2 = tf.params[3];
+            float cx = 3.0f * x1;
+            float bx = 3.0f * (x2 - x1) - cx;
+            float ax = 1.0f - cx - bx;
+            float cy = 3.0f * y1;
+            float by = 3.0f * (y2 - y1) - cy;
+            float ay = 1.0f - cy - by;
+
+            auto sampleX = [&](float v) { return ((ax * v + bx) * v + cx) * v; };
+            auto sampleY = [&](float v) { return ((ay * v + by) * v + cy) * v; };
+            auto sampleDX = [&](float v) { return (3.0f * ax * v + 2.0f * bx) * v + cx; };
+
+            float x = t;
+            float t_guess = t;
+            for (int i = 0; i < 8; ++i) {
+                float x_est = sampleX(t_guess) - x;
+                if (std::abs(x_est) < 1e-6f) return sampleY(t_guess);
+                float d = sampleDX(t_guess);
+                if (std::abs(d) < 1e-6f) break;
+                t_guess -= x_est / d;
+            }
+            float lo = 0.0f, hi = 1.0f;
+            t_guess = t;
+            if (t_guess < lo) return sampleY(lo);
+            if (t_guess > hi) return sampleY(hi);
+            while (lo < hi) {
+                float x_est = sampleX(t_guess);
+                if (std::abs(x_est - x) < 1e-4f) return sampleY(t_guess);
+                if (x > x_est) lo = t_guess; else hi = t_guess;
+                t_guess = (hi + lo) * 0.5f;
+            }
+            return sampleY(t_guess);
+        }
+        case TimingFunction::StepStart:
+            return 1.0f;
+        case TimingFunction::StepEnd:
+            return 0.0f;
+        case TimingFunction::Steps: {
+            int n = std::max(1, tf.stepCount);
+            float progress = t * n;
+            switch (tf.stepPosition) {
+                case TimingFunction::JumpStart: return std::min(1.0f, std::ceil(progress) / n);
+                case TimingFunction::JumpEnd:   return std::min(1.0f, std::floor(progress) / n);
+                case TimingFunction::JumpNone: {
+                    float steps = (float)n;
+                    float cur = std::floor(progress);
+                    if (cur >= steps) return 1.0f;
+                    float frac = progress - cur;
+                    if (frac <= 0.5f) return cur / steps;
+                    return (cur + 1.0f) / steps;
+                }
+                case TimingFunction::JumpBoth: {
+                    float steps = (float)n;
+                    float cur = std::floor(progress);
+                    if (cur < 0.0f) cur = 0.0f;
+                    if (cur > steps) cur = steps;
+                    return cur / steps;
+                }
+                case TimingFunction::Start: return t == 0.0f ? 0.0f : std::min(1.0f, std::ceil(t * n) / n);
+                case TimingFunction::End:   return std::min(1.0f, std::floor(t * n) / n);
+            }
+            return t;
+        }
+    }
+    return t;
 }
 
 } // namespace FluxUI
