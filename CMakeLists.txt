@@ -588,4 +588,15 @@ target_include_directories(test_at_rules PRIVATE
 )
 enable_release_lto(test_at_rules)
 
+add_executable(test_nesting
+    examples/cpp/test_nesting.cpp
+)
+target_link_libraries(test_nesting PRIVATE
+    fluxui
+)
+target_include_directories(test_nesting PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_nesting)
+
 

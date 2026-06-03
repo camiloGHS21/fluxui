@@ -1859,6 +1859,26 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         auto rbrace = nestedStr.rfind('}');
         if (rbrace == std::string::npos || rbrace <= brace) continue;
         std::string nestedBody = nestedStr.substr(brace + 1, rbrace - brace - 1);
+
+        // Handle nested at-rules: @media, @supports, @layer within a style rule
+        // (CSS Nesting Level 1 §3 — nested group rules)
+        std::string nestedLower = lowerAscii(nestedSelector);
+        if (!nestedSelector.empty() && nestedSelector[0] == '@') {
+            if (nestedLower.rfind("@media", 0) == 0) {
+                std::string query = trim(nestedSelector.substr(6));
+                std::string combinedQuery = mediaQuery.empty() ? query : mediaQuery + " and " + query;
+                // Re-wrap the body with the current parent selector so rules inherit context
+                parseRule(selector, nestedBody, combinedQuery, currentLayer);
+            } else if (nestedLower.rfind("@supports", 0) == 0) {
+                parseRule(selector, nestedBody, mediaQuery, currentLayer);
+            } else if (nestedLower.rfind("@layer", 0) == 0) {
+                std::string layerName = trim(nestedSelector.substr(6));
+                std::string nestedLayerName = currentLayer.empty() ? layerName : currentLayer + "." + layerName;
+                parseRule(selector, nestedBody, mediaQuery, nestedLayerName);
+            }
+            continue;
+        }
+
         std::string resolvedSelector;
         std::vector<std::string> parentParts = splitTopLevel(selector, ',');
         std::vector<std::string> nestedParts = splitTopLevel(nestedSelector, ',');
@@ -1867,12 +1887,19 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
             for (size_t j = 0; j < nestedParts.size(); ++j) {
                 std::string nestedPart = trim(nestedParts[j]);
                 if (!resolvedSelector.empty()) resolvedSelector += ", ";
-                size_t ampPos = nestedPart.find('&');
-                if (ampPos != std::string::npos) {
-                    std::string part = nestedPart;
-                    part.replace(ampPos, 1, parentPart);
-                    resolvedSelector += part;
+                // Replace ALL occurrences of & with parent (Blink CSSNestingType parity)
+                if (nestedPart.find('&') != std::string::npos) {
+                    std::string resolved;
+                    for (size_t k = 0; k < nestedPart.size(); ++k) {
+                        if (nestedPart[k] == '&') {
+                            resolved += parentPart;
+                        } else {
+                            resolved += nestedPart[k];
+                        }
+                    }
+                    resolvedSelector += resolved;
                 } else {
+                    // Implicit descendant nesting (CSS Nesting §2.1)
                     resolvedSelector += parentPart + " " + nestedPart;
                 }
             }
