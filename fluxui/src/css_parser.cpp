@@ -900,10 +900,28 @@ static bool matchCompoundSelector(std::string_view compound,
                 std::vector<std::string> parts;
                 std::vector<char> combinators;
                 splitSelectorChain(selector, parts, combinators);
-                if (parts.size() == 1 &&
-                    matchCompoundSelector(parts[0], className, id, type, widget)) {
-                    matchedAny = true;
-                    break;
+                if (parts.empty()) continue;
+                if (parts.size() == 1) {
+                    // Simple compound: just match against current element
+                    if (matchCompoundSelector(parts[0], className, id, type, widget)) {
+                        matchedAny = true;
+                        break;
+                    }
+                } else if (widget) {
+                    // Complex selector with combinators: build a temporary rule
+                    // and use full selectorMatches with ancestor traversal (Blink parity).
+                    CSSRule tempRule;
+                    tempRule.selector = selector;
+                    tempRule.parts = parts;
+                    tempRule.combinators = combinators;
+                    std::vector<CSSSelectorNode> ancestors;
+                    for (const Widget* p = widget->parent; p; p = p->parent) {
+                        ancestors.push_back({p->className, p->id, p->selectorType(), p});
+                    }
+                    if (StyleSheet::selectorMatches(tempRule, className, id, type, ancestors, nullptr, widget)) {
+                        matchedAny = true;
+                        break;
+                    }
                 }
             }
             if (pseudoName == "not") {

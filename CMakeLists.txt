@@ -566,4 +566,15 @@ target_include_directories(test_pseudo PRIVATE
 )
 enable_release_lto(test_pseudo)
 
+add_executable(test_structural
+    examples/cpp/test_structural.cpp
+)
+target_link_libraries(test_structural PRIVATE
+    fluxui
+)
+target_include_directories(test_structural PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_structural)
+
 
