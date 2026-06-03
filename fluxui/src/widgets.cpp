@@ -2067,7 +2067,37 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             computedStyle.filterOperations = style.filterOperations;
             computedStyle.hasFilter = true;
         }
-        if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
+        // Grid layout cascade
+        if (!style.gridTemplateColumnTracks.empty() || !style.gridTemplateColumns.empty()) {
+            computedStyle.gridTemplateColumnTracks = style.gridTemplateColumnTracks;
+            computedStyle.gridTemplateColumns      = style.gridTemplateColumns;
+        }
+        if (!style.gridTemplateRowTracks.empty() || !style.gridTemplateRows.empty()) {
+            computedStyle.gridTemplateRowTracks = style.gridTemplateRowTracks;
+            computedStyle.gridTemplateRows      = style.gridTemplateRows;
+        }
+        if (style.hasGridTemplateAreas) {
+            computedStyle.gridTemplateAreas    = style.gridTemplateAreas;
+            computedStyle.hasGridTemplateAreas = true;
+        }
+        if (!style.gridAutoRowTracks.empty())    computedStyle.gridAutoRowTracks    = style.gridAutoRowTracks;
+        if (!style.gridAutoColumnTracks.empty()) computedStyle.gridAutoColumnTracks = style.gridAutoColumnTracks;
+        if (style.gridAutoFlow != GridAutoFlow::Row) computedStyle.gridAutoFlow = style.gridAutoFlow;
+        if (!style.gridColumnStart.isAuto()) computedStyle.gridColumnStart = style.gridColumnStart;
+        if (!style.gridColumnEnd.isAuto())   computedStyle.gridColumnEnd   = style.gridColumnEnd;
+        if (!style.gridRowStart.isAuto())    computedStyle.gridRowStart    = style.gridRowStart;
+        if (!style.gridRowEnd.isAuto())      computedStyle.gridRowEnd      = style.gridRowEnd;
+        if (!style.gridColumn.empty())       computedStyle.gridColumn      = style.gridColumn;
+        if (!style.gridRow.empty())          computedStyle.gridRow         = style.gridRow;
+        if (!style.gridArea.empty())         computedStyle.gridArea        = style.gridArea;
+        if (style.hasJustifyItems) {
+            computedStyle.justifyItems    = style.justifyItems;
+            computedStyle.hasJustifyItems = true;
+        }
+        if (style.hasJustifySelf) {
+            computedStyle.justifySelf    = style.justifySelf;
+            computedStyle.hasJustifySelf = true;
+        }
         if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;
         if (style.hasHoverBg) {
             computedStyle.hoverBackgroundColor = style.hoverBackgroundColor;
@@ -2467,6 +2497,37 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
     if (style.hasFilter) {
         computedStyle.filterOperations = style.filterOperations;
         computedStyle.hasFilter = true;
+    }
+    // Grid layout cascade (second block)
+    if (!style.gridTemplateColumnTracks.empty() || !style.gridTemplateColumns.empty()) {
+        computedStyle.gridTemplateColumnTracks = style.gridTemplateColumnTracks;
+        computedStyle.gridTemplateColumns      = style.gridTemplateColumns;
+    }
+    if (!style.gridTemplateRowTracks.empty() || !style.gridTemplateRows.empty()) {
+        computedStyle.gridTemplateRowTracks = style.gridTemplateRowTracks;
+        computedStyle.gridTemplateRows      = style.gridTemplateRows;
+    }
+    if (style.hasGridTemplateAreas) {
+        computedStyle.gridTemplateAreas    = style.gridTemplateAreas;
+        computedStyle.hasGridTemplateAreas = true;
+    }
+    if (!style.gridAutoRowTracks.empty())    computedStyle.gridAutoRowTracks    = style.gridAutoRowTracks;
+    if (!style.gridAutoColumnTracks.empty()) computedStyle.gridAutoColumnTracks = style.gridAutoColumnTracks;
+    if (style.gridAutoFlow != GridAutoFlow::Row) computedStyle.gridAutoFlow = style.gridAutoFlow;
+    if (!style.gridColumnStart.isAuto()) computedStyle.gridColumnStart = style.gridColumnStart;
+    if (!style.gridColumnEnd.isAuto())   computedStyle.gridColumnEnd   = style.gridColumnEnd;
+    if (!style.gridRowStart.isAuto())    computedStyle.gridRowStart    = style.gridRowStart;
+    if (!style.gridRowEnd.isAuto())      computedStyle.gridRowEnd      = style.gridRowEnd;
+    if (!style.gridColumn.empty())       computedStyle.gridColumn      = style.gridColumn;
+    if (!style.gridRow.empty())          computedStyle.gridRow         = style.gridRow;
+    if (!style.gridArea.empty())         computedStyle.gridArea        = style.gridArea;
+    if (style.hasJustifyItems) {
+        computedStyle.justifyItems    = style.justifyItems;
+        computedStyle.hasJustifyItems = true;
+    }
+    if (style.hasJustifySelf) {
+        computedStyle.justifySelf    = style.justifySelf;
+        computedStyle.hasJustifySelf = true;
     }
     if (style.backgroundColor.a > 0) computedStyle.backgroundColor = style.backgroundColor;
     if (style.cursor != CursorType::Default) computedStyle.cursor = style.cursor;

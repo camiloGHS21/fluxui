@@ -408,6 +408,69 @@ enum class JustifyContent { FlexStart, FlexEnd, Center, SpaceBetween, SpaceAroun
 enum class AlignItems { FlexStart, FlexEnd, Center, Stretch, Baseline };
 enum class AlignContent { FlexStart, FlexEnd, Center, Stretch, SpaceBetween, SpaceAround, SpaceEvenly };
 enum class AlignSelf { Auto, FlexStart, FlexEnd, Center, Stretch, Baseline };
+// ── CSS Grid enums (Blink parity) ──────────────────────────
+enum class JustifyItems { Auto, Normal, Stretch, FlexStart, FlexEnd, Center, Baseline };
+enum class JustifySelf  { Auto, Normal, Stretch, FlexStart, FlexEnd, Center, Baseline };
+enum class GridAutoFlow { Row, Column, RowDense, ColumnDense };
+// ── Grid track sizing function type (Blink GridTrackSize parity) ──
+enum class GridTrackSizeType {
+    Fixed,        // <length> or <percentage>
+    Flex,         // <number>fr
+    MinMax,       // minmax(<min>, <max>)
+    FitContent,   // fit-content(<length>)
+    Auto,         // auto
+    MinContent,   // min-content
+    MaxContent,   // max-content
+    Subgrid,      // subgrid keyword
+};
+// ── Single grid track definition (Blink GridLength/GridTrackSize parity) ──
+struct GridTrackSize {
+    GridTrackSizeType type = GridTrackSizeType::Auto;
+    float value   = 0.0f;   // resolved px for Fixed; fr value for Flex
+    float minValue= 0.0f;   // minmax: min side (px after resolve)
+    float maxValue= 0.0f;   // minmax: max side (px after resolve)
+    GridTrackSizeType minType = GridTrackSizeType::Auto;
+    GridTrackSizeType maxType = GridTrackSizeType::Auto;
+    std::string namedLine;  // optional [name] for named grid lines
+
+    bool isFlex()     const { return type == GridTrackSizeType::Flex; }
+    bool isAuto()     const { return type == GridTrackSizeType::Auto; }
+    bool isFixed()    const { return type == GridTrackSizeType::Fixed; }
+    bool isSubgrid()  const { return type == GridTrackSizeType::Subgrid; }
+
+    bool operator==(const GridTrackSize& o) const {
+        return type == o.type && value == o.value &&
+               minValue == o.minValue && maxValue == o.maxValue &&
+               minType == o.minType && maxType == o.maxType &&
+               namedLine == o.namedLine;
+    }
+    bool operator!=(const GridTrackSize& o) const { return !(*this == o); }
+};
+// ── Grid placement value (Blink GridPosition parity) ──────
+// Covers: auto | <integer> | <integer> span | span <integer> | [name]
+struct GridPlacement {
+    enum class PlacementType { Auto, Line, Span, NamedLine };
+    PlacementType type = PlacementType::Auto;
+    int          line  = 0;   // 1-based; negative counts from end
+    int          span  = 1;   // span count
+    std::string  name;        // named line reference
+
+    bool isAuto() const { return type == PlacementType::Auto; }
+
+    bool operator==(const GridPlacement& o) const {
+        return type == o.type && line == o.line && span == o.span && name == o.name;
+    }
+    bool operator!=(const GridPlacement& o) const { return !(*this == o); }
+};
+// ── Parsed grid-template-areas matrix ─────────────────────
+struct GridTemplateAreas {
+    std::vector<std::string> areas;   // row-major named areas, "." = anonymous
+    int rowCount    = 0;
+    int columnCount = 0;
+    bool operator==(const GridTemplateAreas& o) const {
+        return areas == o.areas && rowCount == o.rowCount && columnCount == o.columnCount;
+    }
+};
 enum class Position { Static, Relative, Absolute, Fixed, Sticky };
 enum class CSSFloat { None, Left, Right };
 enum class CSSClear { None, Left, Right, Both };
@@ -1389,10 +1452,35 @@ struct Style {
     bool hasZIndex = false;
     CSSFloat cssFloat = CSSFloat::None;
     CSSClear cssClear = CSSClear::None;
+    // ── CSS Grid Layout (Blink NGGridLayoutAlgorithm parity) ──────────────
+    // Parsed track lists — replaces the old raw std::string fields.
+    std::vector<GridTrackSize> gridTemplateColumnTracks; // grid-template-columns
+    std::vector<GridTrackSize> gridTemplateRowTracks;    // grid-template-rows
+    // Raw strings kept for subgrid / complex values that need further resolution
     std::string gridTemplateColumns;
     std::string gridTemplateRows;
-    std::string gridColumn;
+    // Item placement (grid-column / grid-row shorthand → start/end)
+    GridPlacement gridColumnStart;
+    GridPlacement gridColumnEnd;
+    GridPlacement gridRowStart;
+    GridPlacement gridRowEnd;
+    std::string gridColumn;  // raw shorthand (kept for cascade)
     std::string gridRow;
+    // grid-area shorthand → fills all four GridPlacement fields above
+    std::string gridArea;
+    // Template areas
+    GridTemplateAreas gridTemplateAreas;
+    bool hasGridTemplateAreas = false;
+    // Implicit track sizing (grid-auto-rows / grid-auto-columns)
+    std::vector<GridTrackSize> gridAutoRowTracks;
+    std::vector<GridTrackSize> gridAutoColumnTracks;
+    // grid-auto-flow
+    GridAutoFlow gridAutoFlow = GridAutoFlow::Row;
+    // Per-item alignment
+    JustifyItems justifyItems = JustifyItems::Normal;
+    JustifySelf  justifySelf  = JustifySelf::Auto;
+    bool hasJustifyItems = false;
+    bool hasJustifySelf  = false;
     std::string content;
     float aspectRatio = 0;
     ObjectFit objectFit = ObjectFit::Fill;

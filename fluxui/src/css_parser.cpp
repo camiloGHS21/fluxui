@@ -4125,12 +4125,122 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         style.orderLeft = ++style.propertyOrder;
     } else if (name == "grid-template-columns") {
         style.gridTemplateColumns = value;
+        if (value != "none" && !value.empty())
+            style.gridTemplateColumnTracks = parseGridTrackList(value, emBase);
+        else
+            style.gridTemplateColumnTracks.clear();
     } else if (name == "grid-template-rows") {
         style.gridTemplateRows = value;
+        if (value != "none" && !value.empty())
+            style.gridTemplateRowTracks = parseGridTrackList(value, emBase);
+        else
+            style.gridTemplateRowTracks.clear();
+    } else if (name == "grid-template-areas") {
+        style.gridTemplateAreas = parseGridTemplateAreas(value);
+        style.hasGridTemplateAreas = (style.gridTemplateAreas.rowCount > 0);
+    } else if (name == "grid-template") {
+        // grid-template: <rows> / <columns>  (no areas shorthand for now)
+        auto slashPos = value.find('/');
+        if (slashPos != std::string::npos) {
+            std::string rows = trim(value.substr(0, slashPos));
+            std::string cols = trim(value.substr(slashPos + 1));
+            style.gridTemplateRows = rows;
+            style.gridTemplateColumns = cols;
+            style.gridTemplateRowTracks    = parseGridTrackList(rows, emBase);
+            style.gridTemplateColumnTracks = parseGridTrackList(cols, emBase);
+        }
+    } else if (name == "grid-auto-rows") {
+        style.gridAutoRowTracks = parseGridTrackList(value, emBase);
+    } else if (name == "grid-auto-columns") {
+        style.gridAutoColumnTracks = parseGridTrackList(value, emBase);
+    } else if (name == "grid-auto-flow") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "column")             style.gridAutoFlow = GridAutoFlow::Column;
+        else if (v == "row dense")     style.gridAutoFlow = GridAutoFlow::RowDense;
+        else if (v == "column dense")  style.gridAutoFlow = GridAutoFlow::ColumnDense;
+        else if (v == "dense")         style.gridAutoFlow = GridAutoFlow::RowDense;
+        else                           style.gridAutoFlow = GridAutoFlow::Row;
+    } else if (name == "grid") {
+        // grid shorthand: <template> | <auto-flow> rows / cols — parse basic / form
+        auto slashPos = value.find('/');
+        if (slashPos != std::string::npos) {
+            std::string rows = trim(value.substr(0, slashPos));
+            std::string cols = trim(value.substr(slashPos + 1));
+            style.gridTemplateRows = rows;
+            style.gridTemplateColumns = cols;
+            style.gridTemplateRowTracks    = parseGridTrackList(rows, emBase);
+            style.gridTemplateColumnTracks = parseGridTrackList(cols, emBase);
+        }
     } else if (name == "grid-column") {
         style.gridColumn = value;
+        auto slashPos = value.find('/');
+        if (slashPos != std::string::npos) {
+            style.gridColumnStart = parseGridPlacement(trim(value.substr(0, slashPos)));
+            style.gridColumnEnd   = parseGridPlacement(trim(value.substr(slashPos + 1)));
+        } else {
+            style.gridColumnStart = parseGridPlacement(trim(value));
+            style.gridColumnEnd   = GridPlacement{};
+        }
     } else if (name == "grid-row") {
         style.gridRow = value;
+        auto slashPos = value.find('/');
+        if (slashPos != std::string::npos) {
+            style.gridRowStart = parseGridPlacement(trim(value.substr(0, slashPos)));
+            style.gridRowEnd   = parseGridPlacement(trim(value.substr(slashPos + 1)));
+        } else {
+            style.gridRowStart = parseGridPlacement(trim(value));
+            style.gridRowEnd   = GridPlacement{};
+        }
+    } else if (name == "grid-column-start") {
+        style.gridColumnStart = parseGridPlacement(value);
+    } else if (name == "grid-column-end") {
+        style.gridColumnEnd   = parseGridPlacement(value);
+    } else if (name == "grid-row-start") {
+        style.gridRowStart    = parseGridPlacement(value);
+    } else if (name == "grid-row-end") {
+        style.gridRowEnd      = parseGridPlacement(value);
+    } else if (name == "grid-area") {
+        style.gridArea = value;
+        // grid-area: row-start / col-start / row-end / col-end
+        // or just a named area reference
+        std::vector<std::string> parts;
+        size_t start = 0;
+        for (size_t i = 0; i <= value.size(); i++) {
+            if (i == value.size() || value[i] == '/') {
+                parts.push_back(trim(value.substr(start, i - start)));
+                start = i + 1;
+            }
+        }
+        if (parts.size() == 4) {
+            style.gridRowStart    = parseGridPlacement(parts[0]);
+            style.gridColumnStart = parseGridPlacement(parts[1]);
+            style.gridRowEnd      = parseGridPlacement(parts[2]);
+            style.gridColumnEnd   = parseGridPlacement(parts[3]);
+        } else if (parts.size() == 1 && !parts[0].empty()) {
+            // Named area — stored as named-line references
+            style.gridRowStart.type = GridPlacement::PlacementType::NamedLine;
+            style.gridRowStart.name = parts[0];
+            style.gridColumnStart.type = GridPlacement::PlacementType::NamedLine;
+            style.gridColumnStart.name = parts[0];
+        }
+    } else if (name == "justify-items") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "start" || v == "flex-start") style.justifyItems = JustifyItems::FlexStart;
+        else if (v == "end" || v == "flex-end") style.justifyItems = JustifyItems::FlexEnd;
+        else if (v == "center")   style.justifyItems = JustifyItems::Center;
+        else if (v == "stretch")  style.justifyItems = JustifyItems::Stretch;
+        else if (v == "baseline") style.justifyItems = JustifyItems::Baseline;
+        else                      style.justifyItems = JustifyItems::Normal;
+        style.hasJustifyItems = true;
+    } else if (name == "justify-self") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "start" || v == "flex-start") style.justifySelf = JustifySelf::FlexStart;
+        else if (v == "end" || v == "flex-end") style.justifySelf = JustifySelf::FlexEnd;
+        else if (v == "center")   style.justifySelf = JustifySelf::Center;
+        else if (v == "stretch")  style.justifySelf = JustifySelf::Stretch;
+        else if (v == "baseline") style.justifySelf = JustifySelf::Baseline;
+        else                      style.justifySelf = JustifySelf::Auto;
+        style.hasJustifySelf = true;
     } else if (name == "content") {
         std::string raw = value;
         if (raw.size() >= 2 && ((raw.front() == '"' && raw.back() == '"') || (raw.front() == '\'' && raw.back() == '\''))) {
@@ -6329,6 +6439,252 @@ float StyleSheet::parseAngleDegrees(const std::string& value) {
 }
 std::vector<TransformOperation> StyleSheet::parseTransformList(const std::string& value) {
     return parseTransformOperations(value);
+}
+
+// ============================================================
+//  parseGridTrackList — Blink NGGridLayoutAlgorithm parity
+//
+//  Parses a CSS <track-list> such as:
+//    100px 1fr auto
+//    repeat(3, 1fr)
+//    minmax(100px, 1fr) fit-content(200px)
+//    [header] 80px [content] 1fr [footer] 60px
+//    subgrid
+//
+//  Returns a flat vector of GridTrackSize (repeat() is expanded).
+// ============================================================
+
+// Forward-declare so resolveGridToken can call parseGridTrackList recursively.
+static GridTrackSize resolveGridToken(const std::string& tok, float emBase);
+
+static GridTrackSize resolveGridToken(const std::string& tok, float emBase) {
+    GridTrackSize s;
+    std::string t  = StyleSheet::trim(tok);
+    std::string tl = lowerAscii(t);
+
+    if (tl.empty() || tl == "auto")     { s.type = GridTrackSizeType::Auto;       return s; }
+    if (tl == "min-content")            { s.type = GridTrackSizeType::MinContent;  return s; }
+    if (tl == "max-content")            { s.type = GridTrackSizeType::MaxContent;  return s; }
+    if (tl == "subgrid")                { s.type = GridTrackSizeType::Subgrid;     return s; }
+
+    // fr unit
+    if (t.size() > 2 && t[t.size()-1] == 'r' && t[t.size()-2] == 'f') {
+        s.type  = GridTrackSizeType::Flex;
+        s.value = parseLocaleIndependentFloat(t.substr(0, t.size() - 2).c_str(), nullptr);
+        return s;
+    }
+
+    // minmax(<min>, <max>)
+    if (tl.size() >= 7 && tl.substr(0, 7) == "minmax(") {
+        s.type = GridTrackSizeType::MinMax;
+        size_t open  = t.find('(');
+        size_t close = t.rfind(')');
+        if (open != std::string::npos && close != std::string::npos && close > open) {
+            std::string inner_s = StyleSheet::trim(t.substr(open + 1, close - open - 1));
+            // Find top-level comma (not inside nested parens)
+            int depth = 0;
+            size_t comma = std::string::npos;
+            for (size_t k = 0; k < inner_s.size(); k++) {
+                if (inner_s[k] == '(') ++depth;
+                else if (inner_s[k] == ')') --depth;
+                else if (inner_s[k] == ',' && depth == 0) { comma = k; break; }
+            }
+            if (comma != std::string::npos) {
+                GridTrackSize minT = resolveGridToken(StyleSheet::trim(inner_s.substr(0, comma)), emBase);
+                GridTrackSize maxT = resolveGridToken(StyleSheet::trim(inner_s.substr(comma + 1)), emBase);
+                s.minType  = minT.type;  s.minValue = minT.value;
+                s.maxType  = maxT.type;  s.maxValue = maxT.value;
+            }
+        }
+        return s;
+    }
+
+    // fit-content(<length>)
+    if (tl.size() >= 11 && tl.substr(0, 11) == "fit-content") {
+        s.type = GridTrackSizeType::FitContent;
+        size_t open  = t.find('(');
+        size_t close = t.rfind(')');
+        if (open != std::string::npos && close != std::string::npos)
+            s.value = StyleSheet::parseLengthPixels(StyleSheet::trim(t.substr(open + 1, close - open - 1)), emBase);
+        return s;
+    }
+
+    // <length> / <percentage> / calc()
+    s.type  = GridTrackSizeType::Fixed;
+    s.value = StyleSheet::parseLengthPixels(t, emBase);
+    return s;
+}
+
+std::vector<GridTrackSize> StyleSheet::parseGridTrackList(const std::string& value, float emBase) {
+    std::vector<GridTrackSize> tracks;
+    if (value.empty() || value == "none") return tracks;
+
+    std::string v = trim(value);
+
+    // subgrid keyword
+    if (lowerAscii(v) == "subgrid") {
+        GridTrackSize s;
+        s.type = GridTrackSizeType::Subgrid;
+        tracks.push_back(s);
+        return tracks;
+    }
+
+    // Tokenise top-level (depth-aware: split on whitespace but not inside parens/brackets)
+    std::vector<std::string> tokens;
+    {
+        std::string cur;
+        int depth = 0;
+        for (char c : v) {
+            if (c == '(' || c == '[') { ++depth; cur += c; }
+            else if (c == ')' || c == ']') { --depth; cur += c; }
+            else if ((c == ' ' || c == '\t') && depth == 0) {
+                if (!cur.empty()) { tokens.push_back(cur); cur.clear(); }
+            } else {
+                cur += c;
+            }
+        }
+        if (!cur.empty()) tokens.push_back(cur);
+    }
+
+    // Process tokens
+    std::string pendingName; // named line to attach to the next track
+    for (size_t i = 0; i < tokens.size(); i++) {
+        const std::string& tok = tokens[i];
+        std::string tl = lowerAscii(tok);
+
+        // Named line: [line-name]
+        if (!tok.empty() && tok.front() == '[' && tok.back() == ']') {
+            pendingName = tok.substr(1, tok.size() - 2);
+            continue;
+        }
+
+        // repeat(<count | auto-fill | auto-fit>, <track-list>)
+        if (tl.size() >= 7 && tl.substr(0, 7) == "repeat(") {
+            // Find the matching closing paren (depth-aware)
+            size_t close = std::string::npos;
+            {
+                int d = 0;
+                for (size_t k = 7; k < tok.size(); k++) {
+                    if (tok[k] == '(') ++d;
+                    else if (tok[k] == ')') { if (d == 0) { close = k; break; } --d; }
+                }
+            }
+            if (close == std::string::npos) { pendingName.clear(); continue; }
+            std::string inner = trim(tok.substr(7, close - 7));
+            // Find top-level comma in inner
+            size_t comma = std::string::npos;
+            { int d = 0;
+              for (size_t k = 0; k < inner.size(); k++) {
+                if (inner[k] == '(') ++d;
+                else if (inner[k] == ')') --d;
+                else if (inner[k] == ',' && d == 0) { comma = k; break; }
+              }
+            }
+            if (comma == std::string::npos) { pendingName.clear(); continue; }
+            std::string countStr = trim(inner.substr(0, comma));
+            std::string trackStr = trim(inner.substr(comma + 1));
+
+            int count = 1;
+            bool autoFill = false;
+            std::string cl = lowerAscii(countStr);
+            if (cl == "auto-fill" || cl == "auto-fit") { autoFill = true; count = 1; }
+            else { try { count = std::stoi(countStr); } catch (...) {} }
+            count = std::max(1, count);
+
+            auto repeatTracks = parseGridTrackList(trackStr, emBase);
+            int reps = autoFill ? 1 : count;
+            for (int r = 0; r < reps; r++) {
+                for (auto& rt : repeatTracks) tracks.push_back(rt);
+            }
+            pendingName.clear();
+            continue;
+        }
+
+        GridTrackSize s = resolveGridToken(tok, emBase);
+        if (!pendingName.empty()) { s.namedLine = pendingName; pendingName.clear(); }
+        tracks.push_back(s);
+    }
+    return tracks;
+}
+
+// ============================================================
+//  parseGridPlacement — Blink GridPosition parity
+//
+//  Parses one side of grid-column / grid-row:
+//    auto | <integer> | span <integer> | <integer> span | [name]
+// ============================================================
+GridPlacement StyleSheet::parseGridPlacement(const std::string& value) {
+    GridPlacement p;
+    std::string v = trim(lowerAscii(value));
+    if (v.empty() || v == "auto") return p; // PlacementType::Auto
+
+    // span N  or  N span
+    size_t spanPos = v.find("span");
+    if (spanPos != std::string::npos) {
+        p.type = GridPlacement::PlacementType::Span;
+        std::string numPart;
+        if (spanPos == 0) numPart = trim(v.substr(4));
+        else              numPart = trim(v.substr(0, spanPos));
+        try { p.span = std::max(1, std::stoi(numPart)); } catch (...) { p.span = 1; }
+        return p;
+    }
+
+    // [name] — named line
+    if (!v.empty() && v.front() == '[' && v.back() == ']') {
+        p.type = GridPlacement::PlacementType::NamedLine;
+        p.name = trim(value.substr(1, value.size() - 2));
+        return p;
+    }
+
+    // <integer>  (positive or negative)
+    try {
+        p.type = GridPlacement::PlacementType::Line;
+        p.line = std::stoi(v);
+        return p;
+    } catch (...) {}
+
+    // plain name (area reference)
+    p.type = GridPlacement::PlacementType::NamedLine;
+    p.name = trim(value);
+    return p;
+}
+
+// ============================================================
+//  parseGridTemplateAreas — Blink GridTemplateAreas parity
+//
+//  Parses grid-template-areas: "header header" "nav main" "footer footer"
+//  Returns a GridTemplateAreas struct with flat row-major area names.
+// ============================================================
+GridTemplateAreas StyleSheet::parseGridTemplateAreas(const std::string& value) {
+    GridTemplateAreas result;
+    if (value.empty() || value == "none") return result;
+
+    // Split into quoted strings
+    std::string v = value;
+    size_t pos = 0;
+    while (pos < v.size()) {
+        while (pos < v.size() && (v[pos] == ' ' || v[pos] == '\t' || v[pos] == '\n' || v[pos] == '\r')) ++pos;
+        if (pos >= v.size()) break;
+        char quote = v[pos];
+        if (quote != '"' && quote != '\'') { ++pos; continue; }
+        ++pos;
+        size_t start = pos;
+        while (pos < v.size() && v[pos] != quote) ++pos;
+        std::string row = trim(v.substr(start, pos - start));
+        ++pos; // skip closing quote
+
+        // Split row into cell names
+        std::istringstream ss(row);
+        std::string cell;
+        int cellCount = 0;
+        while (ss >> cell) {
+            result.areas.push_back(cell);
+            cellCount++;
+        }
+        if (result.columnCount == 0) result.columnCount = cellCount;
+        result.rowCount++;
+    }
+    return result;
 }
 
 // ============================================================

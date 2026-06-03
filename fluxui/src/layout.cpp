@@ -1,4 +1,4 @@
-// FluxUI Blink-style Decoupled Layout Solver Implementations
+﻿// FluxUI Blink-style Decoupled Layout Solver Implementations
 #include "fluxui/layout.h"
 #include "fluxui/widgets.h"
 #include "fluxui/layout_object.h"
@@ -555,96 +555,11 @@ namespace FluxUI {
     }
 
     // ============================================================
+
+    // ============================================================
     //  GridLayoutAlgorithm Implementation (Blink parity)
     // ============================================================
-    LayoutResult GridLayoutAlgorithm::layout(Widget* widget, const LayoutConstraints& constraints) {
-        LayoutResult result;
-        auto& s = *widget->computedStyle;
-        auto& children = widget->children;
-
-        float contentX = widget->bounds.x + s.padding.left;
-        float contentY = widget->bounds.y + s.padding.top;
-        float contentW = std::max(0.0f, widget->bounds.w - s.padding.horizontal());
-
-        int cols = 1;
-        if (!s.gridTemplateColumns.empty()) {
-            auto repeatPos = s.gridTemplateColumns.find("repeat(");
-            if (repeatPos != std::string::npos) {
-                auto comma = s.gridTemplateColumns.find(',', repeatPos);
-                if (comma != std::string::npos) {
-                    try {
-                        cols = std::stoi(s.gridTemplateColumns.substr(repeatPos + 7, comma - (repeatPos + 7)));
-                    } catch (...) {}
-                }
-            } else {
-                std::istringstream iss(s.gridTemplateColumns);
-                std::string token;
-                int count = 0;
-                while (iss >> token) {
-                    count++;
-                }
-                if (count > 0) cols = count;
-            }
-        }
-        cols = std::max(1, cols);
-
-        float mainGap = s.columnGap > 0.0f ? s.columnGap : s.gap;
-        float crossGap = s.rowGap > 0.0f ? s.rowGap : s.gap;
-
-        float colW = (contentW - mainGap * (cols - 1)) / cols;
-        colW = std::max(0.0f, colW);
-
-        float cy = contentY;
-        int activeIdx = 0;
-        float maxRowH = 0.0f;
-
-        for (size_t i = 0; i < children.size(); i++) {
-            auto& child = children[i];
-            if (!child->visible || isDisplayNone(child.get())) continue;
-            
-            auto& cs = *child->computedStyle;
-            int col = activeIdx % cols;
-            float cx = contentX + col * (colW + mainGap);
-            float childH = cs.height.isSet() ? cs.height.resolve(0, constraints.parentWidth, constraints.parentHeight, constraints.emBase) : 100.0f;
-
-            Rect childArea = {cx + cs.margin.left, cy + cs.margin.top,
-                              std::max(0.0f, colW - cs.margin.horizontal()),
-                              std::max(0.0f, childH)};
-            child->layout(childArea);
-
-            if (!cs.height.isSet() && !clipsOverflow(cs) && child->contentHeight > child->bounds.h) {
-                child->bounds.h = child->contentHeight;
-            }
-
-            maxRowH = std::max(maxRowH, child->bounds.h + cs.margin.vertical());
-            activeIdx++;
-
-            if (activeIdx % cols == 0 || i + 1 == children.size()) {
-                cy += maxRowH + crossGap;
-                maxRowH = 0.0f;
-            }
-        }
-
-        contentY = cy;
-        result.contentHeight = cy - widget->bounds.y + s.padding.bottom;
-
-        if (!s.height.isSet() && !consumesParentMainAxisHeight(widget, s)) {
-            widget->bounds.h = std::max(widget->bounds.h, result.contentHeight);
-        }
-
-        if (!widget->parent) {
-            widget->bounds.x = 0.0f;
-            widget->bounds.y = 0.0f;
-            widget->bounds.w = constraints.availableWidth;
-            widget->bounds.h = constraints.availableHeight;
-        }
-
-        result.x = widget->bounds.x;
-        result.y = widget->bounds.y;
-        result.width = widget->bounds.w;
-        result.height = widget->bounds.h;
-        return result;
-    }
+#include "grid_engine.inl"
 
     // ============================================================
     //  TableLayoutAlgorithm Implementation (Blink parity)
