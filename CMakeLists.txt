@@ -676,4 +676,26 @@ target_include_directories(test_ui_misc PRIVATE
 )
 enable_release_lto(test_ui_misc)
 
+add_executable(benchmark
+    examples/cpp/benchmark.cpp
+)
+target_link_libraries(benchmark PRIVATE
+    fluxui
+)
+target_include_directories(benchmark PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(benchmark)
+
+add_executable(benchmark_tree
+    examples/cpp/benchmark_tree.cpp
+)
+target_link_libraries(benchmark_tree PRIVATE
+    fluxui
+)
+target_include_directories(benchmark_tree PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(benchmark_tree)
+
 

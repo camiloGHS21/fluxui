@@ -343,10 +343,11 @@ public:
     std::shared_ptr<Widget> beforePseudoNode;
     std::shared_ptr<Widget> afterPseudoNode;
     // Pseudo-element resolved styles (Blink PseudoId parity).
-    // Resolved during updateStyle from CSS rules matching ::placeholder, ::selection, ::marker.
-    Style placeholderStyle;   // ::placeholder
-    Style selectionStyle;     // ::selection
-    Style markerStyle;        // ::marker
+    // Lazily allocated only when the stylesheet has matching pseudo rules,
+    // avoiding 3×sizeof(Style) (~18KB) overhead per widget in the common case.
+    std::unique_ptr<Style> placeholderStyle;   // ::placeholder
+    std::unique_ptr<Style> selectionStyle;     // ::selection
+    std::unique_ptr<Style> markerStyle;        // ::marker
     bool hasPlaceholderStyle = false;
     bool hasSelectionStyle   = false;
     bool hasMarkerStyle      = false;

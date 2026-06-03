@@ -1985,6 +1985,15 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         rule.specificity = selectorSpecificity(cleanSelector);
         rule.selectorWithoutPseudo = cleanSelector;
         extractTrailingStatePseudo(rule.selectorWithoutPseudo, &rule.pseudoState);
+        // Track pseudo-element rule presence for fast-path skip during resolution.
+        if (!rule.pseudoState.empty()) {
+            const std::string& ps = rule.pseudoState;
+            if (ps == "before") hasBeforeRules_ = true;
+            else if (ps == "after") hasAfterRules_ = true;
+            else if (ps == "placeholder") hasPlaceholderRules_ = true;
+            else if (ps == "selection") hasSelectionRules_ = true;
+            else if (ps == "marker") hasMarkerRules_ = true;
+        }
         splitSelectorChain(rule.selectorWithoutPseudo, rule.parts, rule.combinators);
         for (const auto& prop : properties) {
             rule.properties.push_back(prop);
@@ -2358,7 +2367,7 @@ Style StyleSheet::resolve(std::string_view className,
     }
     StyleCascade cascade;
     const StyleSheet& uaSheet = getUaSheet();
-    std::vector<size_t> uaCandidateRules;
+    thread_local std::vector<size_t> uaCandidateRules;
     uaSheet.collectCandidateRules("", "", type, uaCandidateRules);
     for (size_t ruleIndex : uaCandidateRules) {
         if (ruleIndex >= uaSheet.rules.size()) continue;
@@ -2590,7 +2599,12 @@ void StyleSheet::collectCandidateRules(std::string_view className,
     if (rules.empty()) {
         return;
     }
-    std::vector<uint8_t> flagArray(rules.size(), 0);
+    // Reusable scratch buffers (thread-local) to avoid per-resolve heap allocation.
+    thread_local std::vector<uint8_t> flagArray;
+    thread_local std::vector<std::string_view> classes;
+    flagArray.assign(rules.size(), 0);
+    classes.clear();
+
     size_t minIdx = rules.size();
     size_t maxIdx = 0;
     auto markRule = [&](size_t idx) {
@@ -2611,7 +2625,6 @@ void StyleSheet::collectCandidateRules(std::string_view className,
         auto it = idRuleIndex_.find(idKey);
         if (it != idRuleIndex_.end()) markRules(it->second);
     }
-    std::vector<std::string_view> classes;
     appendClassTokens(className, classes);
     for (const auto& cls : classes) {
         std::string clsKey(cls);
@@ -3686,7 +3699,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
         style.hasInsetInlineStart = false; style.hasInsetInlineEnd = false;
         style.hasInsetBlockStart = false; style.hasInsetBlockEnd = false;
     }
-    mergePropertyPart1(style, name, value, emBase);
+    if (mergePropertyPart1(style, name, value, emBase)) return;
     mergePropertyPart2(style, name, value, emBase);
     mergePropertyPart3(style, name, value, emBase);
 }
@@ -4199,8 +4212,10 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.maxBlockSize = parseCSSValue(value);
         style.hasMaxBlockSize = true;
         style.orderMaxBlockSize = ++style.propertyOrder;
+    } else {
+        return false; // not matched in Part1 — caller proceeds to Part2/Part3
     }
-    return false;
+    return true;
 }
 void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "font-size") {
@@ -7627,13 +7642,16 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
     auto resolveAmount = [&](const std::string& s) -> float {
         if (s.empty()) return 1.0f; // omitted arg → default 1 (CSS spec)
         std::string v = trim(s);
-        CSSValue cv = parseCSSValue(v);
-        float vpW = 1920.0f, vpH = 1080.0f;
-        if (auto* app = Application::instance()) {
-            vpW = app->stylesheet().viewportWidth();
-            vpH = app->stylesheet().viewportHeight();
+        // Percentage in a filter function maps directly to a [0,n] ratio
+        // (e.g. 180% → 1.8), NOT a percentage of em (Blink ResolveNumericArgument).
+        if (!v.empty() && v.back() == '%') {
+            char* end = nullptr;
+            float pct = parseLocaleIndependentFloat(v.substr(0, v.size() - 1).c_str(), &end);
+            return pct / 100.0f;
         }
-        return cv.resolve(emBase, vpW, vpH, emBase);
+        // calc()/min()/max()/clamp() or bare number → resolve numerically.
+        CSSValue cv = parseCSSValue(v);
+        return cv.resolve(emBase, 1920.0f, 1080.0f, emBase);
     };
 
     // ── Resolve an angle with calc() support (deg/rad/grad/turn).

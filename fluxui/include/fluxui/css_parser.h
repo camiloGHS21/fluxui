@@ -133,6 +133,15 @@ public:
 
     uint32_t getEpoch() const { return currentEpoch_; }
 
+    // Fast-path flags: whether the stylesheet contains ANY rule targeting a
+    // given pseudo-element. Lets widgets skip per-element pseudo resolution
+    // entirely when no such rules exist (the common case). Set during parse().
+    bool hasBeforeRules() const { return hasBeforeRules_; }
+    bool hasAfterRules() const { return hasAfterRules_; }
+    bool hasPlaceholderRules() const { return hasPlaceholderRules_; }
+    bool hasSelectionRules() const { return hasSelectionRules_; }
+    bool hasMarkerRules() const { return hasMarkerRules_; }
+
     // Load and parse a CSS file
     bool loadFile(const std::string& path);
 
@@ -288,6 +297,12 @@ private:
     float viewportHeight_ = 1080.0f;
     ColorScheme colorScheme_ = ColorScheme::Light;
     bool forcedColors_ = false;
+    // Pseudo-element rule presence flags (set in parseRule, used for fast-path skip).
+    bool hasBeforeRules_ = false;
+    bool hasAfterRules_ = false;
+    bool hasPlaceholderRules_ = false;
+    bool hasSelectionRules_ = false;
+    bool hasMarkerRules_ = false;
     uint32_t nextPropertyOrder_ = 0;
 
     struct CSSToken {

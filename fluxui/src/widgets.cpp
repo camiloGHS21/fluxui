@@ -2382,78 +2382,95 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         lastInlinePropertyEpoch = inlinePropertyEpoch;
         lastInlinePropertyCount = inlineProperties.size();
         
-        Style beforeStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "before");
-        beforeStyle.resolveLogicalProperties();
-        if (!beforeStyle.content.empty()) {
-            if (!beforePseudoNode) {
-                beforePseudoNode = std::make_shared<Text>(beforeStyle.content, "");
-                beforePseudoNode->parent = this;
-                beforePseudoNode->type = "pseudo-before";
-                children.insert(children.begin(), beforePseudoNode);
+        // ::before — only resolve if the stylesheet has ::before rules, or if a
+        // before node already exists (so it can be torn down when rules are removed).
+        if (sheet.hasBeforeRules() || beforePseudoNode) {
+            Style beforeStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "before");
+            beforeStyle.resolveLogicalProperties();
+            if (!beforeStyle.content.empty()) {
+                if (!beforePseudoNode) {
+                    beforePseudoNode = std::make_shared<Text>(beforeStyle.content, "");
+                    beforePseudoNode->parent = this;
+                    beforePseudoNode->type = "pseudo-before";
+                    children.insert(children.begin(), beforePseudoNode);
+                } else {
+                    static_cast<Text*>(beforePseudoNode.get())->content = beforeStyle.content;
+                }
+                beforePseudoNode->computedStyle = beforeStyle;
+                beforePseudoNode->styleDirty = false;
+                beforePseudoNode->subtreeStyleDirty = true;
             } else {
-                static_cast<Text*>(beforePseudoNode.get())->content = beforeStyle.content;
-            }
-            beforePseudoNode->computedStyle = beforeStyle;
-            beforePseudoNode->styleDirty = false;
-            beforePseudoNode->subtreeStyleDirty = true;
-        } else {
-            if (beforePseudoNode) {
-                children.erase(std::remove(children.begin(), children.end(), beforePseudoNode), children.end());
-                beforePseudoNode.reset();
+                if (beforePseudoNode) {
+                    children.erase(std::remove(children.begin(), children.end(), beforePseudoNode), children.end());
+                    beforePseudoNode.reset();
+                }
             }
         }
 
-        Style afterStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "after");
-        afterStyle.resolveLogicalProperties();
-        if (!afterStyle.content.empty()) {
-            if (!afterPseudoNode) {
-                afterPseudoNode = std::make_shared<Text>(afterStyle.content, "");
-                afterPseudoNode->parent = this;
-                afterPseudoNode->type = "pseudo-after";
-                children.push_back(afterPseudoNode);
+        // ::after — same fast-path gating as ::before.
+        if (sheet.hasAfterRules() || afterPseudoNode) {
+            Style afterStyle = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "after");
+            afterStyle.resolveLogicalProperties();
+            if (!afterStyle.content.empty()) {
+                if (!afterPseudoNode) {
+                    afterPseudoNode = std::make_shared<Text>(afterStyle.content, "");
+                    afterPseudoNode->parent = this;
+                    afterPseudoNode->type = "pseudo-after";
+                    children.push_back(afterPseudoNode);
+                } else {
+                    static_cast<Text*>(afterPseudoNode.get())->content = afterStyle.content;
+                }
+                afterPseudoNode->computedStyle = afterStyle;
+                afterPseudoNode->styleDirty = false;
+                afterPseudoNode->subtreeStyleDirty = true;
             } else {
-                static_cast<Text*>(afterPseudoNode.get())->content = afterStyle.content;
-            }
-            afterPseudoNode->computedStyle = afterStyle;
-            afterPseudoNode->styleDirty = false;
-            afterPseudoNode->subtreeStyleDirty = true;
-        } else {
-            if (afterPseudoNode) {
-                children.erase(std::remove(children.begin(), children.end(), afterPseudoNode), children.end());
-                afterPseudoNode.reset();
+                if (afterPseudoNode) {
+                    children.erase(std::remove(children.begin(), children.end(), afterPseudoNode), children.end());
+                    afterPseudoNode.reset();
+                }
             }
         }
 
         // ── Resolve additional pseudo-element styles (Blink PseudoId parity) ──
+        // Fast-path: skip entirely when the stylesheet has no such rules.
         // ::placeholder — for input/textarea placeholder text color/font
-        {
+        if (sheet.hasPlaceholderRules()) {
             Style ps = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "placeholder");
             if (ps.hasColor || ps.hasFontSize || ps.hasFontWeight || ps.opacity != 1.0f) {
-                placeholderStyle = ps;
+                if (!placeholderStyle) placeholderStyle = std::make_unique<Style>();
+                *placeholderStyle = std::move(ps);
                 hasPlaceholderStyle = true;
             } else {
                 hasPlaceholderStyle = false;
             }
+        } else {
+            hasPlaceholderStyle = false;
         }
         // ::selection — selection highlight color/background
-        {
+        if (sheet.hasSelectionRules()) {
             Style ss = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "selection");
             if (ss.hasColor || ss.backgroundColor.a > 0) {
-                selectionStyle = ss;
+                if (!selectionStyle) selectionStyle = std::make_unique<Style>();
+                *selectionStyle = std::move(ss);
                 hasSelectionStyle = true;
             } else {
                 hasSelectionStyle = false;
             }
+        } else {
+            hasSelectionStyle = false;
         }
         // ::marker — list-item marker color/font
-        {
+        if (sheet.hasMarkerRules()) {
             Style ms = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "marker");
             if (ms.hasColor || ms.hasFontSize || ms.hasFontWeight) {
-                markerStyle = ms;
+                if (!markerStyle) markerStyle = std::make_unique<Style>();
+                *markerStyle = std::move(ms);
                 hasMarkerStyle = true;
             } else {
                 hasMarkerStyle = false;
             }
+        } else {
+            hasMarkerStyle = false;
         }
 
         lastResolveKey = currentKey;
@@ -3655,12 +3672,12 @@ void Widget::renderListMarker(Renderer& renderer) {
             break;
     }
 
-    Color textColor = hasMarkerStyle && markerStyle.hasColor
-        ? markerStyle.color : computedStyle->color;
-    float markerFontSize = hasMarkerStyle && markerStyle.hasFontSize
-        ? markerStyle.fontSize : computedStyle->fontSize;
-    FontWeight markerFontWeight = hasMarkerStyle && markerStyle.hasFontWeight
-        ? markerStyle.fontWeight : computedStyle->fontWeight;
+    Color textColor = hasMarkerStyle && markerStyle->hasColor
+        ? markerStyle->color : computedStyle->color;
+    float markerFontSize = hasMarkerStyle && markerStyle->hasFontSize
+        ? markerStyle->fontSize : computedStyle->fontSize;
+    FontWeight markerFontWeight = hasMarkerStyle && markerStyle->hasFontWeight
+        ? markerStyle->fontWeight : computedStyle->fontWeight;
     const std::string& fontName = renderFontName(computedStyle);
     if (!markerText.empty()) {
         Vec2 textSize = renderer.measureText(markerText, markerFontSize, fontName);
@@ -4649,8 +4666,8 @@ void TextInput::render(Renderer& renderer) {
     float bgLum = s.backgroundColor.r * 0.2126f +
                   s.backgroundColor.g * 0.7152f +
                   s.backgroundColor.b * 0.0722f;
-    Color placeholderColor = hasPlaceholderStyle && placeholderStyle.hasColor
-        ? placeholderStyle.color
+    Color placeholderColor = hasPlaceholderStyle && placeholderStyle->hasColor
+        ? placeholderStyle->color
         : (bgLum > 0.45f
             ? Color(0.459f, 0.459f, 0.459f, 1.0f)
             : Color(0.604f, 0.627f, 0.659f, 0.92f));
