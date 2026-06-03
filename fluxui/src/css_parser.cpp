@@ -1972,11 +1972,20 @@ std::string StyleSheet::resolveValue(const std::string& value,
 std::string StyleSheet::resolveValueInternal(const std::string& value,
                                              const std::unordered_map<std::string, std::string>* customProperties,
                                              bool* valid,
-                                             int depth) const {
-    if (depth > 8) {
+                                             int recursionDepth) const {
+    // Blink CSSVariableResolver parity: maximum recursion depth guard.
+    // CSS Variables Level 1 §3: "if a custom property has a cycle, all values
+    // in that cycle are treated as if they had their initial value."
+    if (recursionDepth > 32) {
         if (valid) *valid = false;
         return "";
     }
+
+    // Thread-local cycle detection set (Blink's ResolutionState / visiting_ set).
+    // Tracks which variable names are currently being resolved on this call stack.
+    // If we encounter a var(--x) while --x is already in the set → cycle → invalid.
+    thread_local std::vector<std::string> resolving_;
+
     std::string out;
     size_t pos = 0;
     while (pos < value.size()) {
@@ -1986,17 +1995,21 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
             break;
         }
         out += value.substr(pos, varStart - pos);
+
+        // Find matching ')' for this var() — depth-aware
         size_t cursor = varStart + 4;
-        int depth = 1;
-        while (cursor < value.size() && depth > 0) {
-            if (value[cursor] == '(') depth++;
-            if (value[cursor] == ')') depth--;
-            if (depth > 0) cursor++;
+        int parenDepth = 1;
+        while (cursor < value.size() && parenDepth > 0) {
+            if (value[cursor] == '(') parenDepth++;
+            if (value[cursor] == ')') parenDepth--;
+            if (parenDepth > 0) cursor++;
         }
         if (cursor >= value.size()) {
             out += value.substr(varStart);
             break;
         }
+
+        // Parse var(--name [, fallback])
         std::string inner = trim(value.substr(varStart + 4, cursor - varStart - 4));
         std::string name = inner;
         std::string fallback;
@@ -2011,28 +2024,79 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
                 fallback = trim(fallback);
             }
         }
-        if (customProperties) {
-            auto customIt = customProperties->find(name);
-            if (customIt != customProperties->end()) {
-                out += resolveValueInternal(customIt->second, customProperties, valid, depth + 1);
-                pos = cursor + 1;
-                continue;
-            }
+
+        // ── Cycle detection (Blink CSSVariableResolver::ResolvePendingSubstitutions parity) ──
+        // Check if this variable is already being resolved on this call stack.
+        bool isCycle = false;
+        for (const auto& v : resolving_) {
+            if (v == name) { isCycle = true; break; }
         }
-        auto it = variables_.find(name);
-        if (it != variables_.end()) {
-            out += resolveValueInternal(it->second, customProperties, valid, depth + 1);
-        } else if (!fallback.empty()) {
-            out += resolveValueInternal(fallback, customProperties, valid, depth + 1);
-        } else {
-            auto defIt = propertyDefinitions_.find(name);
-            if (defIt != propertyDefinitions_.end() && !defIt->second.initialValue.empty()) {
-                out += resolveValueInternal(defIt->second.initialValue, customProperties, valid, depth + 1);
+        if (isCycle) {
+            // CSS Variables §3: cycle detected → use fallback if available, else invalid.
+            if (!fallback.empty()) {
+                out += resolveValueInternal(fallback, customProperties, valid, recursionDepth + 1);
             } else {
                 if (valid) *valid = false;
                 return "";
             }
+            pos = cursor + 1;
+            continue;
         }
+
+        // Push this variable onto the resolution stack
+        resolving_.push_back(name);
+
+        // Look up the variable value
+        std::string resolved;
+        bool found = false;
+        bool innerValid = true;
+
+        if (customProperties) {
+            auto customIt = customProperties->find(name);
+            if (customIt != customProperties->end()) {
+                bool iv = true;
+                resolved = resolveValueInternal(customIt->second, customProperties, &iv, recursionDepth + 1);
+                if (iv) { found = true; }
+                else { innerValid = false; }
+            }
+        }
+        if (!found && innerValid) {
+            auto it = variables_.find(name);
+            if (it != variables_.end()) {
+                bool iv = true;
+                resolved = resolveValueInternal(it->second, customProperties, &iv, recursionDepth + 1);
+                if (iv) { found = true; }
+                else { innerValid = false; }
+            }
+        }
+        // If resolution failed (cycle or invalid), try the fallback
+        if (!found || !innerValid) {
+            if (!fallback.empty()) {
+                bool iv = true;
+                resolved = resolveValueInternal(fallback, customProperties, &iv, recursionDepth + 1);
+                if (iv) { found = true; innerValid = true; }
+                else { found = false; }
+            }
+        }
+        if (!found) {
+            // Last resort: @property initial value
+            auto defIt = propertyDefinitions_.find(name);
+            if (defIt != propertyDefinitions_.end() && !defIt->second.initialValue.empty()) {
+                bool iv = true;
+                resolved = resolveValueInternal(defIt->second.initialValue, customProperties, &iv, recursionDepth + 1);
+                if (iv) { found = true; }
+            }
+        }
+        if (!found) {
+            if (valid) *valid = false;
+            resolving_.pop_back();
+            return "";
+        }
+
+        // Pop from resolution stack
+        resolving_.pop_back();
+
+        out += resolved;
         pos = cursor + 1;
     }
     return trim(out);

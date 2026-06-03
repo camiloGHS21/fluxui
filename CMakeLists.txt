@@ -599,4 +599,15 @@ target_include_directories(test_nesting PRIVATE
 )
 enable_release_lto(test_nesting)
 
+add_executable(test_var_cycle
+    examples/cpp/test_var_cycle.cpp
+)
+target_link_libraries(test_var_cycle PRIVATE
+    fluxui
+)
+target_include_directories(test_var_cycle PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_var_cycle)
+
 
