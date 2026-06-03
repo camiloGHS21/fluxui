@@ -3861,6 +3861,22 @@ void Widget::renderChildren(Renderer& renderer) {
 }
 void Widget::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
+
+    const Style& s = *computedStyle;
+
+    // ── Push compositing layer for filter/blend/isolation (Blink cc::PaintOp parity) ──
+    bool needsCompositingLayer = s.hasMixBlendMode || s.hasFilter || s.hasIsolation;
+    if (needsCompositingLayer && renderer.isRecording()) {
+        RenderCommand saveCmd;
+        saveCmd.type = RenderCommandType::SaveLayer;
+        saveCmd.rect = bounds;
+        saveCmd.opacity = s.opacity;
+        saveCmd.blendMode = s.mixBlendMode;
+        saveCmd.filterOps = s.filterOperations;
+        saveCmd.isolate   = (s.isolation == Style::Isolation::Isolate);
+        renderer.recordCommand(saveCmd);
+    }
+
     bool hasScale = (renderScale != 1.0f && !layoutObject);
     if (hasScale) {
         renderer.pushScale(renderScale, bounds.center());
@@ -3870,6 +3886,14 @@ void Widget::render(Renderer& renderer) {
     renderChildren(renderer);
     if (hasScale) {
         renderer.popScale();
+    }
+
+    // ── Pop compositing layer ──
+    if (needsCompositingLayer && renderer.isRecording()) {
+        RenderCommand restoreCmd;
+        restoreCmd.type = RenderCommandType::RestoreLayer;
+        restoreCmd.rect = bounds;
+        renderer.recordCommand(restoreCmd);
     }
 }
 void Text::layout(const Rect& parentBounds) {

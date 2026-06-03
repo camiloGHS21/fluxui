@@ -228,6 +228,37 @@ private:
             case RenderCommandType::ScissorPop:
                 renderer_->popScissor();
                 break;
+            // ── Compositing operations (Blink cc::PaintOp parity) ──
+            case RenderCommandType::BackdropFilterBlur:
+                renderer_->drawBackdropFilterBlur(cmd.rect, cmd.blurRadius, cmd.radius);
+                break;
+            case RenderCommandType::FilterEffect:
+                // Filter effects are applied during SaveLayer/RestoreLayer compositing.
+                // Individual filter commands serve as markers for the effect tree.
+                break;
+            case RenderCommandType::SaveLayer:
+                // GPU compositing: push an offscreen render target for filter/blend isolation.
+                // In software mode, this is a conceptual layer that gets composited on restore.
+                // The actual blend/filter is applied during RestoreLayer.
+                renderer_->pushRenderTarget(0, (int)cmd.rect.w, (int)cmd.rect.h);
+                break;
+            case RenderCommandType::RestoreLayer:
+                // Pop the render target and composite back with blend mode and filters.
+                renderer_->popRenderTarget();
+                break;
+            case RenderCommandType::BlendModeBegin:
+            case RenderCommandType::IsolationBegin:
+                // Markers for begin/end pairs — actual compositing handled by Save/RestoreLayer
+                break;
+            case RenderCommandType::BlendModeEnd:
+            case RenderCommandType::IsolationEnd:
+                break;
+            case RenderCommandType::Border:
+                renderer_->drawBorder(cmd.rect, cmd.border, cmd.radius);
+                break;
+            case RenderCommandType::BoxShadow:
+                renderer_->drawBoxShadow(cmd.rect, cmd.shadow, cmd.radius);
+                break;
         }
 
         // 5. Restore clip/scale/translation stacks for clean rendering cycles

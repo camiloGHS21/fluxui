@@ -38,6 +38,15 @@ struct EffectNode {
     float blurRadius = 0.0f;
     int transformNodeId = 0;
 
+    // ── Compositing properties (Blink cc::EffectNode parity) ──
+    Style::BlendMode blendMode = Style::BlendMode::Normal;
+    bool hasBlendMode = false;
+    bool isolate = false;            // isolation: isolate creates a new stacking context
+    std::vector<FilterOperation> filterOps;       // filter: effects
+    std::vector<FilterOperation> backdropFilterOps; // backdrop-filter: effects
+    Style::BlendMode backgroundBlendMode = Style::BlendMode::Normal;
+    bool hasBackgroundBlendMode = false;
+
     // Combined/global opacity cached on tree build (product of all ancestor opacities)
     float combinedOpacity = 1.0f;
 };

@@ -146,7 +146,15 @@ enum class RenderCommandType {
     ScissorPop,
     Border,
     BoxShadow,
-    BackdropFilterBlur
+    BackdropFilterBlur,
+    // ── Compositing operations (Blink cc::PaintOp parity) ──
+    FilterEffect,       // Applies a filter operation list to content below
+    BlendModeBegin,     // Push blend mode isolation layer
+    BlendModeEnd,       // Pop blend mode layer (composite with backdrop)
+    IsolationBegin,     // Push isolation stacking context
+    IsolationEnd,       // Pop isolation stacking context
+    SaveLayer,          // Save layer with opacity/filter/blend (Skia SaveLayerOp parity)
+    RestoreLayer,       // Restore layer composite
 };
 
 struct RenderCommand {
@@ -188,6 +196,16 @@ struct RenderCommand {
     int transformNodeId = 0;
     int clipNodeId = 0;
     int effectNodeId = 0;
+
+    // ── Compositing fields (Blink cc::PaintFlags / cc::FilterOperations parity) ──
+    // Blend mode for BlendModeBegin/SaveLayer commands
+    Style::BlendMode blendMode = Style::BlendMode::Normal;
+    // Filter operations for FilterEffect/SaveLayer commands
+    std::vector<FilterOperation> filterOps;
+    // Isolation flag for the layer
+    bool isolate = false;
+    // Backdrop filter (separate from element filter — composited behind content)
+    std::vector<FilterOperation> backdropFilterOps;
 };
 
 struct ImageData {
