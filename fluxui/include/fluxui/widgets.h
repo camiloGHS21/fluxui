@@ -342,6 +342,14 @@ public:
     std::vector<std::shared_ptr<Widget>> children;
     std::shared_ptr<Widget> beforePseudoNode;
     std::shared_ptr<Widget> afterPseudoNode;
+    // Pseudo-element resolved styles (Blink PseudoId parity).
+    // Resolved during updateStyle from CSS rules matching ::placeholder, ::selection, ::marker.
+    Style placeholderStyle;   // ::placeholder
+    Style selectionStyle;     // ::selection
+    Style markerStyle;        // ::marker
+    bool hasPlaceholderStyle = false;
+    bool hasSelectionStyle   = false;
+    bool hasMarkerStyle      = false;
     std::unique_ptr<LayoutObject> layoutObject;
     bool skipDOMChildrenPaint = false;
     int colspan = 1;

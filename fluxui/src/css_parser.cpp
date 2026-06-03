@@ -1047,12 +1047,33 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         nameStart++;
     }
     std::string name = lowerAscii(trimLocal(selector.substr(nameStart)));
-    if (name == "hover" || name == "focus" ||
-        name == "focus-visible" || name == "active" ||
-        name == "before" || name == "after") {
-        if (pseudo) *pseudo = name;
+    // Strip trailing (…) for functional pseudo-elements like ::part(foo), ::slotted(div)
+    auto parenPos = name.find('(');
+    std::string baseName = (parenPos != std::string::npos) ? name.substr(0, parenPos) : name;
+
+    // Pseudo-classes that create separate style resolution contexts
+    if (baseName == "hover" || baseName == "focus" ||
+        baseName == "focus-visible" || baseName == "active") {
+        if (pseudo) *pseudo = baseName;
         selector = trimLocal(selector.substr(0, colon));
         return true;
+    }
+    // Pseudo-elements (Blink PseudoId parity: all W3C Level 4 pseudo-elements)
+    // https://chromium.googlesource.com/chromium/src/+/HEAD/third_party/blink/renderer/core/style/computed_style_constants.h
+    static const char* const kPseudoElements[] = {
+        "before", "after", "placeholder", "selection", "marker",
+        "first-letter", "first-line", "backdrop", "file-selector-button",
+        "part", "slotted", "highlight", "spelling-error", "grammar-error",
+        "target-text", "cue", "progress-bar", "progress-value",
+        "scrollbar", "scrollbar-thumb", "scrollbar-track",
+        nullptr
+    };
+    for (int i = 0; kPseudoElements[i]; ++i) {
+        if (baseName == kPseudoElements[i]) {
+            if (pseudo) *pseudo = name; // keep full name including (arg) if present
+            selector = trimLocal(selector.substr(0, colon));
+            return true;
+        }
     }
     return false;
 }

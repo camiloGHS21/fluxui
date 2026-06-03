@@ -2424,6 +2424,38 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             }
         }
 
+        // ── Resolve additional pseudo-element styles (Blink PseudoId parity) ──
+        // ::placeholder — for input/textarea placeholder text color/font
+        {
+            Style ps = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "placeholder");
+            if (ps.hasColor || ps.hasFontSize || ps.hasFontWeight || ps.opacity != 1.0f) {
+                placeholderStyle = ps;
+                hasPlaceholderStyle = true;
+            } else {
+                hasPlaceholderStyle = false;
+            }
+        }
+        // ::selection — selection highlight color/background
+        {
+            Style ss = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "selection");
+            if (ss.hasColor || ss.backgroundColor.a > 0) {
+                selectionStyle = ss;
+                hasSelectionStyle = true;
+            } else {
+                hasSelectionStyle = false;
+            }
+        }
+        // ::marker — list-item marker color/font
+        {
+            Style ms = sheet.resolve(className, id, selectorType, getAncestors(), &computedStyle, this, "marker");
+            if (ms.hasColor || ms.hasFontSize || ms.hasFontWeight) {
+                markerStyle = ms;
+                hasMarkerStyle = true;
+            } else {
+                hasMarkerStyle = false;
+            }
+        }
+
         lastResolveKey = currentKey;
         lastStyleSheetEpoch = sheet.getEpoch();
         hasLastResolveKey = true;
@@ -3623,10 +3655,15 @@ void Widget::renderListMarker(Renderer& renderer) {
             break;
     }
 
-    Color textColor = computedStyle->color;
+    Color textColor = hasMarkerStyle && markerStyle.hasColor
+        ? markerStyle.color : computedStyle->color;
+    float markerFontSize = hasMarkerStyle && markerStyle.hasFontSize
+        ? markerStyle.fontSize : computedStyle->fontSize;
+    FontWeight markerFontWeight = hasMarkerStyle && markerStyle.hasFontWeight
+        ? markerStyle.fontWeight : computedStyle->fontWeight;
     const std::string& fontName = renderFontName(computedStyle);
     if (!markerText.empty()) {
-        Vec2 textSize = renderer.measureText(markerText, computedStyle->fontSize, fontName);
+        Vec2 textSize = renderer.measureText(markerText, markerFontSize, fontName);
         float x = 0.0f;
         float y = bounds.y + computedStyle->padding.top;
         if (computedStyle->direction == Direction::Ltr) {
@@ -3634,8 +3671,8 @@ void Widget::renderListMarker(Renderer& renderer) {
         } else {
             x = bounds.x + bounds.w + 8.0f;
         }
-        renderer.drawText(markerText, Vec2(x, y), textColor, computedStyle->fontSize,
-                          computedStyle->fontWeight, fontName, computedStyle->fontStyle,
+        renderer.drawText(markerText, Vec2(x, y), textColor, markerFontSize,
+                          markerFontWeight, fontName, computedStyle->fontStyle,
                           computedStyle->direction, computedStyle->unicodeBidi);
     } else {
         // Bullet shapes: Disc, Circle, Square
@@ -4588,9 +4625,11 @@ void TextInput::render(Renderer& renderer) {
     float bgLum = s.backgroundColor.r * 0.2126f +
                   s.backgroundColor.g * 0.7152f +
                   s.backgroundColor.b * 0.0722f;
-    Color placeholderColor = bgLum > 0.45f
-        ? Color(0.459f, 0.459f, 0.459f, 1.0f)
-        : Color(0.604f, 0.627f, 0.659f, 0.92f);
+    Color placeholderColor = hasPlaceholderStyle && placeholderStyle.hasColor
+        ? placeholderStyle.color
+        : (bgLum > 0.45f
+            ? Color(0.459f, 0.459f, 0.459f, 1.0f)
+            : Color(0.604f, 0.627f, 0.659f, 0.92f));
     Color textColor = value.empty() ? placeholderColor : s.color;
     Rect textRect = {
         clipRect.x - scrollX_,
