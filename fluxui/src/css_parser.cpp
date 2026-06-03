@@ -3688,6 +3688,7 @@ void StyleSheet::mergeProperty(Style& style, const std::string& name, const std:
     }
     mergePropertyPart1(style, name, value, emBase);
     mergePropertyPart2(style, name, value, emBase);
+    mergePropertyPart3(style, name, value, emBase);
 }
 static bool isDynamicValue(const std::string& val) {
     return val.find("var(") != std::string::npos ||
@@ -5001,6 +5002,82 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         style.hoverOpacity = parseFloat(value);
     } else if (name == "hover-scale" || name == "--hover-scale") {
         style.hoverScale = parseFloat(value);
+    }
+}
+// ── mergePropertyPart3: scroll-driven animations + timeline properties ──
+void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const std::string& value, float emBase) {
+    if (name == "animation-timeline") {
+        style.animationTimeline.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            style.animationTimeline.push_back(trim(part));
+        }
+        style.hasAnimationTimeline = !style.animationTimeline.empty();
+    } else if (name == "animation-range" || name == "animation-range-start") {
+        if (name == "animation-range") {
+            auto parts = splitTopLevel(value, ' ');
+            style.animationRangeStart = trim(parts.size() > 0 ? parts[0] : value);
+            style.animationRangeEnd   = parts.size() > 1 ? trim(parts[1]) : "normal";
+        } else {
+            style.animationRangeStart = trim(value);
+        }
+    } else if (name == "animation-range-end") {
+        style.animationRangeEnd = trim(value);
+    } else if (name == "scroll-timeline") {
+        style.scrollTimelineName.clear();
+        style.scrollTimelineAxis.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            std::string s = trim(part);
+            std::istringstream iss(s);
+            std::string n, a;
+            iss >> n; iss >> a;
+            style.scrollTimelineName.push_back(n);
+            style.scrollTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
+        }
+        style.hasScrollTimeline = !style.scrollTimelineName.empty();
+    } else if (name == "scroll-timeline-name") {
+        style.scrollTimelineName.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            style.scrollTimelineName.push_back(trim(part));
+        }
+        style.hasScrollTimeline = !style.scrollTimelineName.empty();
+    } else if (name == "scroll-timeline-axis") {
+        style.scrollTimelineAxis.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            style.scrollTimelineAxis.push_back(lowerAscii(trim(part)));
+        }
+    } else if (name == "view-timeline") {
+        style.viewTimelineName.clear();
+        style.viewTimelineAxis.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            std::string s = trim(part);
+            std::istringstream iss(s);
+            std::string n, a;
+            iss >> n; iss >> a;
+            style.viewTimelineName.push_back(n);
+            style.viewTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
+        }
+        style.hasViewTimeline = !style.viewTimelineName.empty();
+    } else if (name == "view-timeline-name") {
+        style.viewTimelineName.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            style.viewTimelineName.push_back(trim(part));
+        }
+        style.hasViewTimeline = !style.viewTimelineName.empty();
+    } else if (name == "view-timeline-axis") {
+        style.viewTimelineAxis.clear();
+        for (const auto& part : splitTopLevel(value, ',')) {
+            style.viewTimelineAxis.push_back(lowerAscii(trim(part)));
+        }
+    } else if (name == "view-timeline-inset") {
+        style.viewTimelineInset = trim(value);
+    } else if (name == "timeline-scope") {
+        style.timelineScope.clear();
+        if (lowerAscii(trim(value)) != "none") {
+            for (const auto& part : splitTopLevel(value, ',')) {
+                style.timelineScope.push_back(trim(part));
+            }
+        }
+        style.hasTimelineScope = !style.timelineScope.empty();
     }
 }
 void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const std::string& value) {

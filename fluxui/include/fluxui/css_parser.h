@@ -229,6 +229,7 @@ public:
     static void mergeProperty(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static bool mergePropertyPart1(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static void mergePropertyPart2(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
+    static void mergePropertyPart3(Style& style, const std::string& name, const std::string& value, float emBase = 16.0f);
     static std::string trim(const std::string& s);
 
     static bool selectorMatches(const CSSRule& rule,

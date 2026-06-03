@@ -643,4 +643,15 @@ target_include_directories(test_scroll PRIVATE
 )
 enable_release_lto(test_scroll)
 
+add_executable(test_scroll_timeline
+    examples/cpp/test_scroll_timeline.cpp
+)
+target_link_libraries(test_scroll_timeline PRIVATE
+    fluxui
+)
+target_include_directories(test_scroll_timeline PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_scroll_timeline)
+
 

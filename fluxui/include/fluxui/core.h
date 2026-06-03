@@ -2131,6 +2131,26 @@ struct Style {
     std::vector<AnimationPlayState> animationPlayState;
     std::vector<TimingFunction> animationTimingFunction;
     std::vector<AnimationComposition> animationComposition;
+    // ── Scroll-driven Animations (CSS Scroll-driven Animations L1 / Blink parity) ──
+    // animation-timeline: auto | none | <timeline-name> | scroll() | view()
+    std::vector<std::string> animationTimeline;
+    // animation-range: normal | <length-percentage> | <timeline-range-name> <pct>
+    std::string animationRangeStart;
+    std::string animationRangeEnd;
+    // scroll-timeline: <name> [<axis>] (shorthand for scroll-timeline-name + scroll-timeline-axis)
+    std::vector<std::string> scrollTimelineName;
+    std::vector<std::string> scrollTimelineAxis;  // block | inline | x | y
+    // view-timeline: <name> [<axis>] (shorthand for view-timeline-name + view-timeline-axis)
+    std::vector<std::string> viewTimelineName;
+    std::vector<std::string> viewTimelineAxis;
+    // view-timeline-inset: auto | [<length-pct>{1,2}]
+    std::string viewTimelineInset;
+    // timeline-scope: none | <dashed-ident>#
+    std::vector<std::string> timelineScope;
+    bool hasAnimationTimeline = false;
+    bool hasScrollTimeline    = false;
+    bool hasViewTimeline      = false;
+    bool hasTimelineScope     = false;
     std::vector<std::string> transitionProperty;
     std::vector<float> transitionDurations;
     std::vector<float> transitionDelays;
