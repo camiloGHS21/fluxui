@@ -49,6 +49,11 @@ struct CSSRule {
     std::string layer;
     int specificity = 0;
 
+    // @scope support (CSS Cascading and Inheritance Level 6)
+    std::string scopeRoot;        // @scope (.root) → ".root"
+    std::string scopeLimit;       // @scope (.root) to (.limit) → ".limit"
+    bool isStartingStyle = false; // @starting-style wrapped rules
+
     // Cached pre-parsed selector data for faster matching
     std::string selectorWithoutPseudo;
     std::string pseudoState;
@@ -111,6 +116,16 @@ public:
     std::vector<CSSFontFace> fontFaces;
     std::vector<CSSKeyframesRule> keyframesRules;
     std::vector<std::string> layersOrder;
+
+    // @starting-style: rules that apply before first animation frame (CSS Transitions Level 2)
+    std::vector<CSSRule> startingStyleRules;
+
+    // @view-transition (CSS View Transitions Level 2)
+    struct ViewTransitionConfig {
+        std::string navigation;  // "auto" | "none"
+        std::vector<std::string> types;
+    };
+    ViewTransitionConfig viewTransition;
 
     const std::unordered_map<std::string, CSSPropertyDefinition>& getPropertyDefinitions() const {
         return propertyDefinitions_;

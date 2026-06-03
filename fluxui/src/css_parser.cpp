@@ -1731,6 +1731,78 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
                         registerLayer(nestedLayerName);
                     }
                     parseRulesFromTokens(blockContent, mediaQuery, nestedLayerName);
+                } else if (lowerPrelude.rfind("@scope", 0) == 0) {
+                    // @scope (<root>) [to (<limit>)] { ... }
+                    // CSS Cascading & Inheritance Level 6 / Blink CSSScopeRule parity
+                    std::string args = trim(preludeStr.substr(6));
+                    std::string scopeRoot, scopeLimit;
+                    // Parse: (<root-selector>) [to (<limit-selector>)]
+                    size_t openParen = args.find('(');
+                    if (openParen != std::string::npos) {
+                        // Find matching close for root selector
+                        int depth = 0; size_t closeRoot = openParen;
+                        for (size_t k = openParen; k < args.size(); k++) {
+                            if (args[k] == '(') ++depth;
+                            else if (args[k] == ')') { --depth; if (depth == 0) { closeRoot = k; break; } }
+                        }
+                        scopeRoot = trim(args.substr(openParen + 1, closeRoot - openParen - 1));
+                        // Check for "to (...)"
+                        std::string rest = lowerAscii(trim(args.substr(closeRoot + 1)));
+                        if (rest.rfind("to", 0) == 0) {
+                            std::string afterTo = trim(args.substr(closeRoot + 1));
+                            size_t toOpen = afterTo.find('(');
+                            if (toOpen != std::string::npos) {
+                                int d2 = 0; size_t toClose = toOpen;
+                                for (size_t k = toOpen; k < afterTo.size(); k++) {
+                                    if (afterTo[k] == '(') ++d2;
+                                    else if (afterTo[k] == ')') { --d2; if (d2 == 0) { toClose = k; break; } }
+                                }
+                                scopeLimit = trim(afterTo.substr(toOpen + 1, toClose - toOpen - 1));
+                            }
+                        }
+                    }
+                    // Parse inner rules and tag them with scope metadata
+                    size_t rulesBefore = rules.size();
+                    parseRulesFromTokens(blockContent, mediaQuery, currentLayer);
+                    // Annotate all newly added rules with scope root/limit
+                    for (size_t r = rulesBefore; r < rules.size(); r++) {
+                        rules[r].scopeRoot = scopeRoot;
+                        rules[r].scopeLimit = scopeLimit;
+                    }
+                } else if (lowerPrelude.rfind("@starting-style", 0) == 0) {
+                    // @starting-style { ... }
+                    // CSS Transitions Level 2: rules that apply before the first style update
+                    size_t rulesBefore = rules.size();
+                    parseRulesFromTokens(blockContent, mediaQuery, currentLayer);
+                    // Mark and move to startingStyleRules
+                    for (size_t r = rulesBefore; r < rules.size(); r++) {
+                        rules[r].isStartingStyle = true;
+                        startingStyleRules.push_back(rules[r]);
+                    }
+                    // Remove from main rules (they shouldn't apply during normal resolve)
+                    rules.erase(rules.begin() + (ptrdiff_t)rulesBefore, rules.end());
+                } else if (lowerPrelude.rfind("@view-transition", 0) == 0) {
+                    // @view-transition { navigation: auto; types: slide; }
+                    // CSS View Transitions Level 2
+                    std::string bodyStr;
+                    for (const auto& t : blockContent) bodyStr += t.text;
+                    // Parse declarations
+                    std::istringstream ss(bodyStr);
+                    std::string line;
+                    while (std::getline(ss, line, ';')) {
+                        line = trim(line);
+                        auto colonPos = line.find(':');
+                        if (colonPos == std::string::npos) continue;
+                        std::string prop = lowerAscii(trim(line.substr(0, colonPos)));
+                        std::string val  = trim(line.substr(colonPos + 1));
+                        if (prop == "navigation") {
+                            viewTransition.navigation = lowerAscii(val);
+                        } else if (prop == "types") {
+                            viewTransition.types.clear();
+                            std::istringstream ts(val);
+                            std::string t; while (ts >> t) viewTransition.types.push_back(t);
+                        }
+                    }
                 }
             } else {
                 if (!preludeStr.empty()) {
@@ -2192,6 +2264,35 @@ Style StyleSheet::resolve(std::string_view className,
             }
         }
         if (!mediaQueryMatches(rule.mediaQuery)) continue;
+        // @scope check: if rule has a scopeRoot, verify an ancestor matches it.
+        // If scopeLimit is set, reject if any ancestor between element and root matches limit.
+        if (!rule.scopeRoot.empty()) {
+            bool inScope = false;
+            bool hitLimit = false;
+            for (const auto& anc : ancestors) {
+                // Check if this ancestor matches the scope root
+                CSSRule rootRule;
+                rootRule.selector = rule.scopeRoot;
+                rootRule.selectorWithoutPseudo = rule.scopeRoot;
+                splitSelectorChain(rule.scopeRoot, rootRule.parts, rootRule.combinators);
+                if (selectorMatches(rootRule, anc.className, anc.id, anc.type, {}, nullptr, anc.widget)) {
+                    inScope = true;
+                    break;
+                }
+                // Check scope limit (lower boundary)
+                if (!rule.scopeLimit.empty()) {
+                    CSSRule limitRule;
+                    limitRule.selector = rule.scopeLimit;
+                    limitRule.selectorWithoutPseudo = rule.scopeLimit;
+                    splitSelectorChain(rule.scopeLimit, limitRule.parts, limitRule.combinators);
+                    if (selectorMatches(limitRule, anc.className, anc.id, anc.type, {}, nullptr, anc.widget)) {
+                        hitLimit = true;
+                        break;
+                    }
+                }
+            }
+            if (!inScope || hitLimit) continue;
+        }
         std::string_view pseudo;
         if (selectorMatches(rule, className, id, type, ancestors, &pseudo, widget)) {
             if (targetPseudo.empty()) {
