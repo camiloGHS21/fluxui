@@ -5078,6 +5078,80 @@ void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const
             }
         }
         style.hasTimelineScope = !style.timelineScope.empty();
+    } else if (name == "font-variant-caps") {
+        style.fontVariantCaps = lowerAscii(trim(value));
+        style.hasFontVariantCaps = (style.fontVariantCaps != "normal");
+    } else if (name == "font-variant-numeric") {
+        style.fontVariantNumeric = lowerAscii(trim(value));
+        style.hasFontVariantNumeric = (style.fontVariantNumeric != "normal");
+    } else if (name == "font-variant-ligatures") {
+        style.fontVariantLigatures = lowerAscii(trim(value));
+        style.hasFontVariantLigatures = (style.fontVariantLigatures != "normal");
+    } else if (name == "font-variant-east-asian") {
+        style.fontVariantEastAsian = lowerAscii(trim(value));
+        style.hasFontVariantEastAsian = (style.fontVariantEastAsian != "normal");
+    } else if (name == "font-variant-position") {
+        style.fontVariantPosition = lowerAscii(trim(value));
+    } else if (name == "font-variant-alternates") {
+        style.fontVariantAlternates = trim(value);
+    } else if (name == "font-variant") {
+        // font-variant shorthand → distribute to sub-properties
+        std::string v = lowerAscii(trim(value));
+        if (v == "normal" || v == "none") {
+            style.fontVariantCaps = "normal";
+            style.fontVariantNumeric = "normal";
+            style.fontVariantLigatures = v;
+            style.fontVariantEastAsian = "normal";
+        } else if (v == "small-caps" || v == "all-small-caps" || v == "petite-caps" ||
+                   v == "all-petite-caps" || v == "unicase" || v == "titling-caps") {
+            style.fontVariantCaps = v;
+            style.hasFontVariantCaps = true;
+        } else {
+            style.fontVariantCaps = v; // best-effort
+        }
+    } else if (name == "font-feature-settings") {
+        style.fontFeatureSettings = trim(value);
+        style.hasFontFeatureSettings = (lowerAscii(style.fontFeatureSettings) != "normal");
+    } else if (name == "font-variation-settings") {
+        style.fontVariationSettings = trim(value);
+        style.hasFontVariationSettings = (lowerAscii(style.fontVariationSettings) != "normal");
+    } else if (name == "font-optical-sizing") {
+        style.fontOpticalSizing = lowerAscii(trim(value));
+        style.hasFontOpticalSizing = (style.fontOpticalSizing != "auto");
+    } else if (name == "font-palette") {
+        style.fontPalette = trim(value);
+    } else if (name == "font-stretch") {
+        style.fontStretch = lowerAscii(trim(value));
+        style.hasFontStretch = (style.fontStretch != "normal");
+    } else if (name == "font-synthesis") {
+        style.fontSynthesis = lowerAscii(trim(value));
+    } else if (name == "font-language-override") {
+        style.fontLanguageOverride = trim(value);
+    } else if (name == "tab-size") {
+        style.tabSize = parseLengthPixels(value, emBase);
+        if (style.tabSize == 0.0f) {
+            // Bare integer (number of spaces)
+            try { style.tabSize = std::stof(trim(value)); } catch (...) {}
+        }
+        style.hasTabSize = true;
+    } else if (name == "hyphens") {
+        style.hyphens = lowerAscii(trim(value));
+        style.hasHyphens = (style.hyphens != "manual");
+    } else if (name == "line-break") {
+        style.lineBreak = lowerAscii(trim(value));
+        style.hasLineBreak = (style.lineBreak != "auto");
+    } else if (name == "overflow-wrap" || name == "word-wrap") {
+        style.overflowWrap = lowerAscii(trim(value));
+        style.hasOverflowWrap = (style.overflowWrap != "normal");
+    } else if (name == "text-justify") {
+        style.textJustify = lowerAscii(trim(value));
+        style.hasTextJustify = (style.textJustify != "auto");
+    } else if (name == "text-indent") {
+        style.textIndent = parseLengthPixels(value, emBase);
+        style.hasTextIndent = true;
+    } else if (name == "hanging-punctuation") {
+        style.hangingPunctuation = lowerAscii(trim(value));
+        style.hasHangingPunctuation = (style.hangingPunctuation != "none");
     }
 }
 void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const std::string& value) {

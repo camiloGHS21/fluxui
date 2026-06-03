@@ -654,4 +654,15 @@ target_include_directories(test_scroll_timeline PRIVATE
 )
 enable_release_lto(test_scroll_timeline)
 
+add_executable(test_typography
+    examples/cpp/test_typography.cpp
+)
+target_link_libraries(test_typography PRIVATE
+    fluxui
+)
+target_include_directories(test_typography PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_typography)
+
 

@@ -2109,6 +2109,59 @@ struct Style {
     bool hasWordBreak = false;
     bool hasVerticalAlign = false;
     bool hasListStyleType = false;
+
+    // ── Advanced Typography (CSS Fonts L4, CSS Text L4 / Blink parity) ──
+    // font-variant sub-properties
+    std::string fontVariantCaps;       // normal | small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps
+    std::string fontVariantNumeric;    // normal | ordinal | slashed-zero | lining-nums | oldstyle-nums | proportional-nums | tabular-nums | diagonal-fractions | stacked-fractions
+    std::string fontVariantLigatures;  // normal | none | common-ligatures | no-common-ligatures | ...
+    std::string fontVariantEastAsian;  // normal | jis78 | jis83 | jis90 | jis04 | simplified | traditional | full-width | proportional-width | ruby
+    std::string fontVariantPosition;   // normal | sub | super
+    std::string fontVariantAlternates; // normal | historical-forms | stylistic() | swash() | ornaments() | annotation() | styleset() | character-variant()
+    // font-feature-settings / font-variation-settings (OpenType)
+    std::string fontFeatureSettings;   // normal | <feature-tag-value>#
+    std::string fontVariationSettings; // normal | [<string> <number>]#
+    // font-optical-sizing
+    std::string fontOpticalSizing;     // auto | none
+    // font-palette
+    std::string fontPalette;           // normal | light | dark | <dashed-ident>
+    // font-stretch
+    std::string fontStretch;           // normal | ultra-condensed...ultra-expanded | <percentage>
+    // tab-size
+    float tabSize = 8.0f;             // <integer> | <length>
+    bool hasTabSize = false;
+    // hyphens
+    std::string hyphens;               // none | manual | auto
+    bool hasHyphens = false;
+    // line-break
+    std::string lineBreak;             // auto | loose | normal | strict | anywhere
+    bool hasLineBreak = false;
+    // overflow-wrap (word-wrap alias)
+    std::string overflowWrap;          // normal | break-word | anywhere
+    bool hasOverflowWrap = false;
+    // text-justify
+    std::string textJustify;           // auto | inter-word | inter-character | none
+    bool hasTextJustify = false;
+    // text-indent
+    float textIndent = 0.0f;
+    bool hasTextIndent = false;
+    // hanging-punctuation
+    std::string hangingPunctuation;    // none | first | last | force-end | allow-end
+    bool hasHangingPunctuation = false;
+    // font-synthesis
+    std::string fontSynthesis;         // none | weight | style | small-caps | position
+    // font-language-override
+    std::string fontLanguageOverride;
+
+    bool hasFontVariantCaps = false;
+    bool hasFontVariantNumeric = false;
+    bool hasFontVariantLigatures = false;
+    bool hasFontVariantEastAsian = false;
+    bool hasFontFeatureSettings = false;
+    bool hasFontVariationSettings = false;
+    bool hasFontOpticalSizing = false;
+    bool hasFontStretch = false;
+
     FastCustomProperties customProperties;
     FastCustomProperties hoverCustomProperties;
     FastCustomProperties focusCustomProperties;
