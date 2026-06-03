@@ -330,6 +330,9 @@ FLUXUI_API void fluxui_style_margin_px(FluxUIWidget* widget,
 FLUXUI_API void fluxui_style_border_radius_px(FluxUIWidget* widget, float value);
 FLUXUI_API void fluxui_style_background_color(FluxUIWidget* widget, FluxUIColor color);
 FLUXUI_API void fluxui_style_text_color(FluxUIWidget* widget, FluxUIColor color);
+// Apply a CSS declaration block inline (e.g. "display:flex;flex-direction:column").
+// Mirrors Widget::css() so language bindings can express arbitrary inline styles.
+FLUXUI_API void fluxui_widget_css(FluxUIWidget* widget, const char* declarations);
 
 #ifdef __cplusplus
 }

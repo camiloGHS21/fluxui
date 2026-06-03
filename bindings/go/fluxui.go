@@ -98,6 +98,7 @@ var (
 	fluxui_widget_get_bounds          = fluxui_dll.NewProc("fluxui_widget_get_bounds")
 	fluxui_widget_set_on_click        = fluxui_dll.NewProc("fluxui_widget_set_on_click")
 	fluxui_widget_clear_children      = fluxui_dll.NewProc("fluxui_widget_clear_children")
+	fluxui_widget_css                 = fluxui_dll.NewProc("fluxui_widget_css")
 
 	fluxui_style_width_px             = fluxui_dll.NewProc("fluxui_style_width_px")
 	fluxui_style_height_px            = fluxui_dll.NewProc("fluxui_style_height_px")

@@ -375,6 +375,7 @@ pub mod sys {
         pub fn fluxui_style_border_radius_px(widget: *mut FluxUIWidget, value: f32);
         pub fn fluxui_style_background_color(widget: *mut FluxUIWidget, color: FluxUIColor);
         pub fn fluxui_style_text_color(widget: *mut FluxUIWidget, color: FluxUIColor);
+        pub fn fluxui_widget_css(widget: *mut FluxUIWidget, declarations: *const c_char);
     }
 }
 
@@ -577,6 +578,23 @@ impl App {
     pub fn dispatch_action(&self, name: &str) -> bool {
         let Ok(name) = cstring(name) else { return false };
         unsafe { sys::fluxui_app_dispatch_action(self.raw.as_ptr(), name.as_ptr()) != 0 }
+    }
+
+    /// Register a per-frame update callback. The closure is leaked for the
+    /// lifetime of the app (it must live as long as the native update loop).
+    pub fn set_update<F>(&self, callback: F)
+    where
+        F: Fn(f32) + 'static,
+    {
+        let boxed = Box::new(callback);
+        let ptr = Box::into_raw(boxed);
+        unsafe {
+            sys::fluxui_app_set_update_callback(
+                self.raw.as_ptr(),
+                Some(rust_update_callback::<F>),
+                ptr as *mut c_void,
+            );
+        }
     }
 
     pub fn raw(&self) -> *mut sys::FluxUIApp {
@@ -957,6 +975,13 @@ impl Widget {
         Ok(())
     }
 
+    /// Set the text content of a Text widget (used by the reactive DSL).
+    pub fn set_content(self, text: &str) -> Result<()> {
+        let text = cstring(text)?;
+        unsafe { sys::fluxui_text_set_content(self.raw.as_ptr(), text.as_ptr()) }
+        Ok(())
+    }
+
     pub fn set_visible(self, visible: bool) {
         unsafe { sys::fluxui_widget_set_visible(self.raw.as_ptr(), if visible { 1 } else { 0 }) }
     }
@@ -1124,6 +1149,13 @@ impl Widget {
         unsafe { sys::fluxui_style_text_color(self.raw.as_ptr(), color) }
     }
 
+    /// Apply an inline CSS declaration block (e.g. "display:flex;flex-direction:column").
+    pub fn css(self, declarations: &str) -> Result<()> {
+        let declarations = cstring(declarations)?;
+        unsafe { sys::fluxui_widget_css(self.raw.as_ptr(), declarations.as_ptr()) }
+        Ok(())
+    }
+
     pub fn raw(self) -> *mut sys::FluxUIWidget {
         self.raw.as_ptr()
     }
@@ -1205,4 +1237,323 @@ pub extern "C" fn rust_click_callback<F>(
     let closure = unsafe { &*(user_data as *const F) };
     let w = Widget { raw: NonNull::new(widget).unwrap() };
     closure(w);
+}
+
+pub extern "C" fn rust_update_callback<F>(
+    _app: *mut sys::FluxUIApp,
+    delta_time: f32,
+    user_data: *mut c_void,
+) where
+    F: Fn(f32) + 'static,
+{
+    let closure = unsafe { &*(user_data as *const F) };
+    closure(delta_time);
+}
+
+// ============================================================
+//  Declarative DSL — mirrors C++ dsl.h / Go dsl.go 1:1.
+//
+//  Build a tree of `Node`s with the free functions (row, column, text, ...),
+//  attach classes/handlers via chaining, and drive reactive `text_fn` nodes
+//  with `State<T>`. Mount the tree with `App::set_root` and run the reactive
+//  loop with `App::run_reactive`.
+//
+//  Example:
+//      use fluxui::dsl::*;
+//      let app = fluxui::App::create().unwrap();
+//      app.init("CompanyGuard", 1200, 800).unwrap();
+//      app.load_default_font(16.0);
+//      let devices = State::new(128);
+//      app.set_root(
+//          row(vec![
+//              sidebar(vec![nav_item("Dashboard"), nav_item("Settings")]).class("sidebar"),
+//              column(vec![
+//                  text("CompanyGuard").class("h1"),
+//                  text_fn({ let d = devices.clone(); move || d.get().to_string() }),
+//                  button("Escanear").class("primary")
+//                      .on_click({ let d = devices.clone(); move || d.set(d.get() + 1) }),
+//              ]).class("content"),
+//          ]).class("app"),
+//      );
+//      app.run_reactive();
+// ============================================================
+pub mod dsl {
+    use super::{App, Widget};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    // ---- Reactive binding registry (thread-local; UI runs on one thread). ----
+    struct ReactiveBinding {
+        widget: Widget,
+        func: Box<dyn Fn() -> String>,
+        last: String,
+    }
+
+    thread_local! {
+        static BINDINGS: RefCell<Vec<ReactiveBinding>> = RefCell::new(Vec::new());
+    }
+
+    fn register_reactive(widget: Widget, func: Box<dyn Fn() -> String>, initial: String) {
+        BINDINGS.with(|b| b.borrow_mut().push(ReactiveBinding { widget, func, last: initial }));
+    }
+
+    /// Re-evaluate every reactive `text_fn` binding, pushing changed values into
+    /// the underlying widgets. Returns true if anything changed. Called each frame.
+    pub fn pump_reactive_bindings() -> bool {
+        BINDINGS.with(|b| {
+            let mut changed = false;
+            for bind in b.borrow_mut().iter_mut() {
+                let v = (bind.func)();
+                if v != bind.last {
+                    bind.last = v.clone();
+                    let _ = bind.widget.set_content(&v);
+                    changed = true;
+                }
+            }
+            changed
+        })
+    }
+
+    // ---- State<T> — lightweight, cloneable reactive primitive. ----
+    #[derive(Clone)]
+    pub struct State<T> {
+        inner: Rc<RefCell<T>>,
+    }
+
+    impl<T: Clone> State<T> {
+        pub fn new(initial: T) -> Self {
+            State { inner: Rc::new(RefCell::new(initial)) }
+        }
+        pub fn get(&self) -> T {
+            self.inner.borrow().clone()
+        }
+        pub fn set(&self, value: T) {
+            *self.inner.borrow_mut() = value;
+        }
+    }
+
+    // ---- Node — deferred declarative element, materialized on mount. ----
+    enum Kind {
+        Row,
+        Column,
+        Sidebar,
+        Card,
+        Grid,
+        Div,
+        Text,
+        TextFn,
+        Button,
+        NavItem,
+        Input,
+        Checkbox,
+        Element,
+    }
+
+    pub struct Node {
+        kind: Kind,
+        tag: String,
+        content: String,
+        class_name: String,
+        node_id: String,
+        on_click: Option<Box<dyn Fn()>>,
+        text_fn: Option<Box<dyn Fn() -> String>>,
+        checked: bool,
+        children: Vec<Node>,
+    }
+
+    impl Node {
+        fn new(kind: Kind) -> Self {
+            Node {
+                kind,
+                tag: String::new(),
+                content: String::new(),
+                class_name: String::new(),
+                node_id: String::new(),
+                on_click: None,
+                text_fn: None,
+                checked: false,
+                children: Vec::new(),
+            }
+        }
+
+        pub fn class(mut self, cls: &str) -> Self {
+            self.class_name = cls.to_string();
+            self
+        }
+        pub fn id(mut self, id: &str) -> Self {
+            self.node_id = id.to_string();
+            self
+        }
+        pub fn on_click<F: Fn() + 'static>(mut self, f: F) -> Self {
+            self.on_click = Some(Box::new(f));
+            self
+        }
+
+        fn mount(self, parent: Widget) -> Option<Widget> {
+            let widget = match self.kind {
+                Kind::Row => {
+                    let w = parent.add_panel(&self.class_name).ok().flatten();
+                    if let Some(w) = w {
+                        let _ = w.css("display:flex;flex-direction:row");
+                    }
+                    w
+                }
+                Kind::Column => {
+                    let w = parent.add_panel(&self.class_name).ok().flatten();
+                    if let Some(w) = w {
+                        let _ = w.css("display:flex;flex-direction:column");
+                    }
+                    w
+                }
+                Kind::Sidebar => {
+                    let cls = if self.class_name.is_empty() { "sidebar" } else { &self.class_name };
+                    let w = parent.add_element("nav", "", cls).ok().flatten();
+                    if let Some(w) = w {
+                        let _ = w.css("display:flex;flex-direction:column");
+                    }
+                    w
+                }
+                Kind::Card => {
+                    let cls = if self.class_name.is_empty() { "card" } else { &self.class_name };
+                    let w = parent.add_panel(cls).ok().flatten();
+                    if let Some(w) = w {
+                        let _ = w.css("display:flex;flex-direction:column");
+                    }
+                    w
+                }
+                Kind::Grid => {
+                    let w = parent.add_panel(&self.class_name).ok().flatten();
+                    if let Some(w) = w {
+                        let _ = w.css("display:grid");
+                    }
+                    w
+                }
+                Kind::Div => parent.add_panel(&self.class_name).ok().flatten(),
+                Kind::Text => parent.add_text(&self.content, &self.class_name).ok().flatten(),
+                Kind::TextFn => {
+                    let initial = self.text_fn.as_ref().map(|f| f()).unwrap_or_default();
+                    let w = parent.add_text(&initial, &self.class_name).ok().flatten();
+                    if let (Some(w), Some(f)) = (w, self.text_fn) {
+                        register_reactive(w, f, initial);
+                    }
+                    w
+                }
+                Kind::Button => parent.add_button(&self.content, &self.class_name).ok().flatten(),
+                Kind::NavItem => {
+                    let cls = if self.class_name.is_empty() { "nav-item" } else { &self.class_name };
+                    parent.add_button(&self.content, cls).ok().flatten()
+                }
+                Kind::Input => parent.add_text_input(&self.content, &self.class_name).ok().flatten(),
+                Kind::Checkbox => parent.add_checkbox(self.checked, &self.class_name).ok().flatten(),
+                Kind::Element => {
+                    parent.add_element(&self.tag, &self.content, &self.class_name).ok().flatten()
+                }
+            };
+
+            let w = widget?;
+            if !self.node_id.is_empty() {
+                let _ = w.set_id(&self.node_id);
+            }
+            if let Some(cb) = self.on_click {
+                w.set_on_click(move |_| cb());
+            }
+            for child in self.children {
+                child.mount(w);
+            }
+            Some(w)
+        }
+    }
+
+    // ---- Builder free functions (match C++ / Go). ----
+    pub fn row(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Row);
+        n.children = children;
+        n
+    }
+    pub fn column(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Column);
+        n.children = children;
+        n
+    }
+    pub fn sidebar(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Sidebar);
+        n.children = children;
+        n
+    }
+    pub fn card(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Card);
+        n.children = children;
+        n
+    }
+    pub fn grid(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Grid);
+        n.children = children;
+        n
+    }
+    pub fn div(children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Div);
+        n.children = children;
+        n
+    }
+    pub fn text(content: &str) -> Node {
+        let mut n = Node::new(Kind::Text);
+        n.content = content.to_string();
+        n
+    }
+    /// Reactive text — re-evaluated whenever bound State changes.
+    pub fn text_fn<F: Fn() -> String + 'static>(f: F) -> Node {
+        let mut n = Node::new(Kind::TextFn);
+        n.text_fn = Some(Box::new(f));
+        n
+    }
+    pub fn button(label: &str) -> Node {
+        let mut n = Node::new(Kind::Button);
+        n.content = label.to_string();
+        n
+    }
+    pub fn nav_item(label: &str) -> Node {
+        let mut n = Node::new(Kind::NavItem);
+        n.content = label.to_string();
+        n
+    }
+    pub fn input(placeholder: &str) -> Node {
+        let mut n = Node::new(Kind::Input);
+        n.content = placeholder.to_string();
+        n
+    }
+    pub fn checkbox(checked: bool) -> Node {
+        let mut n = Node::new(Kind::Checkbox);
+        n.checked = checked;
+        n
+    }
+    pub fn element(tag: &str, children: Vec<Node>) -> Node {
+        let mut n = Node::new(Kind::Element);
+        n.tag = tag.to_string();
+        n.children = children;
+        n
+    }
+
+    // ---- App convenience methods for the declarative flow. ----
+    impl App {
+        /// Mount a declarative Node tree as the application root.
+        pub fn set_root(&self, root: Node) {
+            if let Some(r) = self.root() {
+                r.clear_children();
+                root.mount(r);
+            }
+        }
+
+        /// Alias for `add_stylesheet` (matches C++ `App::addCSS`).
+        pub fn add_css(&self, css: &str) {
+            let _ = self.add_stylesheet(css);
+        }
+
+        /// Install the reactive pump into the update loop and run the app.
+        pub fn run_reactive(&self) {
+            self.set_update(|_dt| {
+                pump_reactive_bindings();
+            });
+            self.run();
+        }
+    }
 }

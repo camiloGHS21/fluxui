@@ -1006,4 +1006,8 @@ void fluxui_style_text_color(FluxUIWidget* widget, FluxUIColor color) {
     if (auto* w = as_widget(widget)) { w->style.color = to_color(color); w->markStyleDirty(); }
 }
 
+void fluxui_widget_css(FluxUIWidget* widget, const char* declarations) {
+    if (auto* w = as_widget(widget)) { w->css(safe_cstr(declarations)); }
+}
+
 } // extern "C"
