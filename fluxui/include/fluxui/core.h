@@ -2162,6 +2162,46 @@ struct Style {
     bool hasFontOpticalSizing = false;
     bool hasFontStretch = false;
 
+    // ── UI Misc Properties (CSS UI L4, CSS Color Adjust L1 / Blink parity) ──
+    // accent-color: auto | <color>
+    Color accentColor = Color(0, 0, 0, 0);
+    bool hasAccentColor = false;
+    // caret-color: auto | <color>
+    Color caretColor = Color(0, 0, 0, 0);
+    bool hasCaretColor = false;
+    // color-scheme: normal | light | dark | [light dark]
+    std::string colorScheme;            // "light", "dark", "light dark", "normal"
+    bool hasColorScheme = false;
+    // inert attribute / interactivity: inert
+    bool inert = false;
+    // field-sizing: content | fixed
+    std::string fieldSizing;            // "content" | "fixed"
+    bool hasFieldSizing = false;
+    // image-rendering: auto | crisp-edges | pixelated | smooth | high-quality
+    std::string imageRendering;
+    bool hasImageRendering = false;
+    // image-orientation: from-image | none | <angle>
+    std::string imageOrientation;
+    bool hasImageOrientation = false;
+    // object-view-box: none | inset(<values>)
+    std::string objectViewBox;
+    bool hasObjectViewBox = false;
+    // touch-action: auto | none | pan-x | pan-y | manipulation | ...
+    std::string touchAction;
+    bool hasTouchAction = false;
+    // user-select: auto | none | text | all | contain
+    std::string userSelect;
+    bool hasUserSelect = false;
+    // will-change: auto | <property># (compositor hints)
+    std::string willChange;
+    bool hasWillChange = false;
+    // contain-intrinsic-size: none | auto <length> [auto <length>]
+    std::string containIntrinsicSize;
+    bool hasContainIntrinsicSize = false;
+    // content-visibility: visible | auto | hidden
+    std::string contentVisibility;
+    bool hasContentVisibility = false;
+
     FastCustomProperties customProperties;
     FastCustomProperties hoverCustomProperties;
     FastCustomProperties focusCustomProperties;

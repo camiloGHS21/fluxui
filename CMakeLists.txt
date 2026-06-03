@@ -665,4 +665,15 @@ target_include_directories(test_typography PRIVATE
 )
 enable_release_lto(test_typography)
 
+add_executable(test_ui_misc
+    examples/cpp/test_ui_misc.cpp
+)
+target_link_libraries(test_ui_misc PRIVATE
+    fluxui
+)
+target_include_directories(test_ui_misc PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_ui_misc)
+
 

@@ -5152,6 +5152,46 @@ void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const
     } else if (name == "hanging-punctuation") {
         style.hangingPunctuation = lowerAscii(trim(value));
         style.hasHangingPunctuation = (style.hangingPunctuation != "none");
+    } else if (name == "accent-color") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "auto") { style.hasAccentColor = false; }
+        else { style.accentColor = parseColor(value); style.hasAccentColor = true; }
+    } else if (name == "caret-color") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "auto") { style.hasCaretColor = false; }
+        else { style.caretColor = parseColor(value); style.hasCaretColor = true; }
+    } else if (name == "color-scheme") {
+        style.colorScheme = lowerAscii(trim(value));
+        style.hasColorScheme = (style.colorScheme != "normal" && !style.colorScheme.empty());
+    } else if (name == "inert") {
+        style.inert = (lowerAscii(trim(value)) != "false" && !value.empty());
+    } else if (name == "field-sizing") {
+        style.fieldSizing = lowerAscii(trim(value));
+        style.hasFieldSizing = !style.fieldSizing.empty();
+    } else if (name == "image-rendering") {
+        style.imageRendering = lowerAscii(trim(value));
+        style.hasImageRendering = (style.imageRendering != "auto");
+    } else if (name == "image-orientation") {
+        style.imageOrientation = lowerAscii(trim(value));
+        style.hasImageOrientation = (style.imageOrientation != "from-image");
+    } else if (name == "object-view-box") {
+        style.objectViewBox = trim(value);
+        style.hasObjectViewBox = (lowerAscii(style.objectViewBox) != "none" && !style.objectViewBox.empty());
+    } else if (name == "touch-action") {
+        style.touchAction = lowerAscii(trim(value));
+        style.hasTouchAction = (style.touchAction != "auto");
+    } else if (name == "user-select") {
+        style.userSelect = lowerAscii(trim(value));
+        style.hasUserSelect = (style.userSelect != "auto");
+    } else if (name == "will-change") {
+        style.willChange = trim(value);
+        style.hasWillChange = (lowerAscii(style.willChange) != "auto" && !style.willChange.empty());
+    } else if (name == "contain-intrinsic-size" || name == "contain-intrinsic-width" || name == "contain-intrinsic-height") {
+        style.containIntrinsicSize = trim(value);
+        style.hasContainIntrinsicSize = (lowerAscii(style.containIntrinsicSize) != "none");
+    } else if (name == "content-visibility") {
+        style.contentVisibility = lowerAscii(trim(value));
+        style.hasContentVisibility = (style.contentVisibility != "visible");
     }
 }
 void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const std::string& value) {
