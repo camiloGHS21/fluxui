@@ -1,8 +1,8 @@
-"""Headless test for the FluxUI Python DSL reactive layer.
+"""Headless test for the FluxUI Python DSL (modern HTML/Blink-named API).
 
-Exercises State, Node tree construction and the reactive pump without opening a
-window. The pump is validated against a fake widget so it does not require a GPU
-context, mirroring examples/cpp/test_dsl.cpp.
+Exercises State, Element tree construction and the reactive pump without opening
+a window. The pump is validated against a fake widget so it does not require a
+GPU context, mirroring examples/cpp/test_dsl.cpp.
 """
 import os
 import sys
@@ -37,19 +37,33 @@ def test_state_basic():
     print("[1] State basic + listeners  PASS")
 
 
-def test_node_tree():
-    root = fluxui.Row([
-        fluxui.Sidebar([fluxui.NavItem("A"), fluxui.NavItem("B")]).cls("sidebar"),
-        fluxui.Column([fluxui.Text("T").cls("h1"), fluxui.Button("Go")]).cls("content"),
+def test_element_tags():
+    assert fluxui.Div()._tag == "div"
+    assert fluxui.Nav()._tag == "nav"
+    assert fluxui.Section()._tag == "section"
+    assert fluxui.H1("x")._tag == "h1"
+    assert fluxui.P("x")._tag == "p"
+    assert fluxui.Span("x")._tag == "span"
+    assert fluxui.Button("x")._tag == "button"
+    assert fluxui.Ul()._tag == "ul"
+    assert fluxui.Li()._tag == "li"
+    assert fluxui.A("x", "/h")._tag == "a"
+    print("[2] HTML element tag names  PASS")
+
+
+def test_element_tree():
+    root = fluxui.Div([
+        fluxui.Nav([fluxui.Button("A"), fluxui.Button("B")]).cls("sidebar"),
+        fluxui.Div([fluxui.H1("T").cls("h1"), fluxui.Button("Go")]).cls("content"),
     ]).cls("app")
-    assert root._kind == "row"
+    assert root._tag == "div"
     assert root._class_name == "app"
     assert len(root._children) == 2
-    assert root._children[0]._kind == "sidebar"
+    assert root._children[0]._tag == "nav"
     assert root._children[0]._class_name == "sidebar"
     assert len(root._children[0]._children) == 2
     assert root._children[1]._children[0]._content == "T"
-    print("[2] declarative Node tree  PASS")
+    print("[3] declarative HTML tree  PASS")
 
 
 def test_reactive_pump():
@@ -62,19 +76,15 @@ def test_reactive_pump():
 
     assert w.content == "128"
     devices.set(129)
-    # value not pushed until the pump runs
-    assert w.content == "128"
-    changed = fluxui.pump_reactive_bindings()
-    assert changed is True
+    assert w.content == "128"  # not pushed until pump runs
+    assert fluxui.pump_reactive_bindings() is True
     assert w.content == "129"
-    # no change => pump reports nothing changed
     assert fluxui.pump_reactive_bindings() is False
-    # multiple updates accumulate to latest
     devices.set(200)
     devices.set(201)
     fluxui.pump_reactive_bindings()
     assert w.content == "201"
-    print("[3] reactive pump updates on State change  PASS")
+    print("[4] reactive pump updates on State change  PASS")
 
 
 def test_onclick_drives_reactive():
@@ -85,17 +95,17 @@ def test_onclick_drives_reactive():
     fluxui._register_reactive(w, lambda: str(count.get()), "0")
 
     btn = fluxui.Button("inc").on_click(lambda: count.set(count.get() + 1))
-    # simulate three clicks
     for _ in range(3):
         btn._on_click()
     fluxui.pump_reactive_bindings()
     assert w.content == "3"
-    print("[4] onClick -> State -> reactive Text  PASS")
+    print("[5] onClick -> State -> reactive Text  PASS")
 
 
 def main():
     test_state_basic()
-    test_node_tree()
+    test_element_tags()
+    test_element_tree()
     test_reactive_pump()
     test_onclick_drives_reactive()
     print("All Python DSL tests passed!")

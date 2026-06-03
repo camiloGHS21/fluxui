@@ -1,4 +1,4 @@
-// FluxUI Declarative DSL example in Rust — mirrors the C++ demo_dsl.cpp.
+// FluxUI Declarative DSL example in Rust — modern HTML/Blink-named API.
 //
 // Build (after building fluxui_shared):
 //   rustc --crate-name fluxui --crate-type rlib bindings/rust/lib.rs \
@@ -16,37 +16,38 @@ fn main() -> Result<(), fluxui::Error> {
     app.load_default_font(16.0);
 
     app.add_css(
-        ".app { width: 100%; height: 100%; } \
-         .sidebar { width: 250px; background-color: #111115; padding: 16px; gap: 8px; } \
-         .content { flex-grow: 1; padding: 24px; gap: 16px; } \
-         .h1 { font-size: 24px; font-weight: 700; } \
-         .metric-card { background-color: #1e1e2e; padding: 20px; border-radius: 12px; gap: 8px; } \
+        ".app { display: flex; flex-direction: row; width: 100%; height: 100%; } \
+         .sidebar { display: flex; flex-direction: column; width: 250px; background-color: #111115; padding: 16px; gap: 8px; } \
+         .content { display: flex; flex-direction: column; flex-grow: 1; padding: 24px; gap: 16px; } \
+         h1 { font-size: 24px; font-weight: 700; } \
+         .metrics { display: flex; flex-direction: row; gap: 16px; } \
+         .metric-card { display: flex; flex-direction: column; background-color: #1e1e2e; padding: 20px; border-radius: 12px; gap: 8px; } \
          .primary { background-color: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; }",
     );
 
     let devices = State::new(128);
 
     app.set_root(
-        row(vec![
-            sidebar(vec![
-                nav_item("Dashboard"),
-                nav_item("Dispositivos"),
-                nav_item("Backups"),
-                nav_item("Seguridad"),
+        div(vec![
+            nav(vec![
+                button("Dashboard"),
+                button("Dispositivos"),
+                button("Backups"),
+                button("Seguridad"),
             ])
             .class("sidebar"),
-            column(vec![
-                text("CompanyGuard").class("h1"),
-                row(vec![
-                    card(vec![
-                        text("Equipos activos"),
+            div(vec![
+                h1("CompanyGuard"),
+                div(vec![
+                    div(vec![
+                        span("Equipos activos"),
                         text_fn({
                             let d = devices.clone();
                             move || d.get().to_string()
                         }),
                     ])
                     .class("metric-card"),
-                    card(vec![text("Alertas"), text("7")]).class("metric-card"),
+                    div(vec![span("Alertas"), span("7")]).class("metric-card"),
                 ])
                 .class("metrics"),
                 button("Escanear ahora").class("primary").on_click({

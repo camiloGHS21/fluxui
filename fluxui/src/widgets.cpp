@@ -7611,6 +7611,12 @@ void Anchor::update(const InputState& input) {
         Platform::openSystemURL(href);
     }
 }
+void Anchor::setAttribute(const std::string& name, const std::string& value) {
+    Widget::setAttribute(name, value);
+    if (name == "href") {
+        href = value;
+    }
+}
 
 void Details::layout(const Rect& parentBounds) {
     for (auto& child : children) {

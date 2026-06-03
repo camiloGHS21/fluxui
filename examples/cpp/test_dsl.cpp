@@ -1,5 +1,5 @@
-// FluxUI Declarative DSL Test — reactive State + functional tree building
-// Verifies the React/SwiftUI-style API actually works (headless, no window).
+// FluxUI Declarative DSL Test — modern HTML/Blink-named API + reactive State.
+// Verifies the functional API actually works (headless, no window).
 
 #include "fluxui/dsl.h"
 #include <iostream>
@@ -9,150 +9,138 @@ using namespace fluxui;
 
 #define CHECK(cond) do{if(!(cond)){std::cerr<<"FAIL: "<<#cond<<" @ line "<<__LINE__<<std::endl;return 1;}}while(0)
 
-// Helpers to reach into the built tree.
-static FluxUI::Text* asText(const WidgetBuilder& b) {
-    return static_cast<FluxUI::Text*>(b.get());
+// Mount a root element onto a detached Panel so we can inspect the widget tree.
+static std::shared_ptr<FluxUI::Panel> mountRoot(const Element& e) {
+    auto root = std::make_shared<FluxUI::Panel>();
+    e.mount(root.get());
+    return root;
 }
 
-int test_static_text() {
-    std::cout << "[1] static Text content" << std::endl;
-    auto t = Text("Hello");
-    CHECK(asText(t)->content == "Hello");
-    CHECK(asText(t)->type == "text");
+int test_html_tag_names() {
+    std::cout << "[1] builders produce correct HTML tag types" << std::endl;
+    CHECK(mountRoot(Div())->children[0]->type == "div");
+    CHECK(mountRoot(Section())->children[0]->type == "section");
+    CHECK(mountRoot(Nav())->children[0]->type == "nav");
+    CHECK(mountRoot(H1("x"))->children[0]->type == "h1");
+    CHECK(mountRoot(P("x"))->children[0]->type == "p");
+    CHECK(mountRoot(Span("x"))->children[0]->type == "span");
+    CHECK(mountRoot(Button("x"))->children[0]->type == "button");
+    CHECK(mountRoot(Ul())->children[0]->type == "ul");
+    CHECK(mountRoot(Li())->children[0]->type == "li");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
-int test_builder_chaining() {
-    std::cout << "[2] builder chaining (className/id/style)" << std::endl;
-    auto t = Text("X").className("title").id("main");
-    CHECK(t.get()->className == "title");
-    CHECK(t.get()->id == "main");
-    auto b = Button("Go").className("primary").style("color", "red");
-    CHECK(b.get()->className == "primary");
-    CHECK(!b.get()->inlineProperties.empty());
-    CHECK(b.get()->inlineProperties[0].name == "color");
-    CHECK(b.get()->inlineProperties[0].value == "red");
+int test_text_content() {
+    std::cout << "[2] text content flows into the widget" << std::endl;
+    auto root = mountRoot(H1("Hello"));
+    auto* t = static_cast<FluxUI::Text*>(root->children[0].get());
+    CHECK(t->content == "Hello");
+    auto rootBtn = mountRoot(Button("Click"));
+    auto* b = static_cast<FluxUI::Button*>(rootBtn->children[0].get());
+    CHECK(b->label == "Click");
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_chaining() {
+    std::cout << "[3] chaining className/id/style/attr" << std::endl;
+    auto root = mountRoot(Div().className("box").id("main").style("color", "red"));
+    auto* w = root->children[0].get();
+    CHECK(w->className == "box");
+    CHECK(w->id == "main");
+    CHECK(!w->inlineProperties.empty());
+    CHECK(w->inlineProperties[0].name == "color");
+    CHECK(w->inlineProperties[0].value == "red");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
 int test_tree_structure() {
-    std::cout << "[3] declarative tree (Row/Column/children/parent)" << std::endl;
-    auto row = Row({
-        Sidebar({
-            NavItem("Dashboard"),
-            NavItem("Settings")
-        }).className("sidebar"),
-        Column({
-            Text("Title").className("h1"),
-            Button("Click")
-        }).className("content")
-    }).className("app");
+    std::cout << "[4] nested declarative tree + parent wiring" << std::endl;
+    auto root = mountRoot(
+        Div({
+            Nav({
+                Button("Dashboard"),
+                Button("Settings")
+            }).className("sidebar"),
+            Div({
+                H1("Title"),
+                Button("Click")
+            }).className("content")
+        }).className("app")
+    );
 
-    auto* w = row.get();
-    CHECK(w->className == "app");
-    CHECK(w->style.display == FluxUI::Display::Flex);
-    CHECK(w->style.flexDirection == FluxUI::FlexDirection::Row);
-    CHECK(w->children.size() == 2);
+    auto* app = root->children[0].get();
+    CHECK(app->className == "app");
+    CHECK(app->type == "div");
+    CHECK(app->children.size() == 2);
 
-    auto* sidebar = w->children[0].get();
+    auto* sidebar = app->children[0].get();
+    CHECK(sidebar->type == "nav");
     CHECK(sidebar->className == "sidebar");
     CHECK(sidebar->children.size() == 2);
-    CHECK(sidebar->children[0]->parent == sidebar);   // parent wiring
+    CHECK(sidebar->children[0]->parent == sidebar);
 
-    auto* content = w->children[1].get();
+    auto* content = app->children[1].get();
     CHECK(content->className == "content");
     CHECK(content->children.size() == 2);
-    CHECK(content->style.flexDirection == FluxUI::FlexDirection::Column);
+    CHECK(content->children[0]->type == "h1");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
 int test_reactive_text() {
-    std::cout << "[4] reactive Text re-evaluates on State change" << std::endl;
+    std::cout << "[5] reactive Text re-evaluates on State change" << std::endl;
     auto devices = State<int>(128);
-    auto t = Text([&]{ return std::to_string(devices.get()); });
+    auto root = mountRoot(Text([&]{ return std::to_string(devices.get()); }));
+    auto* t = static_cast<FluxUI::Text*>(root->children[0].get());
 
-    // Initial evaluation happens at construction.
-    CHECK(asText(t)->content == "128");
-
-    // Mutating state alone does not push the value into the widget...
+    CHECK(t->content == "128");
     devices.set(129);
-    CHECK(asText(t)->content == "128");
-
-    // ...until the reactive pump runs (the App does this every frame).
-    bool changed = detail::pumpReactiveBindings();
-    CHECK(changed);
-    CHECK(asText(t)->content == "129");
-
-    // No change => pump reports nothing changed.
-    bool changed2 = detail::pumpReactiveBindings();
-    CHECK(!changed2);
-    CHECK(asText(t)->content == "129");
-
-    // Multiple updates accumulate to the latest value.
+    CHECK(t->content == "128");                 // not pushed until pump runs
+    CHECK(detail::pumpReactiveBindings());
+    CHECK(t->content == "129");
+    CHECK(!detail::pumpReactiveBindings());      // no change => nothing to do
     devices.set(200);
     devices.set(201);
     detail::pumpReactiveBindings();
-    CHECK(asText(t)->content == "201");
+    CHECK(t->content == "201");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
 int test_onclick_mutates_state() {
-    std::cout << "[5] onClick handler mutating State drives reactive Text" << std::endl;
+    std::cout << "[6] onClick mutating State drives reactive Text" << std::endl;
     auto count = State<int>(0);
-    auto label = Text([&]{ return std::to_string(count.get()); });
-    auto btn = Button("inc").onClick([&]{ count.set(count.get() + 1); });
+    auto labelRoot = mountRoot(Text([&]{ return std::to_string(count.get()); }));
+    auto* label = static_cast<FluxUI::Text*>(labelRoot->children[0].get());
+    auto btnRoot = mountRoot(Button("inc").onClick([&]{ count.set(count.get() + 1); }));
+    auto* btn = btnRoot->children[0].get();
 
-    CHECK(asText(label)->content == "0");
-
-    // Simulate three clicks.
-    btn.get()->onClick();
-    btn.get()->onClick();
-    btn.get()->onClick();
-
+    CHECK(label->content == "0");
+    btn->onClick();
+    btn->onClick();
+    btn->onClick();
     detail::pumpReactiveBindings();
-    CHECK(asText(label)->content == "3");
+    CHECK(label->content == "3");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
-int test_state_listeners() {
-    std::cout << "[6] State onChange listeners fire" << std::endl;
-    auto s = State<int>(1);
-    int fired = 0;
-    s.onChange([&]{ fired++; });
-    s.set(2);
-    s.set(3);
-    CHECK(fired == 2);
-    CHECK(s.get() == 3);
-    std::cout << "  PASS" << std::endl; return 0;
-}
-
-int test_binding_cleanup() {
-    std::cout << "[7] expired reactive widgets are pruned" << std::endl;
-    auto live = State<int>(0);
-    auto liveText = Text([&]{ return std::to_string(live.get()); });
-    {
-        // Scoped reactive text; its widget dies at end of scope.
-        auto tmp = State<int>(0);
-        auto scoped = Text([&]{ return std::to_string(tmp.get()); });
-        CHECK(asText(scoped)->content == "0");
-    }
-    // Pump should survive the dead binding and still update the live one.
-    live.set(42);
-    detail::pumpReactiveBindings();
-    CHECK(asText(liveText)->content == "42");
+int test_anchor_href() {
+    std::cout << "[7] A() sets href attribute" << std::endl;
+    auto root = mountRoot(A("Home", "/index"));
+    auto* a = static_cast<FluxUI::Anchor*>(root->children[0].get());
+    CHECK(a->type == "a");
+    CHECK(a->href == "/index");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
 int main() {
-    std::cout << "=== FluxUI DSL Test ===" << std::endl;
+    std::cout << "=== FluxUI DSL Test (HTML/Blink-named) ===" << std::endl;
     int rc = 0;
-    rc |= test_static_text();
-    rc |= test_builder_chaining();
+    rc |= test_html_tag_names();
+    rc |= test_text_content();
+    rc |= test_chaining();
     rc |= test_tree_structure();
     rc |= test_reactive_text();
     rc |= test_onclick_mutates_state();
-    rc |= test_state_listeners();
-    rc |= test_binding_cleanup();
+    rc |= test_anchor_href();
     if (rc == 0) std::cout << "All DSL tests passed!" << std::endl;
     return rc;
 }

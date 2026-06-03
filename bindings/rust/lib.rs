@@ -1253,10 +1253,11 @@ pub extern "C" fn rust_update_callback<F>(
 // ============================================================
 //  Declarative DSL — mirrors C++ dsl.h / Go dsl.go 1:1.
 //
-//  Build a tree of `Node`s with the free functions (row, column, text, ...),
-//  attach classes/handlers via chaining, and drive reactive `text_fn` nodes
-//  with `State<T>`. Mount the tree with `App::set_root` and run the reactive
-//  loop with `App::run_reactive`.
+//  Build a tree with the HTML-named free functions (div, span, h1, button,
+//  nav, ...), attach classes/handlers via chaining, and drive reactive `text_fn`
+//  nodes with `State<T>`. Mount the tree with `App::set_root` and run the
+//  reactive loop with `App::run_reactive`. Layout is expressed in CSS exactly
+//  like the browser.
 //
 //  Example:
 //      use fluxui::dsl::*;
@@ -1265,10 +1266,10 @@ pub extern "C" fn rust_update_callback<F>(
 //      app.load_default_font(16.0);
 //      let devices = State::new(128);
 //      app.set_root(
-//          row(vec![
-//              sidebar(vec![nav_item("Dashboard"), nav_item("Settings")]).class("sidebar"),
-//              column(vec![
-//                  text("CompanyGuard").class("h1"),
+//          div(vec![
+//              nav(vec![button("Dashboard"), button("Settings")]).class("sidebar"),
+//              div(vec![
+//                  h1("CompanyGuard"),
 //                  text_fn({ let d = devices.clone(); move || d.get().to_string() }),
 //                  button("Escanear").class("primary")
 //                      .on_click({ let d = devices.clone(); move || d.set(d.get() + 1) }),
@@ -1332,46 +1333,32 @@ pub mod dsl {
         }
     }
 
-    // ---- Node — deferred declarative element, materialized on mount. ----
-    enum Kind {
-        Row,
-        Column,
-        Sidebar,
-        Card,
-        Grid,
-        Div,
-        Text,
-        TextFn,
-        Button,
-        NavItem,
-        Input,
-        Checkbox,
-        Element,
-    }
-
+    // ---- Node — deferred, HTML-named declarative element, materialized on mount.
+    //
+    // Every node carries an HTML tag name and is materialized through
+    // Widget::add_element, the single source of truth for the tag -> widget
+    // mapping (Blink UA parity). Reactive nodes carry a `text_fn`.
     pub struct Node {
-        kind: Kind,
         tag: String,
         content: String,
         class_name: String,
         node_id: String,
+        inline_css: Vec<String>,
         on_click: Option<Box<dyn Fn()>>,
         text_fn: Option<Box<dyn Fn() -> String>>,
-        checked: bool,
         children: Vec<Node>,
     }
 
     impl Node {
-        fn new(kind: Kind) -> Self {
+        fn new(tag: &str) -> Self {
             Node {
-                kind,
-                tag: String::new(),
+                tag: tag.to_string(),
                 content: String::new(),
                 class_name: String::new(),
                 node_id: String::new(),
+                inline_css: Vec::new(),
                 on_click: None,
                 text_fn: None,
-                checked: false,
                 children: Vec::new(),
             }
         }
@@ -1384,75 +1371,37 @@ pub mod dsl {
             self.node_id = id.to_string();
             self
         }
+        pub fn css(mut self, decl: &str) -> Self {
+            self.inline_css.push(decl.to_string());
+            self
+        }
         pub fn on_click<F: Fn() + 'static>(mut self, f: F) -> Self {
             self.on_click = Some(Box::new(f));
             self
         }
 
         fn mount(self, parent: Widget) -> Option<Widget> {
-            let widget = match self.kind {
-                Kind::Row => {
-                    let w = parent.add_panel(&self.class_name).ok().flatten();
-                    if let Some(w) = w {
-                        let _ = w.css("display:flex;flex-direction:row");
-                    }
-                    w
+            let widget = if self.text_fn.is_some() {
+                let f = self.text_fn.unwrap();
+                let initial = f();
+                let w = parent.add_element("span", &initial, &self.class_name).ok().flatten();
+                if let Some(w) = w {
+                    register_reactive(w, f, initial);
                 }
-                Kind::Column => {
-                    let w = parent.add_panel(&self.class_name).ok().flatten();
-                    if let Some(w) = w {
-                        let _ = w.css("display:flex;flex-direction:column");
-                    }
-                    w
-                }
-                Kind::Sidebar => {
-                    let cls = if self.class_name.is_empty() { "sidebar" } else { &self.class_name };
-                    let w = parent.add_element("nav", "", cls).ok().flatten();
-                    if let Some(w) = w {
-                        let _ = w.css("display:flex;flex-direction:column");
-                    }
-                    w
-                }
-                Kind::Card => {
-                    let cls = if self.class_name.is_empty() { "card" } else { &self.class_name };
-                    let w = parent.add_panel(cls).ok().flatten();
-                    if let Some(w) = w {
-                        let _ = w.css("display:flex;flex-direction:column");
-                    }
-                    w
-                }
-                Kind::Grid => {
-                    let w = parent.add_panel(&self.class_name).ok().flatten();
-                    if let Some(w) = w {
-                        let _ = w.css("display:grid");
-                    }
-                    w
-                }
-                Kind::Div => parent.add_panel(&self.class_name).ok().flatten(),
-                Kind::Text => parent.add_text(&self.content, &self.class_name).ok().flatten(),
-                Kind::TextFn => {
-                    let initial = self.text_fn.as_ref().map(|f| f()).unwrap_or_default();
-                    let w = parent.add_text(&initial, &self.class_name).ok().flatten();
-                    if let (Some(w), Some(f)) = (w, self.text_fn) {
-                        register_reactive(w, f, initial);
-                    }
-                    w
-                }
-                Kind::Button => parent.add_button(&self.content, &self.class_name).ok().flatten(),
-                Kind::NavItem => {
-                    let cls = if self.class_name.is_empty() { "nav-item" } else { &self.class_name };
-                    parent.add_button(&self.content, cls).ok().flatten()
-                }
-                Kind::Input => parent.add_text_input(&self.content, &self.class_name).ok().flatten(),
-                Kind::Checkbox => parent.add_checkbox(self.checked, &self.class_name).ok().flatten(),
-                Kind::Element => {
-                    parent.add_element(&self.tag, &self.content, &self.class_name).ok().flatten()
-                }
+                w
+            } else {
+                parent
+                    .add_element(&self.tag, &self.content, &self.class_name)
+                    .ok()
+                    .flatten()
             };
 
             let w = widget?;
             if !self.node_id.is_empty() {
                 let _ = w.set_id(&self.node_id);
+            }
+            for decl in &self.inline_css {
+                let _ = w.css(decl);
             }
             if let Some(cb) = self.on_click {
                 w.set_on_click(move |_| cb());
@@ -1464,73 +1413,82 @@ pub mod dsl {
         }
     }
 
-    // ---- Builder free functions (match C++ / Go). ----
-    pub fn row(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Row);
+    // ---- HTML element builders (names match HTML/Blink exactly). ----
+    fn container(tag: &str, children: Vec<Node>) -> Node {
+        let mut n = Node::new(tag);
         n.children = children;
         n
     }
-    pub fn column(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Column);
-        n.children = children;
-        n
-    }
-    pub fn sidebar(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Sidebar);
-        n.children = children;
-        n
-    }
-    pub fn card(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Card);
-        n.children = children;
-        n
-    }
-    pub fn grid(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Grid);
-        n.children = children;
-        n
-    }
-    pub fn div(children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Div);
-        n.children = children;
-        n
-    }
-    pub fn text(content: &str) -> Node {
-        let mut n = Node::new(Kind::Text);
+    fn leaf(tag: &str, content: &str) -> Node {
+        let mut n = Node::new(tag);
         n.content = content.to_string();
         n
     }
+
+    // Flow containers.
+    pub fn div(children: Vec<Node>) -> Node { container("div", children) }
+    pub fn section(children: Vec<Node>) -> Node { container("section", children) }
+    pub fn article(children: Vec<Node>) -> Node { container("article", children) }
+    pub fn aside(children: Vec<Node>) -> Node { container("aside", children) }
+    pub fn header(children: Vec<Node>) -> Node { container("header", children) }
+    pub fn footer(children: Vec<Node>) -> Node { container("footer", children) }
+    pub fn main_el(children: Vec<Node>) -> Node { container("main", children) }
+    pub fn nav(children: Vec<Node>) -> Node { container("nav", children) }
+    pub fn form(children: Vec<Node>) -> Node { container("form", children) }
+    pub fn fieldset(children: Vec<Node>) -> Node { container("fieldset", children) }
+    pub fn blockquote(children: Vec<Node>) -> Node { container("blockquote", children) }
+    pub fn figure(children: Vec<Node>) -> Node { container("figure", children) }
+    pub fn ul(children: Vec<Node>) -> Node { container("ul", children) }
+    pub fn ol(children: Vec<Node>) -> Node { container("ol", children) }
+    pub fn li(children: Vec<Node>) -> Node { container("li", children) }
+    pub fn table(children: Vec<Node>) -> Node { container("table", children) }
+    pub fn tr(children: Vec<Node>) -> Node { container("tr", children) }
+
+    // Text content.
+    pub fn text(content: &str) -> Node { leaf("span", content) }
+    pub fn span(content: &str) -> Node { leaf("span", content) }
+    pub fn p(content: &str) -> Node { leaf("p", content) }
+    pub fn h1(content: &str) -> Node { leaf("h1", content) }
+    pub fn h2(content: &str) -> Node { leaf("h2", content) }
+    pub fn h3(content: &str) -> Node { leaf("h3", content) }
+    pub fn h4(content: &str) -> Node { leaf("h4", content) }
+    pub fn h5(content: &str) -> Node { leaf("h5", content) }
+    pub fn h6(content: &str) -> Node { leaf("h6", content) }
+    pub fn strong(content: &str) -> Node { leaf("strong", content) }
+    pub fn em(content: &str) -> Node { leaf("em", content) }
+    pub fn small(content: &str) -> Node { leaf("small", content) }
+    pub fn label(content: &str) -> Node { leaf("label", content) }
+    pub fn legend(content: &str) -> Node { leaf("legend", content) }
+    pub fn code(content: &str) -> Node { leaf("code", content) }
+    pub fn pre(content: &str) -> Node { leaf("pre", content) }
+    pub fn td(content: &str) -> Node { leaf("td", content) }
+    pub fn th(content: &str) -> Node { leaf("th", content) }
+
     /// Reactive text — re-evaluated whenever bound State changes.
     pub fn text_fn<F: Fn() -> String + 'static>(f: F) -> Node {
-        let mut n = Node::new(Kind::TextFn);
+        let mut n = Node::new("span");
         n.text_fn = Some(Box::new(f));
         n
     }
-    pub fn button(label: &str) -> Node {
-        let mut n = Node::new(Kind::Button);
-        n.content = label.to_string();
-        n
+
+    // Interactive controls.
+    pub fn button(label: &str) -> Node { leaf("button", label) }
+    pub fn input(placeholder: &str) -> Node { leaf("input", placeholder) }
+    pub fn text_area(placeholder: &str) -> Node { leaf("textarea", placeholder) }
+    pub fn a(content: &str) -> Node {
+        leaf("a", content)
     }
-    pub fn nav_item(label: &str) -> Node {
-        let mut n = Node::new(Kind::NavItem);
-        n.content = label.to_string();
-        n
-    }
-    pub fn input(placeholder: &str) -> Node {
-        let mut n = Node::new(Kind::Input);
-        n.content = placeholder.to_string();
-        n
-    }
-    pub fn checkbox(checked: bool) -> Node {
-        let mut n = Node::new(Kind::Checkbox);
-        n.checked = checked;
-        n
-    }
-    pub fn element(tag: &str, children: Vec<Node>) -> Node {
-        let mut n = Node::new(Kind::Element);
-        n.tag = tag.to_string();
-        n.children = children;
-        n
+    pub fn img(src: &str) -> Node { leaf("img", src) }
+    pub fn checkbox() -> Node { Node::new("checkbox") }
+    pub fn radio() -> Node { Node::new("radio") }
+    pub fn hr() -> Node { Node::new("hr") }
+    pub fn br() -> Node { Node::new("br") }
+    pub fn select(options: Vec<Node>) -> Node { container("select", options) }
+    pub fn option(label: &str) -> Node { leaf("option", label) }
+
+    /// Generic escape hatch for any HTML tag.
+    pub fn el(tag: &str, children: Vec<Node>) -> Node {
+        container(tag, children)
     }
 
     // ---- App convenience methods for the declarative flow. ----

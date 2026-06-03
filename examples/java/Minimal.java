@@ -1,12 +1,14 @@
 import io.fluxui.App;
 import io.fluxui.Backend;
+import io.fluxui.Dsl;
 import io.fluxui.FluxUI;
 import io.fluxui.Keys;
 import io.fluxui.Modifiers;
-import io.fluxui.Widget;
+import io.fluxui.State;
 
 import java.nio.file.Path;
 
+/** FluxUI Java minimal example — modern HTML/Blink-named declarative DSL. */
 public final class Minimal {
     public static void main(String[] args) {
         if (args.length > 0) {
@@ -22,23 +24,27 @@ public final class Minimal {
             if (!app.loadDefaultFont(16.0f)) {
                 app.loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
             }
-            app.warmFontCache(new float[] {14.0f, 16.0f, 26.0f});
-            app.releaseFontSources();
             app.addStylesheet(
                 ".root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 16px; }" +
                 ".title { font-size: 26px; font-weight: 700; color: #edf3f8; }" +
                 ".body { font-size: 14px; color: rgba(237, 243, 248, 0.68); }" +
-                ".button { width: 140px; height: 44px; border-radius: 8px; background-color: #37c6a3; color: #06100d; }"
+                ".button { width: 200px; height: 44px; border-radius: 8px; background-color: #37c6a3; color: #06100d; }"
             );
 
-            Widget root = app.root();
-            root.reserveChildren(3);
-            root.addText("Hello from Java", "title");
-            root.addText("This app uses the native FluxUI Java binding.", "body");
-            root.addButton("Close", "button").setOnClick(app::stop);
-            app.addAction("app.close", Keys.ESCAPE, Modifiers.NONE, action -> app.stop());
+            State<Integer> clicks = new State<>(0);
 
-            app.run();
+            Dsl.setRoot(app,
+                Dsl.div(
+                    Dsl.h1("Hello from Java").className("title"),
+                    Dsl.p("This app uses the declarative HTML-named FluxUI DSL.").className("body"),
+                    Dsl.textFn(() -> "Clicked " + clicks.get() + " times").className("body"),
+                    Dsl.button("Click Me").className("button")
+                        .onClick(() -> clicks.set(clicks.get() + 1)),
+                    Dsl.button("Close").className("button").onClick(app::stop)
+                ).className("root"));
+
+            app.addAction("app.close", Keys.ESCAPE, Modifiers.NONE, action -> app.stop());
+            Dsl.runReactive(app);
         }
     }
 }

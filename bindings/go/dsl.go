@@ -1,20 +1,24 @@
 package fluxui
 
-// FluxUI Declarative DSL for Go — mirrors the C++ dsl.h API 1:1.
+// FluxUI Declarative DSL for Go — modern, HTML/Blink-faithful builder.
+//
+// Element names match HTML exactly (Div, Span, P, H1..H6, Nav, Section, Button,
+// Input, A, Img, Ul, Li, ...). Layout is expressed in CSS (display:flex/grid)
+// exactly like the browser — there are no bespoke Row/Column nodes.
 //
 // Usage:
 //
 //	app := fluxui.NewApp(1200, 800, "CompanyGuard")
-//	app.AddCSS(".app { width: 100%; height: 100% } ...")
+//	app.AddCSS(".app { display:flex } .content { display:flex; flex-direction:column }")
 //	devices := fluxui.NewState(128)
 //	app.SetRoot(
-//	    fluxui.Row(
-//	        fluxui.Sidebar(
-//	            fluxui.NavItem("Dashboard"),
-//	            fluxui.NavItem("Dispositivos"),
+//	    fluxui.Div(
+//	        fluxui.Nav(
+//	            fluxui.Button("Dashboard"),
+//	            fluxui.Button("Dispositivos"),
 //	        ).Class("sidebar"),
-//	        fluxui.Column(
-//	            fluxui.Text("CompanyGuard").Class("h1"),
+//	        fluxui.Div(
+//	            fluxui.H1("CompanyGuard"),
 //	            fluxui.TextFn(func() string { return strconv.Itoa(devices.Get()) }),
 //	            fluxui.Button("Escanear ahora").Class("primary").OnClick(func() {
 //	                devices.Set(devices.Get() + 1)
@@ -23,9 +27,6 @@ package fluxui
 //	    ).Class("app"),
 //	)
 //	app.RunReactive()
-//
-// The same declarative pattern as C++/Rust/Java: build a tree of nodes, attach
-// classes/handlers via chaining, and reactive State drives TextFn updates.
 
 import (
 	"syscall"
@@ -50,7 +51,6 @@ func registerReactiveText(w *Widget, fn func() string, initial string) {
 
 // PumpReactiveBindings re-evaluates every reactive TextFn binding and pushes
 // changed values into the underlying widgets. Returns true if anything changed.
-// The App's reactive update loop calls this every frame.
 func PumpReactiveBindings() bool {
 	changed := false
 	for _, b := range reactiveBindings {
@@ -68,7 +68,7 @@ func PumpReactiveBindings() bool {
 }
 
 // ============================================================
-//  State[T] — lightweight reactive primitive (matches C++ State<T>).
+//  State[T] — lightweight reactive primitive.
 // ============================================================
 
 type State[T comparable] struct {
@@ -76,7 +76,6 @@ type State[T comparable] struct {
 	listeners []func()
 }
 
-// NewState creates a reactive State holding an initial value.
 func NewState[T comparable](initial T) *State[T] {
 	return &State[T]{value: initial}
 }
@@ -95,180 +94,161 @@ func (s *State[T]) OnChange(fn func()) {
 }
 
 // ============================================================
-//  Node — deferred declarative element. Materialized on mount.
+//  Element — deferred, HTML-named node. Materialized on mount.
+//
+//  Every node carries an HTML tag name. mount() routes through
+//  Widget.AddElement(tag, ...) which is the single source of truth for the
+//  tag -> widget mapping (Blink UA parity).
 // ============================================================
 
-type nodeKind int
-
-const (
-	kindDiv nodeKind = iota
-	kindRow
-	kindColumn
-	kindSidebar
-	kindCard
-	kindGrid
-	kindText
-	kindTextFn
-	kindButton
-	kindNavItem
-	kindInput
-	kindCheckbox
-	kindElement
-)
-
-// Node is a declarative description of a widget and its subtree. Building a Node
-// allocates nothing in the native layer until SetRoot mounts it onto the App.
-type Node struct {
-	kind      nodeKind
-	tag       string
-	content   string
-	className string
-	id        string
-	onClick   func()
-	textFn    func() string
-	checked   bool
-	children  []*Node
+type Element struct {
+	tag          string
+	content      string
+	className    string
+	id           string
+	onClick      func()
+	textFn       func() string
+	inlineStyles [][2]string
+	attrs        [][2]string
+	children     []*Element
 }
 
-func newNode(k nodeKind) *Node { return &Node{kind: k} }
+func newElement(tag string) *Element { return &Element{tag: tag} }
 
-// Chaining setters (match C++ WidgetBuilder).
+// Chaining setters — mirror HTML attributes / DOM properties.
+func (e *Element) Class(cls string) *Element { e.className = cls; return e }
+func (e *Element) ID(id string) *Element     { e.id = id; return e }
+func (e *Element) OnClick(fn func()) *Element { e.onClick = fn; return e }
+func (e *Element) Style(prop, val string) *Element {
+	e.inlineStyles = append(e.inlineStyles, [2]string{prop, val})
+	return e
+}
+func (e *Element) Attr(name, val string) *Element {
+	e.attrs = append(e.attrs, [2]string{name, val})
+	return e
+}
+func (e *Element) Href(url string) *Element { return e.Attr("href", url) }
+func (e *Element) Src(url string) *Element  { e.content = url; return e }
 
-func (n *Node) Class(cls string) *Node      { n.className = cls; return n }
-func (n *Node) ID(id string) *Node          { n.id = id; return n }
-func (n *Node) OnClick(fn func()) *Node      { n.onClick = fn; return n }
-
-// mount materializes this node (and its subtree) under the given parent widget,
-// returning the created widget. Reactive TextFn nodes register themselves.
-func (n *Node) mount(parent *Widget) *Widget {
+func (e *Element) mount(parent *Widget) *Widget {
 	var w *Widget
-	switch n.kind {
-	case kindRow:
-		w = parent.AddPanel(n.className)
-		applyFlex(w, false)
-	case kindColumn:
-		w = parent.AddPanel(n.className)
-		applyFlex(w, true)
-	case kindSidebar:
-		cls := n.className
-		if cls == "" {
-			cls = "sidebar"
+	if e.textFn != nil {
+		initial := e.textFn()
+		w = parent.AddElement("span", initial, e.className)
+		if w != nil {
+			registerReactiveText(w, e.textFn, initial)
 		}
-		w = parent.AddElement("nav", "", cls)
-		applyFlex(w, true)
-	case kindCard:
-		cls := n.className
-		if cls == "" {
-			cls = "card"
-		}
-		w = parent.AddPanel(cls)
-		applyFlex(w, true)
-	case kindGrid:
-		w = parent.AddPanel(n.className)
-	case kindDiv:
-		w = parent.AddPanel(n.className)
-	case kindText:
-		w = parent.AddText(n.content, n.className)
-	case kindTextFn:
-		initial := ""
-		if n.textFn != nil {
-			initial = n.textFn()
-		}
-		w = parent.AddText(initial, n.className)
-		if n.textFn != nil {
-			registerReactiveText(w, n.textFn, initial)
-		}
-	case kindButton:
-		w = parent.AddButton(n.content, n.className)
-	case kindNavItem:
-		cls := n.className
-		if cls == "" {
-			cls = "nav-item"
-		}
-		w = parent.AddButton(n.content, cls)
-	case kindInput:
-		w = parent.AddTextInput(n.content, n.className)
-	case kindCheckbox:
-		w = parent.AddCheckbox(n.checked, n.className)
-	case kindElement:
-		w = parent.AddElement(n.tag, n.content, n.className)
-	default:
-		w = parent.AddPanel(n.className)
+	} else {
+		w = parent.AddElement(e.tag, e.content, e.className)
 	}
-
 	if w == nil {
 		return nil
 	}
-	if n.id != "" {
-		w.SetID(n.id)
+	if e.id != "" {
+		w.SetID(e.id)
 	}
-	if n.onClick != nil {
-		w.SetOnClick(n.onClick)
+	if e.onClick != nil {
+		w.SetOnClick(e.onClick)
 	}
-	for _, child := range n.children {
+	for _, s := range e.inlineStyles {
+		w.css(s[0] + ":" + s[1])
+	}
+	for _, child := range e.children {
 		child.mount(w)
 	}
 	return w
 }
 
-func applyFlex(w *Widget, column bool) {
-	if w == nil {
-		return
-	}
-	// display:flex with the requested direction is expressed through CSS so the
-	// declarative containers behave exactly like the C++ Row/Column builders.
-	if column {
-		w.appendInlineCSS("display:flex;flex-direction:column")
-	} else {
-		w.appendInlineCSS("display:flex;flex-direction:row")
-	}
-}
-
 // ============================================================
-//  Builder functions (match C++ free functions).
+//  HTML element builders (names match HTML/Blink exactly).
 // ============================================================
 
-func Row(children ...*Node) *Node     { n := newNode(kindRow); n.children = children; return n }
-func Column(children ...*Node) *Node  { n := newNode(kindColumn); n.children = children; return n }
-func Sidebar(children ...*Node) *Node { n := newNode(kindSidebar); n.children = children; return n }
-func Card(children ...*Node) *Node    { n := newNode(kindCard); n.children = children; return n }
-func Grid(children ...*Node) *Node    { n := newNode(kindGrid); n.children = children; return n }
-
-func Text(content string) *Node {
-	n := newNode(kindText)
-	n.content = content
-	return n
+func container(tag string, children []*Element) *Element {
+	e := newElement(tag)
+	e.children = children
+	return e
+}
+func leaf(tag, content string) *Element {
+	e := newElement(tag)
+	e.content = content
+	return e
 }
 
-// TextFn is the reactive Text variant — re-evaluated whenever bound State changes.
-func TextFn(fn func() string) *Node {
-	n := newNode(kindTextFn)
-	n.textFn = fn
-	return n
+// Flow containers.
+func Div(children ...*Element) *Element        { return container("div", children) }
+func Section(children ...*Element) *Element    { return container("section", children) }
+func Article(children ...*Element) *Element    { return container("article", children) }
+func Aside(children ...*Element) *Element       { return container("aside", children) }
+func Header(children ...*Element) *Element      { return container("header", children) }
+func Footer(children ...*Element) *Element      { return container("footer", children) }
+func Main(children ...*Element) *Element        { return container("main", children) }
+func Nav(children ...*Element) *Element         { return container("nav", children) }
+func FormEl(children ...*Element) *Element      { return container("form", children) }
+func Fieldset(children ...*Element) *Element    { return container("fieldset", children) }
+func Blockquote(children ...*Element) *Element  { return container("blockquote", children) }
+func Figure(children ...*Element) *Element      { return container("figure", children) }
+func Ul(children ...*Element) *Element          { return container("ul", children) }
+func Ol(children ...*Element) *Element          { return container("ol", children) }
+func Li(children ...*Element) *Element          { return container("li", children) }
+func Table(children ...*Element) *Element       { return container("table", children) }
+func Tr(children ...*Element) *Element          { return container("tr", children) }
+
+// Text content.
+func Text(content string) *Element   { return leaf("span", content) }
+func Span(content string) *Element   { return leaf("span", content) }
+func P(content string) *Element      { return leaf("p", content) }
+func H1(content string) *Element     { return leaf("h1", content) }
+func H2(content string) *Element     { return leaf("h2", content) }
+func H3(content string) *Element     { return leaf("h3", content) }
+func H4(content string) *Element     { return leaf("h4", content) }
+func H5(content string) *Element     { return leaf("h5", content) }
+func H6(content string) *Element     { return leaf("h6", content) }
+func Strong(content string) *Element { return leaf("strong", content) }
+func Em(content string) *Element     { return leaf("em", content) }
+func Small(content string) *Element  { return leaf("small", content) }
+func Label(content string) *Element  { return leaf("label", content) }
+func Legend(content string) *Element { return leaf("legend", content) }
+func Code(content string) *Element   { return leaf("code", content) }
+func Pre(content string) *Element    { return leaf("pre", content) }
+func Td(content string) *Element     { return leaf("td", content) }
+func Th(content string) *Element     { return leaf("th", content) }
+
+// TextFn is the reactive text variant — re-evaluated whenever bound State changes.
+func TextFn(fn func() string) *Element {
+	e := newElement("span")
+	e.textFn = fn
+	return e
 }
 
-func Button(label string) *Node  { n := newNode(kindButton); n.content = label; return n }
-func NavItem(label string) *Node { n := newNode(kindNavItem); n.content = label; return n }
-func Input(placeholder string) *Node {
-	n := newNode(kindInput)
-	n.content = placeholder
-	return n
+// Interactive controls.
+func Button(label string) *Element { return leaf("button", label) }
+func Input(placeholder string) *Element {
+	return leaf("input", placeholder)
 }
-func Checkbox(checked bool) *Node { n := newNode(kindCheckbox); n.checked = checked; return n }
+func TextArea(placeholder string) *Element { return leaf("textarea", placeholder) }
+func A(content, href string) *Element {
+	e := leaf("a", content)
+	if href != "" {
+		e.Attr("href", href)
+	}
+	return e
+}
+func Img(src string) *Element                  { return leaf("img", src) }
+func Checkbox() *Element                       { return newElement("checkbox") }
+func Radio() *Element                          { return newElement("radio") }
+func Hr() *Element                             { return newElement("hr") }
+func Br() *Element                             { return newElement("br") }
+func Select(options ...*Element) *Element      { return container("select", options) }
+func Option(label string) *Element             { return leaf("option", label) }
 
-func Element(tag string, children ...*Node) *Node {
-	n := newNode(kindElement)
-	n.tag = tag
-	n.children = children
-	return n
-}
+// El is a generic escape hatch for any tag.
+func El(tag string, children ...*Element) *Element { return container(tag, children) }
 
 // ============================================================
 //  App convenience wrappers for the declarative flow.
 // ============================================================
 
-// NewApp creates and initializes an App + window in one call, matching the
-// ergonomics of the C++ App{} constructor.
+// NewApp creates and initializes an App + window in one call.
 func NewApp(width, height int, title string) *App {
 	app, err := CreateApp()
 	if err != nil {
@@ -285,8 +265,8 @@ func (a *App) AddCSS(css string) { a.AddStylesheet(css) }
 // LoadCSS is an alias for LoadStylesheet (matches C++ App::loadCSS).
 func (a *App) LoadCSS(path string) bool { return a.LoadStylesheet(path) }
 
-// SetRoot mounts a declarative Node tree as the application root.
-func (a *App) SetRoot(root *Node) {
+// SetRoot mounts a declarative Element tree as the application root.
+func (a *App) SetRoot(root *Element) {
 	r := a.Root()
 	if r == nil || root == nil {
 		return
@@ -303,14 +283,12 @@ func (a *App) RunReactive() {
 	a.Run()
 }
 
-// appendInlineCSS applies a small inline CSS declaration block to a widget via
-// the native fluxui_widget_css helper, so the declarative flex containers behave
-// exactly like the C++ Row/Column builders.
-func (w *Widget) appendInlineCSS(css string) {
+// css applies an inline CSS declaration to a widget via the native helper.
+func (w *Widget) css(decl string) {
 	if w == nil || w.handle == 0 {
 		return
 	}
-	cCss, err := syscall.BytePtrFromString(css)
+	cCss, err := syscall.BytePtrFromString(decl)
 	if err != nil {
 		return
 	}

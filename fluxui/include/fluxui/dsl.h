@@ -1,24 +1,30 @@
-// FluxUI Declarative DSL — React/SwiftUI-style functional UI builder
-// Works in C++, and the same pattern maps 1:1 to Rust/Go/Java via bindings.
+// FluxUI Declarative DSL — modern, HTML/Blink-faithful functional UI builder.
+//
+// Element names match HTML exactly (Div, Span, P, H1..H6, Nav, Section, Button,
+// Input, A, Img, Ul, Li, ...), so a FluxUI tree reads like HTML and renders with
+// Blink's UA stylesheet semantics. Layout is expressed in CSS (display:flex,
+// grid, ...) exactly like the browser — there are no bespoke Row/Column nodes.
+//
+// The same pattern maps 1:1 to Rust/Go/Java/Python/Zig via the bindings.
 //
 // Usage:
 //   #include <fluxui/dsl.h>
 //   using namespace fluxui;
 //
 //   int main() {
-//       App app;
-//       app.loadCSS("style.css");
-//       auto count = State<int>(0);
+//       App app(1200, 800, "CompanyGuard");
+//       app.addCSS(".app{display:flex} .content{display:flex;flex-direction:column}");
+//       auto devices = State<int>(128);
 //       app.setRoot(
-//           Row({
-//               Sidebar({
-//                   NavItem("Dashboard"),
-//                   NavItem("Settings")
+//           Div({
+//               Nav({
+//                   Button("Dashboard"),
+//                   Button("Settings")
 //               }).className("sidebar"),
-//               Column({
-//                   Text("Hello").className("title"),
-//                   Text([&]{ return std::to_string(count.get()); }),   // reactive!
-//                   Button("Click me").onClick([&]{ count.set(count.get() + 1); })
+//               Div({
+//                   H1("CompanyGuard"),
+//                   Text([&]{ return std::to_string(devices.get()); }),   // reactive!
+//                   Button("Scan").onClick([&]{ devices.set(devices.get() + 1); })
 //               }).className("content")
 //           }).className("app")
 //       );
@@ -40,14 +46,10 @@ namespace fluxui {
 //  Reactive binding registry (Blink reactive/signals pattern)
 //
 //  Reactive Text() builders register a {widget, fn, lastValue} binding here.
-//  The App's update loop re-evaluates each binding once per frame and, when
-//  the produced string differs from the previous value, mutates the widget's
-//  content and flags it dirty so style + layout + paint refresh.
-//
-//  This is intentionally a process-global registry so the free-standing
-//  builder functions (which have no reference to the App) can register without
-//  threading an App handle through every call. Dead widgets are pruned via
-//  weak_ptr expiry, so the registry is self-cleaning.
+//  The App's update loop re-evaluates each binding once per frame and, when the
+//  produced string differs from the previous value, mutates the widget's content
+//  and flags it dirty so style + layout + paint refresh. Dead widgets are pruned
+//  via weak_ptr expiry, so the registry is self-cleaning.
 // ============================================================
 namespace detail {
 
@@ -72,8 +74,6 @@ inline void registerReactiveText(const std::shared_ptr<FluxUI::Text>& w,
     reactiveBindings().push_back(std::move(b));
 }
 
-// Re-evaluate every live reactive binding. Returns true if anything changed.
-// Safe to call without an active window (used by headless tests too).
 inline bool pumpReactiveBindings() {
     auto& binds = reactiveBindings();
     bool changed = false;
@@ -89,7 +89,6 @@ inline bool pumpReactiveBindings() {
             changed = true;
         }
     }
-    // Opportunistic prune of expired bindings.
     if (hasDead) {
         binds.erase(std::remove_if(binds.begin(), binds.end(),
                         [](const ReactiveBinding& b) { return b.widget.expired(); }),
@@ -113,157 +112,191 @@ public:
     void set(T newValue) {
         value_ = std::move(newValue);
         for (auto& fn : listeners_) fn();
-        // Wake the render loop so the reactive pump runs and the UI refreshes.
         if (auto* app = FluxUI::Application::instance()) app->requestRedraw();
     }
-    // Convenience mutators for common types.
-    template <typename U = T>
-    void update(std::function<void(T&)> mutator) { mutator(value_); set(value_); }
     void onChange(std::function<void()> fn) { listeners_.push_back(std::move(fn)); }
     operator const T&() const { return value_; }
 };
 
 // ============================================================
-//  WidgetBuilder — wraps a shared_ptr<Widget> with method chaining
+//  Element — a deferred, HTML-named node materialized on mount.
+//
+//  Every node carries an HTML tag name. mount() routes through
+//  Widget::element(tag, ...) which is the single source of truth for the
+//  tag -> widget mapping (Blink UA parity), so Div/Span/H1/Button/A/Img/... all
+//  produce exactly the widget the browser would.
 // ============================================================
-class WidgetBuilder {
-    std::shared_ptr<FluxUI::Widget> widget_;
+class Element {
 public:
-    WidgetBuilder() = default;
-    explicit WidgetBuilder(std::shared_ptr<FluxUI::Widget> w) : widget_(std::move(w)) {}
+    std::string tag = "div";
+    std::string content;            // text/label/placeholder/src depending on tag
+    std::string className_;
+    std::string id_;
+    std::function<void()> onClick_;
+    std::function<std::string()> textFn_;   // set => reactive text node
+    std::function<void(FluxUI::Widget*)> onMount_;  // post-mount configuration hook
+    std::vector<std::pair<std::string, std::string>> inlineStyles_;
+    std::vector<std::pair<std::string, std::string>> attrs_;
+    std::vector<Element> children_;
+    bool hasVisible_ = false;
+    bool visible_ = true;
 
-    // Chaining setters
-    WidgetBuilder& className(const std::string& cls) { if (widget_) widget_->className = cls; return *this; }
-    WidgetBuilder& id(const std::string& id) { if (widget_) widget_->id = id; return *this; }
-    WidgetBuilder& onClick(std::function<void()> fn) { if (widget_) widget_->onClick = std::move(fn); return *this; }
-    WidgetBuilder& style(const std::string& prop, const std::string& val) {
-        if (widget_) {
-            FluxUI::CSSProperty p;
-            p.name = prop;
-            p.value = val;
-            widget_->inlineProperties.push_back(p);
+    Element() = default;
+    explicit Element(std::string t) : tag(std::move(t)) {}
+
+    // Chaining setters — mirror HTML attributes / DOM properties.
+    Element& className(const std::string& v) { className_ = v; return *this; }
+    Element& id(const std::string& v) { id_ = v; return *this; }
+    Element& onClick(std::function<void()> fn) { onClick_ = std::move(fn); return *this; }
+    Element& style(const std::string& prop, const std::string& val) {
+        inlineStyles_.emplace_back(prop, val); return *this;
+    }
+    Element& attr(const std::string& name, const std::string& val) {
+        attrs_.emplace_back(name, val); return *this;
+    }
+    Element& href(const std::string& url) { return attr("href", url); }
+    Element& src(const std::string& url) { content = url; return *this; }
+    Element& visible(bool v) { hasVisible_ = true; visible_ = v; return *this; }
+    // Post-mount hook: receive the materialized widget for advanced setup
+    // (e.g. configuring a Video, Canvas, or wiring extra event listeners).
+    Element& onMount(std::function<void(FluxUI::Widget*)> fn) { onMount_ = std::move(fn); return *this; }
+    template <typename T>
+    Element& onMount(std::function<void(T*)> fn) {
+        onMount_ = [fn = std::move(fn)](FluxUI::Widget* w) { fn(static_cast<T*>(w)); };
+        return *this;
+    }
+
+    // Materialize this node (and subtree) under parent, returning the widget.
+    FluxUI::Widget* mount(FluxUI::Widget* parent) const {
+        FluxUI::Widget* w = nullptr;
+        if (textFn_) {
+            std::string initial = textFn_();
+            w = parent->element("span", initial, className_);
+            if (!parent->children.empty()) {
+                auto sp = std::static_pointer_cast<FluxUI::Text>(parent->children.back());
+                detail::registerReactiveText(sp, textFn_, initial);
+            }
+        } else {
+            w = parent->element(tag, content, className_);
         }
-        return *this;
-    }
-    WidgetBuilder& attr(const std::string& name, const std::string& value) {
-        if (widget_) widget_->setAttribute(name, value);
-        return *this;
-    }
-    WidgetBuilder& visible(bool v) { if (widget_) widget_->visible = v; return *this; }
+        if (!w) return nullptr;
 
-    // Access the underlying widget
-    std::shared_ptr<FluxUI::Widget> build() const { return widget_; }
-    FluxUI::Widget* get() const { return widget_.get(); }
-    operator std::shared_ptr<FluxUI::Widget>() const { return widget_; }
+        if (!id_.empty()) w->id = id_;
+        if (onClick_) w->onClick = onClick_;
+        if (hasVisible_) w->visible = visible_;
+        for (const auto& s : inlineStyles_) {
+            FluxUI::CSSProperty p;
+            p.name = s.first;
+            p.value = s.second;
+            w->inlineProperties.push_back(p);
+        }
+        for (const auto& a : attrs_) {
+            w->setAttribute(a.first, a.second);
+        }
+        if (onMount_) onMount_(w);
+        for (const auto& child : children_) {
+            child.mount(w);
+        }
+        return w;
+    }
 };
 
+namespace detail {
+inline Element container(const char* tag, std::initializer_list<Element> kids) {
+    Element e(tag);
+    e.children_.assign(kids.begin(), kids.end());
+    return e;
+}
+inline Element leaf(const char* tag, const std::string& content) {
+    Element e(tag);
+    e.content = content;
+    return e;
+}
+} // namespace detail
+
 // ============================================================
-//  Free-standing builder functions (declarative tree construction)
+//  HTML element builders (names match HTML/Blink exactly).
 // ============================================================
 
-// Helper: attach children to a parent widget
-inline void attachChildren(FluxUI::Widget* parent, std::initializer_list<WidgetBuilder> children) {
-    for (auto& child : children) {
-        auto w = child.build();
-        if (w) {
-            w->parent = parent;
-            parent->children.push_back(w);
-        }
-    }
-}
+// --- Flow containers (Blink: LayoutBlock / flex via CSS) ---
+inline Element Div(std::initializer_list<Element> kids = {})       { return detail::container("div", kids); }
+inline Element Section(std::initializer_list<Element> kids = {})   { return detail::container("section", kids); }
+inline Element Article(std::initializer_list<Element> kids = {})   { return detail::container("article", kids); }
+inline Element Aside(std::initializer_list<Element> kids = {})     { return detail::container("aside", kids); }
+inline Element Header(std::initializer_list<Element> kids = {})    { return detail::container("header", kids); }
+inline Element Footer(std::initializer_list<Element> kids = {})    { return detail::container("footer", kids); }
+inline Element Main(std::initializer_list<Element> kids = {})      { return detail::container("main", kids); }
+inline Element Nav(std::initializer_list<Element> kids = {})       { return detail::container("nav", kids); }
+inline Element Form(std::initializer_list<Element> kids = {})      { return detail::container("form", kids); }
+inline Element Fieldset(std::initializer_list<Element> kids = {})  { return detail::container("fieldset", kids); }
+inline Element Blockquote(std::initializer_list<Element> kids = {}){ return detail::container("blockquote", kids); }
+inline Element Figure(std::initializer_list<Element> kids = {})    { return detail::container("figure", kids); }
+inline Element Ul(std::initializer_list<Element> kids = {})        { return detail::container("ul", kids); }
+inline Element Ol(std::initializer_list<Element> kids = {})        { return detail::container("ol", kids); }
+inline Element Li(std::initializer_list<Element> kids = {})        { return detail::container("li", kids); }
+inline Element Table(std::initializer_list<Element> kids = {})     { return detail::container("table", kids); }
+inline Element Thead(std::initializer_list<Element> kids = {})     { return detail::container("thead", kids); }
+inline Element Tbody(std::initializer_list<Element> kids = {})     { return detail::container("tbody", kids); }
+inline Element Tr(std::initializer_list<Element> kids = {})        { return detail::container("tr", kids); }
 
-// Layout containers
-inline WidgetBuilder Row(std::initializer_list<WidgetBuilder> children) {
-    auto w = std::make_shared<FluxUI::Panel>();
-    w->type = "div";
-    w->style.display = FluxUI::Display::Flex;
-    w->style.flexDirection = FluxUI::FlexDirection::Row;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Column(std::initializer_list<WidgetBuilder> children) {
-    auto w = std::make_shared<FluxUI::Panel>();
-    w->type = "div";
-    w->style.display = FluxUI::Display::Flex;
-    w->style.flexDirection = FluxUI::FlexDirection::Column;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Sidebar(std::initializer_list<WidgetBuilder> children) {
-    auto w = std::make_shared<FluxUI::Panel>("sidebar");
-    w->type = "nav";
-    w->style.display = FluxUI::Display::Flex;
-    w->style.flexDirection = FluxUI::FlexDirection::Column;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Card(std::initializer_list<WidgetBuilder> children) {
-    auto w = std::make_shared<FluxUI::Panel>("card");
-    w->type = "div";
-    w->style.display = FluxUI::Display::Flex;
-    w->style.flexDirection = FluxUI::FlexDirection::Column;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Grid(std::initializer_list<WidgetBuilder> children) {
-    auto w = std::make_shared<FluxUI::Panel>();
-    w->type = "div";
-    w->style.display = FluxUI::Display::Grid;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
-}
-
-// Content widgets
-inline WidgetBuilder Text(const std::string& content) {
-    auto w = std::make_shared<FluxUI::Text>(content, "");
-    return WidgetBuilder(w);
-}
+// --- Text content (Blink: LayoutText / inline) ---
+inline Element Text(const std::string& content) { return detail::leaf("span", content); }
+inline Element Span(const std::string& content) { return detail::leaf("span", content); }
+inline Element P(const std::string& content)    { return detail::leaf("p", content); }
+inline Element H1(const std::string& content)   { return detail::leaf("h1", content); }
+inline Element H2(const std::string& content)   { return detail::leaf("h2", content); }
+inline Element H3(const std::string& content)   { return detail::leaf("h3", content); }
+inline Element H4(const std::string& content)   { return detail::leaf("h4", content); }
+inline Element H5(const std::string& content)   { return detail::leaf("h5", content); }
+inline Element H6(const std::string& content)   { return detail::leaf("h6", content); }
+inline Element Strong(const std::string& content){ return detail::leaf("strong", content); }
+inline Element B(const std::string& content)    { return detail::leaf("b", content); }
+inline Element Em(const std::string& content)   { return detail::leaf("em", content); }
+inline Element I(const std::string& content)    { return detail::leaf("i", content); }
+inline Element Small(const std::string& content){ return detail::leaf("small", content); }
+inline Element Label(const std::string& content){ return detail::leaf("label", content); }
+inline Element Legend(const std::string& content){ return detail::leaf("legend", content); }
+inline Element Code(const std::string& content) { return detail::leaf("code", content); }
+inline Element Pre(const std::string& content)  { return detail::leaf("pre", content); }
+inline Element Td(const std::string& content)   { return detail::leaf("td", content); }
+inline Element Th(const std::string& content)   { return detail::leaf("th", content); }
 
 // Reactive text — re-evaluates the function whenever bound State changes.
-inline WidgetBuilder Text(std::function<std::string()> fn) {
-    std::string initial = fn();
-    auto w = std::make_shared<FluxUI::Text>(initial, "");
-    detail::registerReactiveText(w, std::move(fn), std::move(initial));
-    return WidgetBuilder(w);
+inline Element Text(std::function<std::string()> fn) {
+    Element e("span");
+    e.textFn_ = std::move(fn);
+    return e;
 }
 
-inline WidgetBuilder Button(const std::string& label) {
-    auto w = std::make_shared<FluxUI::Button>(label, "");
-    return WidgetBuilder(w);
+// --- Interactive controls ---
+inline Element Button(const std::string& label)            { return detail::leaf("button", label); }
+inline Element Input(const std::string& placeholder = "")  { return detail::leaf("input", placeholder); }
+inline Element TextArea(const std::string& placeholder = ""){ return detail::leaf("textarea", placeholder); }
+inline Element A(const std::string& content, const std::string& href = "") {
+    Element e = detail::leaf("a", content);
+    if (!href.empty()) e.attr("href", href);
+    return e;
 }
+inline Element Img(const std::string& src)   { return detail::leaf("img", src); }
+inline Element Video(const std::string& src) { Element e("video"); e.content = src; return e; }
+inline Element Checkbox()                    { return Element("checkbox"); }
+inline Element Radio()                       { return Element("radio"); }
+inline Element Canvas()                      { return Element("canvas"); }
+inline Element Hr()                          { return Element("hr"); }
+inline Element Br()                          { return Element("br"); }
+inline Element Select(std::initializer_list<Element> options = {}) { return detail::container("select", options); }
+inline Element Option(const std::string& label) { return detail::leaf("option", label); }
 
-inline WidgetBuilder NavItem(const std::string& label) {
-    auto w = std::make_shared<FluxUI::Button>(label, "nav-item");
-    w->type = "button";
-    return WidgetBuilder(w);
+// --- Generic escape hatch for any tag ---
+inline Element El(const std::string& tag, std::initializer_list<Element> kids = {}) {
+    Element e(tag);
+    e.children_.assign(kids.begin(), kids.end());
+    return e;
 }
-
-inline WidgetBuilder Input(const std::string& placeholder = "") {
-    auto w = std::make_shared<FluxUI::TextInput>(placeholder);
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Img(const std::string& src) {
-    auto w = std::make_shared<FluxUI::Image>();
-    w->source = src;
-    return WidgetBuilder(w);
-}
-
-inline WidgetBuilder Checkbox(bool checked = false) {
-    auto w = std::make_shared<FluxUI::Checkbox>(checked);
-    return WidgetBuilder(w);
-}
-
-// Generic container with custom tag
-inline WidgetBuilder Element(const std::string& tag, std::initializer_list<WidgetBuilder> children = {}) {
-    auto w = std::make_shared<FluxUI::Panel>();
-    w->type = tag;
-    attachChildren(w.get(), children);
-    return WidgetBuilder(w);
+inline Element El(const std::string& tag, const std::string& content) {
+    Element e(tag);
+    e.content = content;
+    return e;
 }
 
 // ============================================================
@@ -277,7 +310,6 @@ class App {
         if (windowReady_) return;
         if (app_.init(title, width, height)) {
             windowReady_ = true;
-            // Load a usable default font so text renders out of the box.
             if (!app_.renderer().loadDefaultFont(16.0f)) {
 #ifdef _WIN32
                 app_.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
@@ -297,17 +329,13 @@ public:
     void addCSS(const std::string& css)   { app_.addStylesheet(css); }
     void loadStyle(const std::string& path) { loadCSS(path); }
 
-    void setRoot(WidgetBuilder builder) {
-        auto root = app_.root();
-        auto w = builder.build();
-        root->clearChildren();
-        if (w) {
-            root->addChild(w);
-        }
+    void setRoot(const Element& root) {
+        auto rootWidget = app_.root();
+        rootWidget->clearChildren();
+        root.mount(rootWidget);
     }
 
     int run() {
-        // Install the reactive pump into the per-frame update hook.
         app_.onUpdate = [](float /*dt*/) {
             detail::pumpReactiveBindings();
         };
@@ -319,6 +347,3 @@ public:
 };
 
 } // namespace fluxui
-
-// Convenience: bring the DSL into fluxui:: namespace by default.
-// Users can `using namespace fluxui;` for the cleanest syntax.

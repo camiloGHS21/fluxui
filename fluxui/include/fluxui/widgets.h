@@ -1041,6 +1041,7 @@ public:
         type = "a";
         style.cursor = CursorType::Pointer;
     }
+    void setAttribute(const std::string& name, const std::string& value) override;
     void update(const InputState& input) override;
 };
 class Details : public Widget {

@@ -501,16 +501,12 @@ pub const Renderer = struct {
 };
 
 // ============================================================
-//  Declarative DSL — mirrors C++ dsl.h / Go dsl.go / Rust dsl module 1:1.
+//  Declarative DSL — modern HTML/Blink-named functional builder.
 //
-//  Zig has no closures or RTTI, so the reactive layer is built from explicit
-//  function pointers + a global binding registry. Build a tree of `Node`s with
-//  the builder helpers (row, column, text, ...), set classes/handlers, and
-//  drive reactive `textFn` nodes with `State(T)`.
-//
-//  Everything lives under the `dsl` namespace to avoid clashing with the
-//  imperative Widget method parameters (e.g. `text`). Use it via
-//  `fluxui.dsl.row(...)`, `fluxui.dsl.State(i32)`, etc.
+//  Element names match HTML exactly (div, span, h1, button, nav, section, ...).
+//  Zig has no closures, so reactive text + click handlers use explicit C-ABI
+//  function pointers plus a global binding registry. Layout is expressed in CSS
+//  (display:flex/grid). Use via `fluxui.dsl.div(...)`, `fluxui.dsl.State(i32)`.
 // ============================================================
 pub const dsl = struct {
 
@@ -585,34 +581,22 @@ fn reactiveUpdateCallback(_: ?*c.FluxUIApp, _: f32, _: ?*anyopaque) callconv(.c)
     _ = pumpReactiveBindings();
 }
 
-// ---- Node — deferred declarative element, materialized on mount. ----
-const NodeKind = enum {
-    row,
-    column,
-    sidebar,
-    card,
-    grid,
-    div,
-    text,
-    text_fn,
-    button,
-    nav_item,
-    input,
-    checkbox,
-    element,
-};
-
+// ---- Node — deferred, HTML-named declarative element, materialized on mount. ----
+//
+// Every node carries an HTML tag name; mount() routes through Widget.addElement,
+// the single source of truth for the tag -> widget mapping (Blink UA parity).
+// Reactive text nodes use `is_text_fn` + a function pointer.
 pub const Node = struct {
-    kind: NodeKind,
-    tag: [*:0]const u8 = "",
+    tag: [*:0]const u8 = "div",
     content: [*:0]const u8 = "",
     class_name: [*:0]const u8 = "",
     node_id: [*:0]const u8 = "",
+    inline_css: [*:0]const u8 = "",
     on_click: ?c.FluxUIClickCallback = null,
     on_click_data: ?*anyopaque = null,
+    is_text_fn: bool = false,
     text_fn: ?TextFnPtr = null,
     text_fn_data: ?*anyopaque = null,
-    checked: bool = false,
     children: []const Node = &.{},
 
     pub fn class(self: Node, cls: [*:0]const u8) Node {
@@ -625,6 +609,11 @@ pub const Node = struct {
         n.node_id = node_id;
         return n;
     }
+    pub fn css(self: Node, decl: [*:0]const u8) Node {
+        var n = self;
+        n.inline_css = decl;
+        return n;
+    }
     pub fn onClick(self: Node, callback: c.FluxUIClickCallback, user_data: ?*anyopaque) Node {
         var n = self;
         n.on_click = callback;
@@ -633,53 +622,17 @@ pub const Node = struct {
     }
 
     pub fn mount(self: Node, parent: Widget) Error!Widget {
-        const w = switch (self.kind) {
-            .row => blk: {
-                const x = try parent.addPanel(self.class_name);
-                x.css("display:flex;flex-direction:row");
-                break :blk x;
-            },
-            .column => blk: {
-                const x = try parent.addPanel(self.class_name);
-                x.css("display:flex;flex-direction:column");
-                break :blk x;
-            },
-            .sidebar => blk: {
-                const cls = if (self.class_name[0] == 0) "sidebar" else self.class_name;
-                const x = try parent.addElement("nav", "", cls);
-                x.css("display:flex;flex-direction:column");
-                break :blk x;
-            },
-            .card => blk: {
-                const cls = if (self.class_name[0] == 0) "card" else self.class_name;
-                const x = try parent.addPanel(cls);
-                x.css("display:flex;flex-direction:column");
-                break :blk x;
-            },
-            .grid => blk: {
-                const x = try parent.addPanel(self.class_name);
-                x.css("display:grid");
-                break :blk x;
-            },
-            .div => try parent.addPanel(self.class_name),
-            .text => try parent.addText(self.content, self.class_name),
-            .text_fn => blk: {
-                const initial = if (self.text_fn) |f| f(self.text_fn_data) else "";
-                const x = try parent.addText(initial, self.class_name);
-                if (self.text_fn) |f| registerReactive(x, f, self.text_fn_data, initial);
-                break :blk x;
-            },
-            .button => try parent.addButton(self.content, self.class_name),
-            .nav_item => blk: {
-                const cls = if (self.class_name[0] == 0) "nav-item" else self.class_name;
-                break :blk try parent.addButton(self.content, cls);
-            },
-            .input => try parent.addTextInput(self.content, self.class_name),
-            .checkbox => try parent.addCheckbox(self.checked, self.class_name),
-            .element => try parent.addElement(self.tag, self.content, self.class_name),
-        };
+        var w: Widget = undefined;
+        if (self.is_text_fn) {
+            const initial = if (self.text_fn) |f| f(self.text_fn_data) else "";
+            w = try parent.addElement("span", initial, self.class_name);
+            if (self.text_fn) |f| registerReactive(w, f, self.text_fn_data, initial);
+        } else {
+            w = try parent.addElement(self.tag, self.content, self.class_name);
+        }
 
         if (self.node_id[0] != 0) w.setId(self.node_id);
+        if (self.inline_css[0] != 0) w.css(self.inline_css);
         if (self.on_click) |cb| w.setOnClick(cb, self.on_click_data);
         for (self.children) |child| {
             _ = try child.mount(w);
@@ -688,46 +641,73 @@ pub const Node = struct {
     }
 };
 
-// ---- Builder functions (match C++ / Go / Rust / Python). ----
-pub fn row(children: []const Node) Node {
-    return .{ .kind = .row, .children = children };
+// ---- HTML element builders (names match HTML/Blink exactly). ----
+fn container(comptime tag: [*:0]const u8, children: []const Node) Node {
+    return .{ .tag = tag, .children = children };
 }
-pub fn column(children: []const Node) Node {
-    return .{ .kind = .column, .children = children };
+fn leaf(comptime tag: [*:0]const u8, content: [*:0]const u8) Node {
+    return .{ .tag = tag, .content = content };
 }
-pub fn sidebar(children: []const Node) Node {
-    return .{ .kind = .sidebar, .children = children };
-}
-pub fn card(children: []const Node) Node {
-    return .{ .kind = .card, .children = children };
-}
-pub fn grid(children: []const Node) Node {
-    return .{ .kind = .grid, .children = children };
-}
-pub fn divNode(children: []const Node) Node {
-    return .{ .kind = .div, .children = children };
-}
-pub fn text(content: [*:0]const u8) Node {
-    return .{ .kind = .text, .content = content };
-}
+
+// Flow containers.
+pub fn div(children: []const Node) Node { return container("div", children); }
+pub fn section(children: []const Node) Node { return container("section", children); }
+pub fn article(children: []const Node) Node { return container("article", children); }
+pub fn aside(children: []const Node) Node { return container("aside", children); }
+pub fn header(children: []const Node) Node { return container("header", children); }
+pub fn footer(children: []const Node) Node { return container("footer", children); }
+pub fn mainEl(children: []const Node) Node { return container("main", children); }
+pub fn nav(children: []const Node) Node { return container("nav", children); }
+pub fn form(children: []const Node) Node { return container("form", children); }
+pub fn fieldset(children: []const Node) Node { return container("fieldset", children); }
+pub fn blockquote(children: []const Node) Node { return container("blockquote", children); }
+pub fn figure(children: []const Node) Node { return container("figure", children); }
+pub fn ul(children: []const Node) Node { return container("ul", children); }
+pub fn ol(children: []const Node) Node { return container("ol", children); }
+pub fn li(children: []const Node) Node { return container("li", children); }
+pub fn table(children: []const Node) Node { return container("table", children); }
+pub fn tr(children: []const Node) Node { return container("tr", children); }
+
+// Text content.
+pub fn text(content: [*:0]const u8) Node { return leaf("span", content); }
+pub fn span(content: [*:0]const u8) Node { return leaf("span", content); }
+pub fn p(content: [*:0]const u8) Node { return leaf("p", content); }
+pub fn h1(content: [*:0]const u8) Node { return leaf("h1", content); }
+pub fn h2(content: [*:0]const u8) Node { return leaf("h2", content); }
+pub fn h3(content: [*:0]const u8) Node { return leaf("h3", content); }
+pub fn h4(content: [*:0]const u8) Node { return leaf("h4", content); }
+pub fn h5(content: [*:0]const u8) Node { return leaf("h5", content); }
+pub fn h6(content: [*:0]const u8) Node { return leaf("h6", content); }
+pub fn strong(content: [*:0]const u8) Node { return leaf("strong", content); }
+pub fn em(content: [*:0]const u8) Node { return leaf("em", content); }
+pub fn small(content: [*:0]const u8) Node { return leaf("small", content); }
+pub fn label(content: [*:0]const u8) Node { return leaf("label", content); }
+pub fn legend(content: [*:0]const u8) Node { return leaf("legend", content); }
+pub fn code(content: [*:0]const u8) Node { return leaf("code", content); }
+pub fn pre(content: [*:0]const u8) Node { return leaf("pre", content); }
+pub fn td(content: [*:0]const u8) Node { return leaf("td", content); }
+pub fn th(content: [*:0]const u8) Node { return leaf("th", content); }
+
 /// Reactive text — re-evaluated whenever bound State changes.
 pub fn textFn(func: TextFnPtr, user_data: ?*anyopaque) Node {
-    return .{ .kind = .text_fn, .text_fn = func, .text_fn_data = user_data };
+    return .{ .tag = "span", .is_text_fn = true, .text_fn = func, .text_fn_data = user_data };
 }
-pub fn button(label: [*:0]const u8) Node {
-    return .{ .kind = .button, .content = label };
-}
-pub fn navItem(label: [*:0]const u8) Node {
-    return .{ .kind = .nav_item, .content = label };
-}
-pub fn input(placeholder: [*:0]const u8) Node {
-    return .{ .kind = .input, .content = placeholder };
-}
-pub fn checkbox(is_checked: bool) Node {
-    return .{ .kind = .checkbox, .checked = is_checked };
-}
-pub fn element(tag: [*:0]const u8, children: []const Node) Node {
-    return .{ .kind = .element, .tag = tag, .children = children };
+
+// Interactive controls.
+pub fn button(lbl: [*:0]const u8) Node { return leaf("button", lbl); }
+pub fn input(placeholder: [*:0]const u8) Node { return leaf("input", placeholder); }
+pub fn textarea(placeholder: [*:0]const u8) Node { return leaf("textarea", placeholder); }
+pub fn img(source: [*:0]const u8) Node { return leaf("img", source); }
+pub fn checkbox() Node { return .{ .tag = "checkbox" }; }
+pub fn radio() Node { return .{ .tag = "radio" }; }
+pub fn hr() Node { return .{ .tag = "hr" }; }
+pub fn br() Node { return .{ .tag = "br" }; }
+pub fn select(options: []const Node) Node { return container("select", options); }
+pub fn option(lbl: [*:0]const u8) Node { return leaf("option", lbl); }
+
+/// Generic escape hatch for any HTML tag.
+pub fn el(tag: [*:0]const u8, children: []const Node) Node {
+    return .{ .tag = tag, .children = children };
 }
 
 }; // pub const dsl

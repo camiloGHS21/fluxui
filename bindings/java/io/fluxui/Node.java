@@ -5,35 +5,27 @@ import java.util.List;
 import java.util.function.Supplier;
 
 /**
- * Deferred declarative element — mirrors the C++ {@code WidgetBuilder} node.
+ * Deferred, HTML-named declarative element — modern Blink-faithful node.
  *
- * <p>Build a tree with the {@link Dsl} factory methods, attach classes/handlers
- * via chaining, then mount it onto a parent {@link Widget}. Reactive {@code textFn}
- * nodes register themselves with {@link Dsl} so they refresh when state changes.
+ * <p>Every node carries an HTML tag name (div, span, h1, button, nav, ...) and is
+ * materialized through {@link Widget#addElement}, the single source of truth for
+ * the tag &rarr; widget mapping (Blink UA parity). Reactive {@code textFn} nodes
+ * register themselves with {@link Dsl} so they refresh when state changes.
  */
 public final class Node {
-    enum Kind {
-        ROW, COLUMN, SIDEBAR, CARD, GRID, DIV,
-        TEXT, TEXT_FN, BUTTON, NAV_ITEM, INPUT, CHECKBOX, ELEMENT
-    }
-
-    private final Kind kind;
-    private String tag = "";
+    private final String tag;
     private String content = "";
     private String className = "";
     private String nodeId = "";
     private Runnable onClick;
+    private java.util.function.Consumer<Widget> onMount;
     private Supplier<String> textFn;
-    private boolean checked;
+    private final List<String[]> inlineStyles = new ArrayList<>();
+    private final List<String[]> attrs = new ArrayList<>();
     private final List<Node> children = new ArrayList<>();
 
-    Node(Kind kind) {
-        this.kind = kind;
-    }
-
-    Node tag(String tag) {
+    Node(String tag) {
         this.tag = tag;
-        return this;
     }
 
     Node content(String content) {
@@ -46,11 +38,6 @@ public final class Node {
         return this;
     }
 
-    Node checked(boolean checked) {
-        this.checked = checked;
-        return this;
-    }
-
     Node children(Node... nodes) {
         for (Node n : nodes) {
             if (n != null) children.add(n);
@@ -58,7 +45,7 @@ public final class Node {
         return this;
     }
 
-    // ---- Chaining setters (match C++ WidgetBuilder). ----
+    // ---- Chaining setters — mirror HTML attributes / DOM properties. ----
     public Node className(String cls) {
         this.className = cls;
         return this;
@@ -74,68 +61,57 @@ public final class Node {
         return this;
     }
 
+    /** Receive the materialized native Widget for advanced setup. */
+    public Node onMount(java.util.function.Consumer<Widget> handler) {
+        this.onMount = handler;
+        return this;
+    }
+
+    public Node style(String prop, String val) {
+        inlineStyles.add(new String[] {prop, val});
+        return this;
+    }
+
+    public Node attr(String name, String val) {
+        attrs.add(new String[] {name, val});
+        return this;
+    }
+
+    public Node href(String url) {
+        return attr("href", url);
+    }
+
+    public Node src(String url) {
+        this.content = url;
+        return this;
+    }
+
     Widget mount(Widget parent) {
         Widget w;
-        switch (kind) {
-            case ROW:
-                w = parent.addPanel(className);
-                w.css("display:flex;flex-direction:row");
-                break;
-            case COLUMN:
-                w = parent.addPanel(className);
-                w.css("display:flex;flex-direction:column");
-                break;
-            case SIDEBAR:
-                w = parent.addElement("nav", "", className.isEmpty() ? "sidebar" : className);
-                w.css("display:flex;flex-direction:column");
-                break;
-            case CARD:
-                w = parent.addPanel(className.isEmpty() ? "card" : className);
-                w.css("display:flex;flex-direction:column");
-                break;
-            case GRID:
-                w = parent.addPanel(className);
-                w.css("display:grid");
-                break;
-            case DIV:
-                w = parent.addPanel(className);
-                break;
-            case TEXT:
-                w = parent.addText(content, className);
-                break;
-            case TEXT_FN: {
-                String initial = textFn != null ? textFn.get() : "";
-                w = parent.addText(initial, className);
-                if (textFn != null) {
-                    Dsl.registerReactive(w, textFn, initial);
-                }
-                break;
+        if (textFn != null) {
+            String initial = textFn.get();
+            w = parent.addElement("span", initial, className);
+            if (w != null) {
+                Dsl.registerReactive(w, textFn, initial);
             }
-            case BUTTON:
-                w = parent.addButton(content, className);
-                break;
-            case NAV_ITEM:
-                w = parent.addButton(content, className.isEmpty() ? "nav-item" : className);
-                break;
-            case INPUT:
-                w = parent.addTextInput(content, className);
-                break;
-            case CHECKBOX:
-                w = parent.addCheckbox(checked, className);
-                break;
-            case ELEMENT:
-                w = parent.addElement(tag, content, className);
-                break;
-            default:
-                w = parent.addPanel(className);
-                break;
+        } else {
+            w = parent.addElement(tag, content, className);
         }
 
+        if (w == null) {
+            return null;
+        }
         if (!nodeId.isEmpty()) {
             w.setId(nodeId);
         }
         if (onClick != null) {
             w.setOnClick(onClick);
+        }
+        for (String[] s : inlineStyles) {
+            w.css(s[0] + ":" + s[1]);
+        }
+        if (onMount != null) {
+            onMount.accept(w);
         }
         for (Node child : children) {
             child.mount(w);

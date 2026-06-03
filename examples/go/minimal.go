@@ -1,59 +1,48 @@
+// FluxUI Go minimal example — modern HTML/Blink-named declarative DSL.
 package main
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 
-	"github.com/camiloGHS21/DataleakGuard/bindings/go"
+	fluxui "github.com/camiloGHS21/DataleakGuard/bindings/go"
 )
 
 func main() {
-	// Lock OS thread because UI frameworks usually require running on the main thread
+	// UI frameworks require running on the main OS thread.
 	runtime.LockOSThread()
 
-	app, err := fluxui.CreateApp()
-	if err != nil {
-		fmt.Printf("Error creating app: %v\n", err)
-		os.Exit(1)
+	app := fluxui.NewApp(800, 600, "FluxUI Go Minimal Example")
+	if app == nil {
+		fmt.Println("Failed to initialize FluxUI App")
+		return
 	}
 	defer app.Destroy()
 
-	fmt.Printf("App handle: 0x%x\n", app.GetHandle())
-	app.SetBackend(100) // 100 is FLUXUI_BACKEND_COMPATIBILITY
-	if !app.Init("FluxUI Go Minimal Example", 800, 600) {
-		fmt.Println("Failed to initialize FluxUI App")
-		os.Exit(1)
-	}
-	fmt.Printf("Active Backend: %d\n", app.GetBackend())
+	app.AddCSS(`
+		.root { display: flex; flex-direction: column; background-color: #101418; padding: 32px; gap: 16px; }
+		.title { font-size: 26px; font-weight: 700; color: #edf3f8; }
+		.body { font-size: 14px; color: rgba(237, 243, 248, 0.68); }
+		.btn { width: 200px; height: 44px; border-radius: 8px; background-color: #37c6a3; color: #06100d; }
+	`)
 
-	root := app.Root()
-	fmt.Printf("Root widget handle: 0x%x\n", root.GetHandle())
-	panel := root.AddPanel("container")
-	fmt.Printf("Panel widget handle: 0x%x\n", panel.GetHandle())
-	panel.StyleWidth(600)
-	panel.StyleHeight(400)
-	panel.StyleBackgroundColor(0.15, 0.1, 0.1, 1.0)
+	clicks := fluxui.NewState(0)
 
-	label := panel.AddText("Welcome to FluxUI from Go!", "")
-	_ = label
+	app.SetRoot(
+		fluxui.Div(
+			fluxui.H1("Welcome to FluxUI from Go!").Class("title"),
+			fluxui.P("This window is built with the declarative HTML-named DSL.").Class("body"),
+			fluxui.TextFn(func() string {
+				return fmt.Sprintf("Button clicked %d times", clicks.Get())
+			}).Class("body"),
+			fluxui.Button("Click Me").Class("btn").OnClick(func() {
+				clicks.Set(clicks.Get() + 1)
+			}),
+			fluxui.Button("Exit").Class("btn").OnClick(func() {
+				app.Stop()
+			}),
+		).Class("root"),
+	)
 
-	counter := 0
-	_ = counter
-	btn := panel.AddButton("Click Me", "btn")
-	_ = btn
-	// btn.SetOnClick(func() {
-	// 	counter++
-	// 	label.SetContent(fmt.Sprintf("Button clicked %d times!", counter))
-	// 	fmt.Printf("Clicked: %d\n", counter)
-	// })
-
-	exitBtn := panel.AddButton("Exit", "btn")
-	_ = exitBtn
-	// exitBtn.SetOnClick(func() {
-	// 	app.Stop()
-	// })
-
-	fmt.Println("Running FluxUI app from Go...")
-	app.Run()
+	app.RunReactive()
 }

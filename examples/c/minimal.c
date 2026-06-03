@@ -29,9 +29,10 @@ int main(void) {
 
     FluxUIWidget* root = fluxui_app_root(app);
     fluxui_widget_reserve_children(root, 3);
-    fluxui_widget_add_text(root, "Hello from C", "title");
-    fluxui_widget_add_text(root, "This UI is built through the FluxUI C ABI.", "body");
-    FluxUIWidget* button = fluxui_widget_add_button(root, "Close", "button");
+    /* HTML/Blink element names via the C ABI's add_element factory. */
+    fluxui_widget_add_element(root, "h1", "Hello from C", "title");
+    fluxui_widget_add_element(root, "p", "This UI is built through the FluxUI C ABI.", "body");
+    FluxUIWidget* button = fluxui_widget_add_element(root, "button", "Close", "button");
     fluxui_widget_set_on_click(button, stop_app, app);
 
     fluxui_app_run(app);

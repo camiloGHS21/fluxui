@@ -1,7 +1,7 @@
 import io.fluxui.App;
 import io.fluxui.Backend;
+import io.fluxui.Dsl;
 import io.fluxui.FluxUI;
-import io.fluxui.Widget;
 
 import java.nio.file.Path;
 
@@ -26,9 +26,11 @@ public final class AutoClose {
                 ".body { font-size: 14px; color: rgba(237, 243, 248, 0.72); }"
             );
 
-            Widget root = app.root();
-            root.addText("Java update callback works", "title");
-            root.addText("This window closes itself from Java.", "body");
+            Dsl.setRoot(app,
+                Dsl.div(
+                    Dsl.h1("Java update callback works").className("title"),
+                    Dsl.p("This window closes itself from Java.").className("body")
+                ).className("root"));
 
             float[] elapsed = {0.0f};
             app.setUpdateCallback(deltaTime -> {

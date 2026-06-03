@@ -825,26 +825,26 @@ class App:
 
 
 # ============================================================
-#  Declarative DSL — mirrors C++ dsl.h / Go dsl.go / Rust dsl module 1:1.
+#  Declarative DSL — modern HTML/Blink-named functional builder.
 #
-#  Build a tree of Node objects with the builder functions (Row, Column, Text,
-#  ...), attach classes/handlers via chaining, and drive reactive TextFn nodes
-#  with State. Mount with App.set_root and run the reactive loop with
-#  App.run_reactive.
+#  Element names match HTML exactly (Div, Span, P, H1..H6, Nav, Section, Button,
+#  Input, A, Img, Ul, Li, ...). Layout is expressed in CSS (display:flex/grid)
+#  exactly like the browser — there are no bespoke Row/Column nodes. Every node
+#  routes through Widget.add_element(tag, ...) for Blink UA parity.
 #
 #  Example:
 #      import fluxui
 #      app = fluxui.DslApp(1200, 800, "CompanyGuard")
-#      app.add_css(".app { width: 100%; height: 100% } ...")
+#      app.add_css(".app { display:flex } .content { display:flex; flex-direction:column }")
 #      devices = fluxui.State(128)
 #      app.set_root(
-#          fluxui.Row([
-#              fluxui.Sidebar([
-#                  fluxui.NavItem("Dashboard"),
-#                  fluxui.NavItem("Dispositivos"),
+#          fluxui.Div([
+#              fluxui.Nav([
+#                  fluxui.Button("Dashboard"),
+#                  fluxui.Button("Dispositivos"),
 #              ]).cls("sidebar"),
-#              fluxui.Column([
-#                  fluxui.Text("CompanyGuard").cls("h1"),
+#              fluxui.Div([
+#                  fluxui.H1("CompanyGuard"),
 #                  fluxui.TextFn(lambda: str(devices.get())),
 #                  fluxui.Button("Escanear ahora").cls("primary")
 #                      .on_click(lambda: devices.set(devices.get() + 1)),
@@ -897,21 +897,27 @@ class State:
         self._listeners.append(fn)
 
 
-class Node:
-    """Deferred declarative element. Materialized on mount."""
+class Element:
+    """Deferred, HTML-named declarative node. Materialized on mount.
 
-    def __init__(self, kind, content="", tag="", checked=False, children=None, text_fn=None):
-        self._kind = kind
-        self._content = content
+    Every node carries an HTML tag name; mount() routes through
+    Widget.add_element(tag, ...) which is the single source of truth for the
+    tag -> widget mapping (Blink UA parity).
+    """
+
+    def __init__(self, tag, content="", children=None, text_fn=None):
         self._tag = tag
-        self._checked = checked
+        self._content = content
         self._text_fn = text_fn
         self._class_name = ""
         self._node_id = ""
         self._on_click = None
+        self._on_mount = None
+        self._inline_styles = []
+        self._attrs = []
         self._children = children or []
 
-    # Chaining setters (match C++ WidgetBuilder).
+    # Chaining setters — mirror HTML attributes / DOM properties.
     def cls(self, class_name):
         self._class_name = class_name
         return self
@@ -929,53 +935,34 @@ class Node:
         self._on_click = fn
         return self
 
+    def on_mount(self, fn):
+        """Receive the materialized native Widget for advanced setup."""
+        self._on_mount = fn
+        return self
+
+    def style(self, prop, val):
+        self._inline_styles.append((prop, val))
+        return self
+
+    def attr(self, name, val):
+        self._attrs.append((name, val))
+        return self
+
+    def href(self, url):
+        return self.attr("href", url)
+
+    def src(self, url):
+        self._content = url
+        return self
+
     def mount(self, parent):
-        kind = self._kind
-        w = None
-        if kind == "row":
-            w = parent.add_panel(self._class_name)
+        if self._text_fn is not None:
+            initial = self._text_fn()
+            w = parent.add_element("span", initial, self._class_name)
             if w:
-                w.css("display:flex;flex-direction:row")
-        elif kind == "column":
-            w = parent.add_panel(self._class_name)
-            if w:
-                w.css("display:flex;flex-direction:column")
-        elif kind == "sidebar":
-            cls = self._class_name or "sidebar"
-            w = parent.add_element("nav", "", cls)
-            if w:
-                w.css("display:flex;flex-direction:column")
-        elif kind == "card":
-            cls = self._class_name or "card"
-            w = parent.add_panel(cls)
-            if w:
-                w.css("display:flex;flex-direction:column")
-        elif kind == "grid":
-            w = parent.add_panel(self._class_name)
-            if w:
-                w.css("display:grid")
-        elif kind == "div":
-            w = parent.add_panel(self._class_name)
-        elif kind == "text":
-            w = parent.add_text(self._content, self._class_name)
-        elif kind == "text_fn":
-            initial = self._text_fn() if self._text_fn else ""
-            w = parent.add_text(initial, self._class_name)
-            if w and self._text_fn:
                 _register_reactive(w, self._text_fn, initial)
-        elif kind == "button":
-            w = parent.add_button(self._content, self._class_name)
-        elif kind == "nav_item":
-            cls = self._class_name or "nav-item"
-            w = parent.add_button(self._content, cls)
-        elif kind == "input":
-            w = parent.add_text_input(self._content, self._class_name)
-        elif kind == "checkbox":
-            w = parent.add_checkbox(self._checked, self._class_name)
-        elif kind == "element":
-            w = parent.add_element(self._tag, self._content, self._class_name)
         else:
-            w = parent.add_panel(self._class_name)
+            w = parent.add_element(self._tag, self._content, self._class_name)
 
         if not w:
             return None
@@ -983,63 +970,222 @@ class Node:
             w.set_id(self._node_id)
         if self._on_click:
             w.set_on_click(self._on_click)
+        for prop, val in self._inline_styles:
+            w.css("{}:{}".format(prop, val))
+        if self._on_mount:
+            self._on_mount(w)
         for child in self._children:
             child.mount(w)
         return w
 
 
-# ---- Builder functions (match C++ / Go / Rust). ----
-def Row(children):
-    return Node("row", children=children)
+# ---- HTML element builders (names match HTML/Blink exactly). ----
+def _container(tag, children):
+    return Element(tag, children=children or [])
 
 
-def Column(children):
-    return Node("column", children=children)
+def _leaf(tag, content):
+    return Element(tag, content=content)
 
 
-def Sidebar(children):
-    return Node("sidebar", children=children)
+# Flow containers.
+def Div(children=None):
+    return _container("div", children)
 
 
-def Card(children):
-    return Node("card", children=children)
+def Section(children=None):
+    return _container("section", children)
 
 
-def Grid(children):
-    return Node("grid", children=children)
+def Article(children=None):
+    return _container("article", children)
 
 
-def Div(children):
-    return Node("div", children=children)
+def Aside(children=None):
+    return _container("aside", children)
 
 
+def Header(children=None):
+    return _container("header", children)
+
+
+def Footer(children=None):
+    return _container("footer", children)
+
+
+def Main(children=None):
+    return _container("main", children)
+
+
+def Nav(children=None):
+    return _container("nav", children)
+
+
+def Form(children=None):
+    return _container("form", children)
+
+
+def Fieldset(children=None):
+    return _container("fieldset", children)
+
+
+def Blockquote(children=None):
+    return _container("blockquote", children)
+
+
+def Figure(children=None):
+    return _container("figure", children)
+
+
+def Ul(children=None):
+    return _container("ul", children)
+
+
+def Ol(children=None):
+    return _container("ol", children)
+
+
+def Li(children=None):
+    return _container("li", children)
+
+
+def Table(children=None):
+    return _container("table", children)
+
+
+def Tr(children=None):
+    return _container("tr", children)
+
+
+# Text content.
 def Text(content):
-    return Node("text", content=content)
+    return _leaf("span", content)
+
+
+def Span(content):
+    return _leaf("span", content)
+
+
+def P(content):
+    return _leaf("p", content)
+
+
+def H1(content):
+    return _leaf("h1", content)
+
+
+def H2(content):
+    return _leaf("h2", content)
+
+
+def H3(content):
+    return _leaf("h3", content)
+
+
+def H4(content):
+    return _leaf("h4", content)
+
+
+def H5(content):
+    return _leaf("h5", content)
+
+
+def H6(content):
+    return _leaf("h6", content)
+
+
+def Strong(content):
+    return _leaf("strong", content)
+
+
+def Em(content):
+    return _leaf("em", content)
+
+
+def Small(content):
+    return _leaf("small", content)
+
+
+def Label(content):
+    return _leaf("label", content)
+
+
+def Legend(content):
+    return _leaf("legend", content)
+
+
+def Code(content):
+    return _leaf("code", content)
+
+
+def Pre(content):
+    return _leaf("pre", content)
+
+
+def Td(content):
+    return _leaf("td", content)
+
+
+def Th(content):
+    return _leaf("th", content)
 
 
 def TextFn(fn):
     """Reactive text — re-evaluated whenever bound State changes."""
-    return Node("text_fn", text_fn=fn)
+    return Element("span", text_fn=fn)
 
 
+# Interactive controls.
 def Button(label):
-    return Node("button", content=label)
-
-
-def NavItem(label):
-    return Node("nav_item", content=label)
+    return _leaf("button", label)
 
 
 def Input(placeholder=""):
-    return Node("input", content=placeholder)
+    return _leaf("input", placeholder)
 
 
-def Checkbox(checked=False):
-    return Node("checkbox", checked=checked)
+def TextArea(placeholder=""):
+    return _leaf("textarea", placeholder)
 
 
-def Element(tag, children=None):
-    return Node("element", tag=tag, children=children or [])
+def A(content, href=""):
+    e = _leaf("a", content)
+    if href:
+        e.attr("href", href)
+    return e
+
+
+def Img(src):
+    return _leaf("img", src)
+
+
+def Checkbox():
+    return Element("checkbox")
+
+
+def Radio():
+    return Element("radio")
+
+
+def Hr():
+    return Element("hr")
+
+
+def Br():
+    return Element("br")
+
+
+def Select(options=None):
+    return _container("select", options)
+
+
+def Option(label):
+    return _leaf("option", label)
+
+
+def El(tag, children=None):
+    """Generic escape hatch for any HTML tag."""
+    return _container(tag, children)
 
 
 class DslApp(App):
