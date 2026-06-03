@@ -1042,6 +1042,11 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         else if (c == ':' && depth == 0) colon = i;
     }
     if (colon == std::string::npos) return false;
+    // Detect double-colon (::) — cut position should be at the first colon.
+    size_t cutPos = colon;
+    if (colon > 0 && selector[colon - 1] == ':') {
+        cutPos = colon - 1;
+    }
     size_t nameStart = colon + 1;
     if (nameStart < selector.size() && selector[nameStart] == ':') {
         nameStart++;
@@ -1055,11 +1060,10 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
     if (baseName == "hover" || baseName == "focus" ||
         baseName == "focus-visible" || baseName == "active") {
         if (pseudo) *pseudo = baseName;
-        selector = trimLocal(selector.substr(0, colon));
+        selector = trimLocal(selector.substr(0, cutPos));
         return true;
     }
     // Pseudo-elements (Blink PseudoId parity: all W3C Level 4 pseudo-elements)
-    // https://chromium.googlesource.com/chromium/src/+/HEAD/third_party/blink/renderer/core/style/computed_style_constants.h
     static const char* const kPseudoElements[] = {
         "before", "after", "placeholder", "selection", "marker",
         "first-letter", "first-line", "backdrop", "file-selector-button",
@@ -1071,7 +1075,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
     for (int i = 0; kPseudoElements[i]; ++i) {
         if (baseName == kPseudoElements[i]) {
             if (pseudo) *pseudo = name; // keep full name including (arg) if present
-            selector = trimLocal(selector.substr(0, colon));
+            selector = trimLocal(selector.substr(0, cutPos));
             return true;
         }
     }

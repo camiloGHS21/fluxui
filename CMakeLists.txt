@@ -555,4 +555,15 @@ target_include_directories(test_color PRIVATE
 )
 enable_release_lto(test_color)
 
+add_executable(test_pseudo
+    examples/cpp/test_pseudo.cpp
+)
+target_link_libraries(test_pseudo PRIVATE
+    fluxui
+)
+target_include_directories(test_pseudo PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_pseudo)
+
 
