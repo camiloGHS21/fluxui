@@ -2037,6 +2037,45 @@ struct Style {
     BlendMode backgroundBlendMode = BlendMode::Normal;
     bool hasBackgroundBlendMode = false;
 
+    // ── Scroll API (CSS Scroll Snap L1, Overscroll Behavior L1, Scrollbars L1) ──
+    // scroll-snap-type: none | x/y/block/inline/both [mandatory|proximity]
+    std::string scrollSnapType;
+    bool hasScrollSnapType = false;
+    // scroll-snap-align: none | start | end | center (block inline)
+    std::string scrollSnapAlign;
+    bool hasScrollSnapAlign = false;
+    // scroll-snap-stop: normal | always
+    std::string scrollSnapStop;
+    // scroll-padding / scroll-margin (stored as EdgeInsets)
+    EdgeInsets scrollPadding;
+    EdgeInsets scrollMargin;
+    bool hasScrollPadding = false;
+    bool hasScrollMargin = false;
+    // overscroll-behavior: auto | contain | none (x/y)
+    enum class OverscrollBehavior { Auto, Contain, None };
+    OverscrollBehavior overscrollBehaviorX = OverscrollBehavior::Auto;
+    OverscrollBehavior overscrollBehaviorY = OverscrollBehavior::Auto;
+    bool hasOverscrollBehavior = false;
+    // scrollbar-color: auto | <color> <color> (thumb, track)
+    Color scrollbarThumbColor = Color(0,0,0,0);
+    Color scrollbarTrackColor = Color(0,0,0,0);
+    bool hasScrollbarColor = false;
+    // scrollbar-width: auto | thin | none
+    enum class ScrollbarWidth { Auto, Thin, None };
+    ScrollbarWidth scrollbarWidth = ScrollbarWidth::Auto;
+    bool hasScrollbarWidth = false;
+    // overflow-anchor: auto | none
+    enum class OverflowAnchor { Auto, None };
+    OverflowAnchor overflowAnchor = OverflowAnchor::Auto;
+    bool hasOverflowAnchor = false;
+    // scrollbar-gutter: auto | stable [both-edges]
+    std::string scrollbarGutter;
+    bool hasScrollbarGutter = false;
+    // scroll-behavior: auto | smooth
+    enum class ScrollBehavior { Auto, Smooth };
+    ScrollBehavior scrollBehavior = ScrollBehavior::Auto;
+    bool hasScrollBehavior = false;
+
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
     FontStyle fontStyle = FontStyle::Normal;

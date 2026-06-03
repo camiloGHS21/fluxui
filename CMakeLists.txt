@@ -632,4 +632,15 @@ target_include_directories(test_masking PRIVATE
 )
 enable_release_lto(test_masking)
 
+add_executable(test_scroll
+    examples/cpp/test_scroll.cpp
+)
+target_link_libraries(test_scroll PRIVATE
+    fluxui
+)
+target_include_directories(test_scroll PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_scroll)
+
 

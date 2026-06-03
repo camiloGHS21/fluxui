@@ -3821,6 +3821,102 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         else if (v == "color")      style.backgroundBlendMode = Style::BlendMode::Color;
         else if (v == "luminosity") style.backgroundBlendMode = Style::BlendMode::Luminosity;
         else                        style.backgroundBlendMode = Style::BlendMode::Normal;
+    } else if (name == "scroll-snap-type") {
+        style.scrollSnapType = value;
+        style.hasScrollSnapType = (value != "none" && !value.empty());
+    } else if (name == "scroll-snap-align") {
+        style.scrollSnapAlign = value;
+        style.hasScrollSnapAlign = (value != "none" && !value.empty());
+    } else if (name == "scroll-snap-stop") {
+        style.scrollSnapStop = lowerAscii(trim(value));
+    } else if (name == "scroll-padding") {
+        style.scrollPadding = parseEdgeInsets(value, emBase);
+        style.hasScrollPadding = true;
+    } else if (name == "scroll-padding-top") {
+        style.scrollPadding.top = parseLengthPixels(value, emBase);
+        style.hasScrollPadding = true;
+    } else if (name == "scroll-padding-right") {
+        style.scrollPadding.right = parseLengthPixels(value, emBase);
+        style.hasScrollPadding = true;
+    } else if (name == "scroll-padding-bottom") {
+        style.scrollPadding.bottom = parseLengthPixels(value, emBase);
+        style.hasScrollPadding = true;
+    } else if (name == "scroll-padding-left") {
+        style.scrollPadding.left = parseLengthPixels(value, emBase);
+        style.hasScrollPadding = true;
+    } else if (name == "scroll-margin") {
+        style.scrollMargin = parseEdgeInsets(value, emBase);
+        style.hasScrollMargin = true;
+    } else if (name == "scroll-margin-top") {
+        style.scrollMargin.top = parseLengthPixels(value, emBase);
+        style.hasScrollMargin = true;
+    } else if (name == "scroll-margin-right") {
+        style.scrollMargin.right = parseLengthPixels(value, emBase);
+        style.hasScrollMargin = true;
+    } else if (name == "scroll-margin-bottom") {
+        style.scrollMargin.bottom = parseLengthPixels(value, emBase);
+        style.hasScrollMargin = true;
+    } else if (name == "scroll-margin-left") {
+        style.scrollMargin.left = parseLengthPixels(value, emBase);
+        style.hasScrollMargin = true;
+    } else if (name == "overscroll-behavior") {
+        std::string v = lowerAscii(trim(value));
+        style.hasOverscrollBehavior = true;
+        auto parseOB = [](const std::string& s) -> Style::OverscrollBehavior {
+            if (s == "contain") return Style::OverscrollBehavior::Contain;
+            if (s == "none") return Style::OverscrollBehavior::None;
+            return Style::OverscrollBehavior::Auto;
+        };
+        std::istringstream iss(v); std::string t1, t2;
+        iss >> t1; iss >> t2;
+        style.overscrollBehaviorX = parseOB(t1);
+        style.overscrollBehaviorY = t2.empty() ? style.overscrollBehaviorX : parseOB(t2);
+    } else if (name == "overscroll-behavior-x") {
+        std::string v = lowerAscii(trim(value));
+        style.hasOverscrollBehavior = true;
+        if (v == "contain") style.overscrollBehaviorX = Style::OverscrollBehavior::Contain;
+        else if (v == "none") style.overscrollBehaviorX = Style::OverscrollBehavior::None;
+        else style.overscrollBehaviorX = Style::OverscrollBehavior::Auto;
+    } else if (name == "overscroll-behavior-y") {
+        std::string v = lowerAscii(trim(value));
+        style.hasOverscrollBehavior = true;
+        if (v == "contain") style.overscrollBehaviorY = Style::OverscrollBehavior::Contain;
+        else if (v == "none") style.overscrollBehaviorY = Style::OverscrollBehavior::None;
+        else style.overscrollBehaviorY = Style::OverscrollBehavior::Auto;
+    } else if (name == "scrollbar-color") {
+        std::string v = trim(value);
+        if (lowerAscii(v) == "auto") {
+            style.hasScrollbarColor = false;
+        } else {
+            // scrollbar-color: <thumb-color> <track-color>
+            auto tokens = splitColorTokens(functionInner("(" + v + ")"));
+            if (tokens.size() >= 2) {
+                style.scrollbarThumbColor = parseColor(tokens[0]);
+                style.scrollbarTrackColor = parseColor(tokens[1]);
+                style.hasScrollbarColor = true;
+            } else if (tokens.size() == 1) {
+                style.scrollbarThumbColor = parseColor(tokens[0]);
+                style.scrollbarTrackColor = parseColor(tokens[0]);
+                style.hasScrollbarColor = true;
+            }
+        }
+    } else if (name == "scrollbar-width") {
+        std::string v = lowerAscii(trim(value));
+        style.hasScrollbarWidth = true;
+        if (v == "thin") style.scrollbarWidth = Style::ScrollbarWidth::Thin;
+        else if (v == "none") style.scrollbarWidth = Style::ScrollbarWidth::None;
+        else style.scrollbarWidth = Style::ScrollbarWidth::Auto;
+    } else if (name == "overflow-anchor") {
+        std::string v = lowerAscii(trim(value));
+        style.hasOverflowAnchor = true;
+        style.overflowAnchor = (v == "none") ? Style::OverflowAnchor::None : Style::OverflowAnchor::Auto;
+    } else if (name == "scrollbar-gutter") {
+        style.scrollbarGutter = lowerAscii(trim(value));
+        style.hasScrollbarGutter = !style.scrollbarGutter.empty() && style.scrollbarGutter != "auto";
+    } else if (name == "scroll-behavior") {
+        std::string v = lowerAscii(trim(value));
+        style.hasScrollBehavior = true;
+        style.scrollBehavior = (v == "smooth") ? Style::ScrollBehavior::Smooth : Style::ScrollBehavior::Auto;
     } else if (name == "border-radius") {
         style.borderRadius = parseBorderRadius(value, emBase);
     } else if (name == "border") {
