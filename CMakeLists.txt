@@ -621,4 +621,15 @@ target_include_directories(test_cascade PRIVATE
 )
 enable_release_lto(test_cascade)
 
+add_executable(test_masking
+    examples/cpp/test_masking.cpp
+)
+target_link_libraries(test_masking PRIVATE
+    fluxui
+)
+target_include_directories(test_masking PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_masking)
+
 

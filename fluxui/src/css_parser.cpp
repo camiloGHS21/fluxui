@@ -3756,6 +3756,71 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
                 }
             }
         }
+    } else if (name == "clip-path") {
+        style.clipPath = value;
+        style.hasClipPath = (value != "none" && !value.empty());
+    } else if (name == "shape-outside") {
+        style.shapeOutside = value;
+        style.hasShapeOutside = (value != "none" && !value.empty());
+    } else if (name == "mask" || name == "mask-image") {
+        style.maskImage = value;
+        style.hasMask = (value != "none" && !value.empty());
+    } else if (name == "mask-mode") {
+        style.maskMode = value;
+    } else if (name == "mask-repeat") {
+        style.maskRepeat = value;
+    } else if (name == "mask-position") {
+        style.maskPosition = value;
+    } else if (name == "mask-size") {
+        style.maskSize = value;
+    } else if (name == "mask-clip") {
+        style.maskClip = value;
+    } else if (name == "mask-origin") {
+        style.maskOrigin = value;
+    } else if (name == "mask-composite") {
+        style.maskComposite = value;
+    } else if (name == "mix-blend-mode") {
+        std::string v = lowerAscii(trim(value));
+        style.hasMixBlendMode = true;
+        if (v == "multiply")        style.mixBlendMode = Style::BlendMode::Multiply;
+        else if (v == "screen")     style.mixBlendMode = Style::BlendMode::Screen;
+        else if (v == "overlay")    style.mixBlendMode = Style::BlendMode::Overlay;
+        else if (v == "darken")     style.mixBlendMode = Style::BlendMode::Darken;
+        else if (v == "lighten")    style.mixBlendMode = Style::BlendMode::Lighten;
+        else if (v == "color-dodge")style.mixBlendMode = Style::BlendMode::ColorDodge;
+        else if (v == "color-burn") style.mixBlendMode = Style::BlendMode::ColorBurn;
+        else if (v == "hard-light") style.mixBlendMode = Style::BlendMode::HardLight;
+        else if (v == "soft-light") style.mixBlendMode = Style::BlendMode::SoftLight;
+        else if (v == "difference") style.mixBlendMode = Style::BlendMode::Difference;
+        else if (v == "exclusion")  style.mixBlendMode = Style::BlendMode::Exclusion;
+        else if (v == "hue")        style.mixBlendMode = Style::BlendMode::Hue;
+        else if (v == "saturation") style.mixBlendMode = Style::BlendMode::Saturation;
+        else if (v == "color")      style.mixBlendMode = Style::BlendMode::Color;
+        else if (v == "luminosity") style.mixBlendMode = Style::BlendMode::Luminosity;
+        else { style.mixBlendMode = Style::BlendMode::Normal; style.hasMixBlendMode = (v != "normal"); }
+    } else if (name == "isolation") {
+        std::string v = lowerAscii(trim(value));
+        style.hasIsolation = true;
+        style.isolation = (v == "isolate") ? Style::Isolation::Isolate : Style::Isolation::Auto;
+    } else if (name == "background-blend-mode") {
+        std::string v = lowerAscii(trim(value));
+        style.hasBackgroundBlendMode = true;
+        if (v == "multiply")        style.backgroundBlendMode = Style::BlendMode::Multiply;
+        else if (v == "screen")     style.backgroundBlendMode = Style::BlendMode::Screen;
+        else if (v == "overlay")    style.backgroundBlendMode = Style::BlendMode::Overlay;
+        else if (v == "darken")     style.backgroundBlendMode = Style::BlendMode::Darken;
+        else if (v == "lighten")    style.backgroundBlendMode = Style::BlendMode::Lighten;
+        else if (v == "color-dodge")style.backgroundBlendMode = Style::BlendMode::ColorDodge;
+        else if (v == "color-burn") style.backgroundBlendMode = Style::BlendMode::ColorBurn;
+        else if (v == "hard-light") style.backgroundBlendMode = Style::BlendMode::HardLight;
+        else if (v == "soft-light") style.backgroundBlendMode = Style::BlendMode::SoftLight;
+        else if (v == "difference") style.backgroundBlendMode = Style::BlendMode::Difference;
+        else if (v == "exclusion")  style.backgroundBlendMode = Style::BlendMode::Exclusion;
+        else if (v == "hue")        style.backgroundBlendMode = Style::BlendMode::Hue;
+        else if (v == "saturation") style.backgroundBlendMode = Style::BlendMode::Saturation;
+        else if (v == "color")      style.backgroundBlendMode = Style::BlendMode::Color;
+        else if (v == "luminosity") style.backgroundBlendMode = Style::BlendMode::Luminosity;
+        else                        style.backgroundBlendMode = Style::BlendMode::Normal;
     } else if (name == "border-radius") {
         style.borderRadius = parseBorderRadius(value, emBase);
     } else if (name == "border") {

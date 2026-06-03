@@ -2005,6 +2005,38 @@ struct Style {
     std::vector<FilterOperation> backdropFilterOperations;  // backdrop-filter:
     bool hasFilter = false;
     bool hasBackdropFilter = false;
+
+    // ── Masking, Clipping, Blending (CSS Masking Level 1 / Compositing Level 1) ──
+    // clip-path: <basic-shape> | url(#clip) | none
+    std::string clipPath;                     // raw value string (e.g. "circle(50%)", "url(#c)")
+    bool hasClipPath = false;
+    // shape-outside: <basic-shape> | url() | none
+    std::string shapeOutside;
+    bool hasShapeOutside = false;
+    // mask shorthand sub-properties
+    std::string maskImage;                    // mask-image: url(...) | <gradient> | none
+    std::string maskMode;                     // mask-mode: alpha | luminance | match-source
+    std::string maskRepeat;                   // mask-repeat: repeat | no-repeat | ...
+    std::string maskPosition;                 // mask-position: <position>
+    std::string maskSize;                     // mask-size: <length> | cover | contain
+    std::string maskClip;                     // mask-clip: border-box | content-box | ...
+    std::string maskOrigin;                   // mask-origin: border-box | content-box | ...
+    std::string maskComposite;                // mask-composite: add | subtract | intersect | exclude
+    bool hasMask = false;
+    // mix-blend-mode / isolation / background-blend-mode
+    enum class BlendMode {
+        Normal, Multiply, Screen, Overlay, Darken, Lighten,
+        ColorDodge, ColorBurn, HardLight, SoftLight, Difference,
+        Exclusion, Hue, Saturation, Color, Luminosity
+    };
+    enum class Isolation { Auto, Isolate };
+    BlendMode mixBlendMode = BlendMode::Normal;
+    bool hasMixBlendMode = false;
+    Isolation isolation = Isolation::Auto;
+    bool hasIsolation = false;
+    BlendMode backgroundBlendMode = BlendMode::Normal;
+    bool hasBackgroundBlendMode = false;
+
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
     FontStyle fontStyle = FontStyle::Normal;
