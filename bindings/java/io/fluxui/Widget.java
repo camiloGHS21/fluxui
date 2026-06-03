@@ -265,6 +265,11 @@ public final class Widget {
         return this;
     }
 
+    public Widget css(String declarations) {
+        Native.widgetCss(handle, declarations);
+        return this;
+    }
+
     public Widget setVisible(boolean visible) {
         Native.widgetSetVisible(handle, visible);
         return this;

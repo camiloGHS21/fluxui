@@ -401,6 +401,9 @@ _lib.fluxui_style_background_color.argtypes = [ctypes.c_void_p, FluxUIColor]
 _lib.fluxui_style_text_color.restype = None
 _lib.fluxui_style_text_color.argtypes = [ctypes.c_void_p, FluxUIColor]
 
+_lib.fluxui_widget_css.restype = None
+_lib.fluxui_widget_css.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
 
 class Renderer:
     def __init__(self, handle):
@@ -726,6 +729,9 @@ class Widget:
         self._click_cb = FluxUIClickCallback(lambda w, u: callback())
         _lib.fluxui_widget_set_on_click(self.handle, self._click_cb, None)
 
+    def css(self, declarations):
+        _lib.fluxui_widget_css(self.handle, declarations.encode('utf-8'))
+
 
 class App:
     def __init__(self):
@@ -816,3 +822,247 @@ class App:
 
     def render_route(self, container):
         return _lib.fluxui_app_render_route(self.handle, container.handle) != 0
+
+
+# ============================================================
+#  Declarative DSL — mirrors C++ dsl.h / Go dsl.go / Rust dsl module 1:1.
+#
+#  Build a tree of Node objects with the builder functions (Row, Column, Text,
+#  ...), attach classes/handlers via chaining, and drive reactive TextFn nodes
+#  with State. Mount with App.set_root and run the reactive loop with
+#  App.run_reactive.
+#
+#  Example:
+#      import fluxui
+#      app = fluxui.DslApp(1200, 800, "CompanyGuard")
+#      app.add_css(".app { width: 100%; height: 100% } ...")
+#      devices = fluxui.State(128)
+#      app.set_root(
+#          fluxui.Row([
+#              fluxui.Sidebar([
+#                  fluxui.NavItem("Dashboard"),
+#                  fluxui.NavItem("Dispositivos"),
+#              ]).cls("sidebar"),
+#              fluxui.Column([
+#                  fluxui.Text("CompanyGuard").cls("h1"),
+#                  fluxui.TextFn(lambda: str(devices.get())),
+#                  fluxui.Button("Escanear ahora").cls("primary")
+#                      .on_click(lambda: devices.set(devices.get() + 1)),
+#              ]).cls("content"),
+#          ]).cls("app")
+#      )
+#      app.run_reactive()
+# ============================================================
+
+# ---- Reactive binding registry — re-evaluates TextFn nodes each frame. ----
+_reactive_bindings = []
+
+
+def _register_reactive(widget, fn, initial):
+    _reactive_bindings.append({"widget": widget, "fn": fn, "last": initial})
+
+
+def pump_reactive_bindings():
+    """Re-evaluate every reactive TextFn binding, pushing changed values into the
+    underlying widgets. Returns True if anything changed. Called each frame."""
+    changed = False
+    for b in _reactive_bindings:
+        w = b["widget"]
+        if w is None:
+            continue
+        v = b["fn"]()
+        if v != b["last"]:
+            b["last"] = v
+            w.set_content(v)
+            changed = True
+    return changed
+
+
+class State:
+    """Lightweight reactive primitive (matches C++ State<T>)."""
+
+    def __init__(self, initial=None):
+        self._value = initial
+        self._listeners = []
+
+    def get(self):
+        return self._value
+
+    def set(self, value):
+        self._value = value
+        for fn in self._listeners:
+            fn()
+
+    def on_change(self, fn):
+        self._listeners.append(fn)
+
+
+class Node:
+    """Deferred declarative element. Materialized on mount."""
+
+    def __init__(self, kind, content="", tag="", checked=False, children=None, text_fn=None):
+        self._kind = kind
+        self._content = content
+        self._tag = tag
+        self._checked = checked
+        self._text_fn = text_fn
+        self._class_name = ""
+        self._node_id = ""
+        self._on_click = None
+        self._children = children or []
+
+    # Chaining setters (match C++ WidgetBuilder).
+    def cls(self, class_name):
+        self._class_name = class_name
+        return self
+
+    # Alias matching C++ .className()
+    def class_name(self, class_name):
+        self._class_name = class_name
+        return self
+
+    def id(self, node_id):
+        self._node_id = node_id
+        return self
+
+    def on_click(self, fn):
+        self._on_click = fn
+        return self
+
+    def mount(self, parent):
+        kind = self._kind
+        w = None
+        if kind == "row":
+            w = parent.add_panel(self._class_name)
+            if w:
+                w.css("display:flex;flex-direction:row")
+        elif kind == "column":
+            w = parent.add_panel(self._class_name)
+            if w:
+                w.css("display:flex;flex-direction:column")
+        elif kind == "sidebar":
+            cls = self._class_name or "sidebar"
+            w = parent.add_element("nav", "", cls)
+            if w:
+                w.css("display:flex;flex-direction:column")
+        elif kind == "card":
+            cls = self._class_name or "card"
+            w = parent.add_panel(cls)
+            if w:
+                w.css("display:flex;flex-direction:column")
+        elif kind == "grid":
+            w = parent.add_panel(self._class_name)
+            if w:
+                w.css("display:grid")
+        elif kind == "div":
+            w = parent.add_panel(self._class_name)
+        elif kind == "text":
+            w = parent.add_text(self._content, self._class_name)
+        elif kind == "text_fn":
+            initial = self._text_fn() if self._text_fn else ""
+            w = parent.add_text(initial, self._class_name)
+            if w and self._text_fn:
+                _register_reactive(w, self._text_fn, initial)
+        elif kind == "button":
+            w = parent.add_button(self._content, self._class_name)
+        elif kind == "nav_item":
+            cls = self._class_name or "nav-item"
+            w = parent.add_button(self._content, cls)
+        elif kind == "input":
+            w = parent.add_text_input(self._content, self._class_name)
+        elif kind == "checkbox":
+            w = parent.add_checkbox(self._checked, self._class_name)
+        elif kind == "element":
+            w = parent.add_element(self._tag, self._content, self._class_name)
+        else:
+            w = parent.add_panel(self._class_name)
+
+        if not w:
+            return None
+        if self._node_id:
+            w.set_id(self._node_id)
+        if self._on_click:
+            w.set_on_click(self._on_click)
+        for child in self._children:
+            child.mount(w)
+        return w
+
+
+# ---- Builder functions (match C++ / Go / Rust). ----
+def Row(children):
+    return Node("row", children=children)
+
+
+def Column(children):
+    return Node("column", children=children)
+
+
+def Sidebar(children):
+    return Node("sidebar", children=children)
+
+
+def Card(children):
+    return Node("card", children=children)
+
+
+def Grid(children):
+    return Node("grid", children=children)
+
+
+def Div(children):
+    return Node("div", children=children)
+
+
+def Text(content):
+    return Node("text", content=content)
+
+
+def TextFn(fn):
+    """Reactive text — re-evaluated whenever bound State changes."""
+    return Node("text_fn", text_fn=fn)
+
+
+def Button(label):
+    return Node("button", content=label)
+
+
+def NavItem(label):
+    return Node("nav_item", content=label)
+
+
+def Input(placeholder=""):
+    return Node("input", content=placeholder)
+
+
+def Checkbox(checked=False):
+    return Node("checkbox", checked=checked)
+
+
+def Element(tag, children=None):
+    return Node("element", tag=tag, children=children or [])
+
+
+class DslApp(App):
+    """App subclass adding declarative set_root + reactive run loop."""
+
+    def __init__(self, width=1200, height=800, title="FluxUI App"):
+        super().__init__()
+        self.init(title, width, height)
+        self.load_default_font(16.0)
+
+    def add_css(self, css):
+        self.add_stylesheet(css)
+
+    def load_css(self, path):
+        return self.load_stylesheet(path)
+
+    def set_root(self, root_node):
+        r = self.root()
+        if r is None or root_node is None:
+            return
+        r.clear_children()
+        root_node.mount(r)
+
+    def run_reactive(self):
+        self.set_update_callback(lambda dt: pump_reactive_bindings())
+        self.run()

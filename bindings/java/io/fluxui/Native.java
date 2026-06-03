@@ -76,6 +76,7 @@ final class Native {
     static native void virtualListScrollToIndex(long widget, int index, int strategy);
     static native void widgetSetId(long widget, String id);
     static native void widgetSetClass(long widget, String className);
+    static native void widgetCss(long widget, String declarations);
     static native void widgetSetVisible(long widget, boolean visible);
     static native long widgetSetOnClick(long widget, Runnable callback);
     static native void textSetContent(long widget, String text);

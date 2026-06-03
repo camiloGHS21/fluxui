@@ -812,6 +812,15 @@ extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetSetClass(
     fluxui_widget_set_class(as_widget(widget), cls.c_str());
 }
 
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetCss(
+    JNIEnv* env,
+    jclass,
+    jlong widget,
+    jstring declarations) {
+    UtfChars decls(env, declarations);
+    fluxui_widget_css(as_widget(widget), decls.c_str());
+}
+
 extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_widgetSetVisible(
     JNIEnv*,
     jclass,

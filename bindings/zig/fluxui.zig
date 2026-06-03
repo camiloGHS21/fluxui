@@ -2,6 +2,8 @@ pub const c = @cImport({
     @cInclude("fluxui/fluxui_c.h");
 });
 
+const std = @import("std");
+
 pub const Color = c.FluxUIColor;
 pub const Rect = c.FluxUIRect;
 
@@ -89,6 +91,23 @@ pub const App = struct {
 
     pub fn addStylesheet(self: App, css: [*:0]const u8) void {
         c.fluxui_app_add_stylesheet(self.raw, css);
+    }
+
+    pub fn setUpdateCallback(self: App, callback: c.FluxUIUpdateCallback, user_data: ?*anyopaque) void {
+        c.fluxui_app_set_update_callback(self.raw, callback, user_data);
+    }
+
+    /// Mount a declarative Node tree as the application root.
+    pub fn setRoot(self: App, node: dsl.Node) Error!void {
+        const r = try self.root();
+        r.clearChildren();
+        _ = try node.mount(r);
+    }
+
+    /// Install the reactive pump into the update loop and run the app.
+    pub fn runReactive(self: App) void {
+        self.setUpdateCallback(dsl.reactiveUpdateCallback, null);
+        self.run();
     }
 
     pub fn root(self: App) Error!Widget {
@@ -427,6 +446,22 @@ pub const Widget = struct {
         c.fluxui_style_text_color(self.raw, color);
     }
 
+    pub fn css(self: Widget, declarations: [*:0]const u8) void {
+        c.fluxui_widget_css(self.raw, declarations);
+    }
+
+    pub fn setContent(self: Widget, text: [*:0]const u8) void {
+        c.fluxui_text_set_content(self.raw, text);
+    }
+
+    pub fn setClassName(self: Widget, class_name: [*:0]const u8) void {
+        c.fluxui_widget_set_class(self.raw, class_name);
+    }
+
+    pub fn setId(self: Widget, widget_id: [*:0]const u8) void {
+        c.fluxui_widget_set_id(self.raw, widget_id);
+    }
+
     fn fromRaw(raw: ?*c.FluxUIWidget) Error!Widget {
         if (raw == null) return Error.MissingWidget;
         return .{ .raw = raw };
@@ -464,3 +499,235 @@ pub const Renderer = struct {
         c.fluxui_renderer_flush(self.raw);
     }
 };
+
+// ============================================================
+//  Declarative DSL — mirrors C++ dsl.h / Go dsl.go / Rust dsl module 1:1.
+//
+//  Zig has no closures or RTTI, so the reactive layer is built from explicit
+//  function pointers + a global binding registry. Build a tree of `Node`s with
+//  the builder helpers (row, column, text, ...), set classes/handlers, and
+//  drive reactive `textFn` nodes with `State(T)`.
+//
+//  Everything lives under the `dsl` namespace to avoid clashing with the
+//  imperative Widget method parameters (e.g. `text`). Use it via
+//  `fluxui.dsl.row(...)`, `fluxui.dsl.State(i32)`, etc.
+// ============================================================
+pub const dsl = struct {
+
+/// Lightweight reactive primitive. `T` must be a value type.
+pub fn State(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        value: T,
+
+        pub fn init(initial: T) Self {
+            return .{ .value = initial };
+        }
+        pub fn get(self: *const Self) T {
+            return self.value;
+        }
+        pub fn set(self: *Self, v: T) void {
+            self.value = v;
+        }
+    };
+}
+
+// ---- Reactive binding registry (fixed capacity, no allocator needed). ----
+pub const TextFnPtr = *const fn (?*anyopaque) callconv(.c) [*:0]const u8;
+
+const ReactiveBinding = struct {
+    widget: Widget,
+    func: TextFnPtr,
+    user_data: ?*anyopaque,
+    last: [*:0]const u8,
+};
+
+var g_bindings: [256]ReactiveBinding = undefined;
+var g_binding_count: usize = 0;
+
+fn registerReactive(widget: Widget, func: TextFnPtr, user_data: ?*anyopaque, initial: [*:0]const u8) void {
+    if (g_binding_count >= g_bindings.len) return;
+    g_bindings[g_binding_count] = .{
+        .widget = widget,
+        .func = func,
+        .user_data = user_data,
+        .last = initial,
+    };
+    g_binding_count += 1;
+}
+
+fn cstrEql(a: [*:0]const u8, b: [*:0]const u8) bool {
+    var i: usize = 0;
+    while (true) : (i += 1) {
+        if (a[i] != b[i]) return false;
+        if (a[i] == 0) return true;
+    }
+}
+
+/// Re-evaluate every reactive `textFn` binding, pushing changed values into the
+/// underlying widgets. Returns true if anything changed. Called each frame.
+pub fn pumpReactiveBindings() bool {
+    var changed = false;
+    var i: usize = 0;
+    while (i < g_binding_count) : (i += 1) {
+        const b = &g_bindings[i];
+        const v = b.func(b.user_data);
+        if (!cstrEql(v, b.last)) {
+            b.last = v;
+            b.widget.setContent(v);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+fn reactiveUpdateCallback(_: ?*c.FluxUIApp, _: f32, _: ?*anyopaque) callconv(.c) void {
+    _ = pumpReactiveBindings();
+}
+
+// ---- Node — deferred declarative element, materialized on mount. ----
+const NodeKind = enum {
+    row,
+    column,
+    sidebar,
+    card,
+    grid,
+    div,
+    text,
+    text_fn,
+    button,
+    nav_item,
+    input,
+    checkbox,
+    element,
+};
+
+pub const Node = struct {
+    kind: NodeKind,
+    tag: [*:0]const u8 = "",
+    content: [*:0]const u8 = "",
+    class_name: [*:0]const u8 = "",
+    node_id: [*:0]const u8 = "",
+    on_click: ?c.FluxUIClickCallback = null,
+    on_click_data: ?*anyopaque = null,
+    text_fn: ?TextFnPtr = null,
+    text_fn_data: ?*anyopaque = null,
+    checked: bool = false,
+    children: []const Node = &.{},
+
+    pub fn class(self: Node, cls: [*:0]const u8) Node {
+        var n = self;
+        n.class_name = cls;
+        return n;
+    }
+    pub fn id(self: Node, node_id: [*:0]const u8) Node {
+        var n = self;
+        n.node_id = node_id;
+        return n;
+    }
+    pub fn onClick(self: Node, callback: c.FluxUIClickCallback, user_data: ?*anyopaque) Node {
+        var n = self;
+        n.on_click = callback;
+        n.on_click_data = user_data;
+        return n;
+    }
+
+    pub fn mount(self: Node, parent: Widget) Error!Widget {
+        const w = switch (self.kind) {
+            .row => blk: {
+                const x = try parent.addPanel(self.class_name);
+                x.css("display:flex;flex-direction:row");
+                break :blk x;
+            },
+            .column => blk: {
+                const x = try parent.addPanel(self.class_name);
+                x.css("display:flex;flex-direction:column");
+                break :blk x;
+            },
+            .sidebar => blk: {
+                const cls = if (self.class_name[0] == 0) "sidebar" else self.class_name;
+                const x = try parent.addElement("nav", "", cls);
+                x.css("display:flex;flex-direction:column");
+                break :blk x;
+            },
+            .card => blk: {
+                const cls = if (self.class_name[0] == 0) "card" else self.class_name;
+                const x = try parent.addPanel(cls);
+                x.css("display:flex;flex-direction:column");
+                break :blk x;
+            },
+            .grid => blk: {
+                const x = try parent.addPanel(self.class_name);
+                x.css("display:grid");
+                break :blk x;
+            },
+            .div => try parent.addPanel(self.class_name),
+            .text => try parent.addText(self.content, self.class_name),
+            .text_fn => blk: {
+                const initial = if (self.text_fn) |f| f(self.text_fn_data) else "";
+                const x = try parent.addText(initial, self.class_name);
+                if (self.text_fn) |f| registerReactive(x, f, self.text_fn_data, initial);
+                break :blk x;
+            },
+            .button => try parent.addButton(self.content, self.class_name),
+            .nav_item => blk: {
+                const cls = if (self.class_name[0] == 0) "nav-item" else self.class_name;
+                break :blk try parent.addButton(self.content, cls);
+            },
+            .input => try parent.addTextInput(self.content, self.class_name),
+            .checkbox => try parent.addCheckbox(self.checked, self.class_name),
+            .element => try parent.addElement(self.tag, self.content, self.class_name),
+        };
+
+        if (self.node_id[0] != 0) w.setId(self.node_id);
+        if (self.on_click) |cb| w.setOnClick(cb, self.on_click_data);
+        for (self.children) |child| {
+            _ = try child.mount(w);
+        }
+        return w;
+    }
+};
+
+// ---- Builder functions (match C++ / Go / Rust / Python). ----
+pub fn row(children: []const Node) Node {
+    return .{ .kind = .row, .children = children };
+}
+pub fn column(children: []const Node) Node {
+    return .{ .kind = .column, .children = children };
+}
+pub fn sidebar(children: []const Node) Node {
+    return .{ .kind = .sidebar, .children = children };
+}
+pub fn card(children: []const Node) Node {
+    return .{ .kind = .card, .children = children };
+}
+pub fn grid(children: []const Node) Node {
+    return .{ .kind = .grid, .children = children };
+}
+pub fn divNode(children: []const Node) Node {
+    return .{ .kind = .div, .children = children };
+}
+pub fn text(content: [*:0]const u8) Node {
+    return .{ .kind = .text, .content = content };
+}
+/// Reactive text — re-evaluated whenever bound State changes.
+pub fn textFn(func: TextFnPtr, user_data: ?*anyopaque) Node {
+    return .{ .kind = .text_fn, .text_fn = func, .text_fn_data = user_data };
+}
+pub fn button(label: [*:0]const u8) Node {
+    return .{ .kind = .button, .content = label };
+}
+pub fn navItem(label: [*:0]const u8) Node {
+    return .{ .kind = .nav_item, .content = label };
+}
+pub fn input(placeholder: [*:0]const u8) Node {
+    return .{ .kind = .input, .content = placeholder };
+}
+pub fn checkbox(is_checked: bool) Node {
+    return .{ .kind = .checkbox, .checked = is_checked };
+}
+pub fn element(tag: [*:0]const u8, children: []const Node) Node {
+    return .{ .kind = .element, .tag = tag, .children = children };
+}
+
+}; // pub const dsl
