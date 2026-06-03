@@ -165,6 +165,96 @@ struct Color {
     static Color fromRGBA(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) {
         return {r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f};
     }
+    // ── CSS Color 4: OKLab / OKLCH / Lab / LCH / HWB conversions ──
+    // Matrices and transfer functions per W3C CSS Color Module Level 4.
+    static float srgbLinearToGamma(float c) {
+        float a = std::abs(c);
+        float s = (c < 0.0f) ? -1.0f : 1.0f;
+        return (a > 0.0031308f)
+            ? s * (1.055f * std::pow(a, 1.0f / 2.4f) - 0.055f)
+            : 12.92f * c;
+    }
+    static float srgbGammaToLinear(float c) {
+        float a = std::abs(c);
+        float s = (c < 0.0f) ? -1.0f : 1.0f;
+        return (a <= 0.04045f) ? c / 12.92f
+                               : s * std::pow((a + 0.055f) / 1.055f, 2.4f);
+    }
+    // OKLab (L,a,b) → linear sRGB (r,g,b)
+    static void oklabToLinearSrgb(float L, float a, float b,
+                                  float& r, float& g, float& bl) {
+        float l_ = L + 0.3963377774f * a + 0.2158037573f * b;
+        float m_ = L - 0.1055613458f * a - 0.0638541728f * b;
+        float s_ = L - 0.0894841775f * a - 1.2914855480f * b;
+        float l = l_ * l_ * l_;
+        float m = m_ * m_ * m_;
+        float s = s_ * s_ * s_;
+        r  =  4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s;
+        g  = -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s;
+        bl = -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s;
+    }
+    // OKLCH → sRGB Color (L in [0,1], C chroma, H degrees)
+    static Color fromOklch(float L, float C, float H, float alpha = 1.0f) {
+        float hr = H * 3.14159265358979323846f / 180.0f;
+        float a = C * std::cos(hr);
+        float b = C * std::sin(hr);
+        return fromOklab(L, a, b, alpha);
+    }
+    static Color fromOklab(float L, float a, float b, float alpha = 1.0f) {
+        float rl, gl, bl;
+        oklabToLinearSrgb(L, a, b, rl, gl, bl);
+        Color c;
+        c.r = std::clamp(srgbLinearToGamma(rl), 0.0f, 1.0f);
+        c.g = std::clamp(srgbLinearToGamma(gl), 0.0f, 1.0f);
+        c.b = std::clamp(srgbLinearToGamma(bl), 0.0f, 1.0f);
+        c.a = std::clamp(alpha, 0.0f, 1.0f);
+        return c;
+    }
+    // CIE Lab D50 → XYZ → linear sRGB. L in [0,100], a/b ~[-125,125].
+    static Color fromLab(float L, float a, float b, float alpha = 1.0f) {
+        // Lab → XYZ (D50 white point)
+        const float Xn = 0.3457f / 0.3585f; // D50
+        const float Yn = 1.0f;
+        const float Zn = (1.0f - 0.3457f - 0.3585f) / 0.3585f;
+        float fy = (L + 16.0f) / 116.0f;
+        float fx = fy + a / 500.0f;
+        float fz = fy - b / 200.0f;
+        auto finv = [](float t) {
+            float t3 = t * t * t;
+            const float eps = 216.0f / 24389.0f;
+            const float kappa = 24389.0f / 27.0f;
+            return (t3 > eps) ? t3 : (116.0f * t - 16.0f) / kappa;
+        };
+        float xr = finv(fx), yr = finv(fy), zr = finv(fz);
+        float X = xr * Xn, Y = yr * Yn, Z = zr * Zn;
+        // D50 → D65 Bradford-adapted XYZ → linear sRGB (combined matrix)
+        float rl =  3.1341359569f * X - 1.6173275824f * Y - 0.4906621711f * Z;
+        float gl = -0.9787553510f * X + 1.9161606866f * Y + 0.0334540303f * Z;
+        float bl =  0.0719452861f * X - 0.2289909952f * Y + 1.4052427547f * Z;
+        Color c;
+        c.r = std::clamp(srgbLinearToGamma(rl), 0.0f, 1.0f);
+        c.g = std::clamp(srgbLinearToGamma(gl), 0.0f, 1.0f);
+        c.b = std::clamp(srgbLinearToGamma(bl), 0.0f, 1.0f);
+        c.a = std::clamp(alpha, 0.0f, 1.0f);
+        return c;
+    }
+    static Color fromLch(float L, float C, float H, float alpha = 1.0f) {
+        float hr = H * 3.14159265358979323846f / 180.0f;
+        return fromLab(L, C * std::cos(hr), C * std::sin(hr), alpha);
+    }
+    // HWB (hue, whiteness, blackness) → sRGB. h in degrees, w/b in [0,1].
+    static Color fromHWB(float h, float w, float b, float alpha = 1.0f) {
+        if (w + b >= 1.0f) {
+            float gray = w / (w + b);
+            return {gray, gray, gray, alpha};
+        }
+        Color base = fromHSL(h, 1.0f, 0.5f, alpha);
+        auto apply = [&](float ch) { return ch * (1.0f - w - b) + w; };
+        return {apply(base.r), apply(base.g), apply(base.b), alpha};
+    }
+    // color(<colorspace> c1 c2 c3) — supports srgb / srgb-linear / display-p3.
+    static Color fromColorFunction(const std::string& space,
+                                   float c1, float c2, float c3, float alpha = 1.0f);
     Color withAlpha(float alpha) const { return {r, g, b, alpha}; }
     static Color lerp(const Color& a, const Color& b, float t) {
         t = std::clamp(t, 0.0f, 1.0f);
@@ -183,6 +273,44 @@ struct Color {
         return !(*this == other);
     }
 };
+
+// color(<colorspace> c1 c2 c3 [/ alpha]) — CSS Color 4.
+// Supports: srgb, srgb-linear, display-p3 (mapped into sRGB gamut).
+inline Color Color::fromColorFunction(const std::string& space,
+                                       float c1, float c2, float c3, float alpha) {
+    if (space == "srgb") {
+        return {std::clamp(c1, 0.0f, 1.0f), std::clamp(c2, 0.0f, 1.0f),
+                std::clamp(c3, 0.0f, 1.0f), std::clamp(alpha, 0.0f, 1.0f)};
+    }
+    if (space == "srgb-linear") {
+        return {std::clamp(srgbLinearToGamma(c1), 0.0f, 1.0f),
+                std::clamp(srgbLinearToGamma(c2), 0.0f, 1.0f),
+                std::clamp(srgbLinearToGamma(c3), 0.0f, 1.0f),
+                std::clamp(alpha, 0.0f, 1.0f)};
+    }
+    if (space == "display-p3") {
+        // Display-P3 (gamma) → linear → XYZ(D65) → linear sRGB → gamma sRGB
+        float rl = srgbGammaToLinear(c1);
+        float gl = srgbGammaToLinear(c2);
+        float bl = srgbGammaToLinear(c3);
+        // P3 linear → XYZ D65
+        float X = 0.4865709486f * rl + 0.2656676932f * gl + 0.1982172852f * bl;
+        float Y = 0.2289745641f * rl + 0.6917385218f * gl + 0.0792869141f * bl;
+        float Z = 0.0000000000f * rl + 0.0451133819f * gl + 1.0439443689f * bl;
+        // XYZ D65 → linear sRGB
+        float r =  3.2409699419f * X - 1.5373831776f * Y - 0.4986107603f * Z;
+        float g = -0.9692436363f * X + 1.8759675015f * Y + 0.0415550574f * Z;
+        float b =  0.0556300797f * X - 0.2039769589f * Y + 1.0569715142f * Z;
+        return {std::clamp(srgbLinearToGamma(r), 0.0f, 1.0f),
+                std::clamp(srgbLinearToGamma(g), 0.0f, 1.0f),
+                std::clamp(srgbLinearToGamma(b), 0.0f, 1.0f),
+                std::clamp(alpha, 0.0f, 1.0f)};
+    }
+    // Unknown space → treat components as sRGB
+    return {std::clamp(c1, 0.0f, 1.0f), std::clamp(c2, 0.0f, 1.0f),
+            std::clamp(c3, 0.0f, 1.0f), std::clamp(alpha, 0.0f, 1.0f)};
+}
+
 struct Rect {
     float x = 0, y = 0, w = 0, h = 0;
     Rect() = default;

@@ -1125,6 +1125,56 @@ static float parseHslPercent(const std::string& token) {
     if (percent || value > 1.0f) value /= 100.0f;
     return std::clamp(value, 0.0f, 1.0f);
 }
+// ── CSS Color 4 channel parsers ─────────────────────────────
+// Lightness for oklab/oklch: 0%..100% maps to 0..1; bare number used as-is.
+static float parseOklabLightness(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return std::clamp(v / 100.0f, 0.0f, 1.0f);
+    return std::clamp(v, 0.0f, 1.0f);
+}
+// Lightness for lab/lch: 0%..100% maps to 0..100; bare number used as-is.
+static float parseLabLightness(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return std::clamp(v, 0.0f, 100.0f); // % already 0..100 scale
+    return std::clamp(v, 0.0f, 100.0f);
+}
+// Chroma for oklch: percentage 100% == 0.4; number used directly.
+static float parseOklchChroma(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return (v / 100.0f) * 0.4f;
+    return std::max(0.0f, v);
+}
+// Chroma for lch: percentage 100% == 150; number used directly.
+static float parseLchChroma(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return (v / 100.0f) * 150.0f;
+    return std::max(0.0f, v);
+}
+// oklab a/b axis: percentage 100% == 0.4; number used directly.
+static float parseOklabAxis(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return (v / 100.0f) * 0.4f;
+    return v;
+}
+// lab a/b axis: percentage 100% == 125; number used directly.
+static float parseLabAxis(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return (v / 100.0f) * 125.0f;
+    return v;
+}
+// color() component: percentage maps to 0..1; number used directly.
+static float parseColorFnComponent(const std::string& token) {
+    bool percent = false;
+    float v = parseNumberToken(token, &percent);
+    if (percent) return v / 100.0f;
+    return v;
+}
 StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
                                          std::string_view id,
                                          std::string_view type,
@@ -2314,7 +2364,9 @@ static std::vector<std::string> splitMediaAndClauses(const std::string& query) {
 }
 static bool parseMediaFeature(const std::string& clause,
                               float viewportWidth,
-                              float viewportHeight) {
+                              float viewportHeight,
+                              bool prefersDark,
+                              bool forcedColors) {
     std::string c = trimLocal(lowerAscii(clause));
     if (c.size() >= 2 && c.front() == '(' && c.back() == ')') {
         c = trimLocal(c.substr(1, c.size() - 2));
@@ -2341,7 +2393,10 @@ static bool parseMediaFeature(const std::string& clause,
                    (value == "portrait" && !landscape);
         }
         if (name == "prefers-color-scheme") {
-            return value == "dark";
+            return value == (prefersDark ? "dark" : "light");
+        }
+        if (name == "forced-colors") {
+            return value == (forcedColors ? "active" : "none");
         }
         return false;
     }
@@ -2414,7 +2469,8 @@ bool StyleSheet::mediaQueryMatches(const std::string& query) const {
                 matches = false;
                 break;
             }
-            if (!parseMediaFeature(clause, viewportWidth_, viewportHeight_)) {
+            if (!parseMediaFeature(clause, viewportWidth_, viewportHeight_,
+                                   prefersDark(), forcedColors())) {
                 matches = false;
                 break;
             }
@@ -5107,6 +5163,150 @@ Color StyleSheet::parseColor(const std::string& val) {
         return Color(r, g, b, a);
     }
     if (lower == "currentcolor") return Color(1, 1, 1, 1);
+    // ── system-ui / system color keywords (CSS Color 4 system colors) ──
+    if (lower == "canvas" || lower == "window")        return Color(1, 1, 1, 1);
+    if (lower == "canvastext" || lower == "windowtext")return Color(0, 0, 0, 1);
+    if (lower == "buttonface")                          return Color(0.94f, 0.94f, 0.94f, 1);
+    if (lower == "buttontext")                          return Color(0, 0, 0, 1);
+    if (lower == "field")                               return Color(1, 1, 1, 1);
+    if (lower == "fieldtext")                           return Color(0, 0, 0, 1);
+    if (lower == "highlight")                           return Color(0.0f, 0.46f, 1.0f, 1);
+    if (lower == "highlighttext")                       return Color(1, 1, 1, 1);
+    if (lower == "graytext")                            return Color(0.5f, 0.5f, 0.5f, 1);
+    if (lower == "linktext")                            return Color(0.0f, 0.0f, 0.93f, 1);
+
+    // ── light-dark(<light>, <dark>) — CSS Color Adjust 1 ──
+    if (lower.rfind("light-dark(", 0) == 0) {
+        std::string inner = functionInner(v);
+        // Split on top-level comma
+        int depth = 0; size_t comma = std::string::npos;
+        for (size_t i = 0; i < inner.size(); i++) {
+            if (inner[i] == '(') ++depth;
+            else if (inner[i] == ')') --depth;
+            else if (inner[i] == ',' && depth == 0) { comma = i; break; }
+        }
+        if (comma != std::string::npos) {
+            std::string lightC = trim(inner.substr(0, comma));
+            std::string darkC  = trim(inner.substr(comma + 1));
+            bool dark = false;
+            if (auto* app = Application::instance())
+                dark = app->stylesheet().prefersDark();
+            return parseColor(dark ? darkC : lightC);
+        }
+        return Color();
+    }
+
+    // ── color-mix(in <space>, <c1> [p1%], <c2> [p2%]) — CSS Color 5 ──
+    if (lower.rfind("color-mix(", 0) == 0) {
+        std::string inner = functionInner(v);
+        // Split on top-level commas
+        std::vector<std::string> parts;
+        { int depth = 0; std::string cur;
+          for (char c : inner) {
+            if (c == '(') { ++depth; cur += c; }
+            else if (c == ')') { --depth; cur += c; }
+            else if (c == ',' && depth == 0) { parts.push_back(trim(cur)); cur.clear(); }
+            else cur += c;
+          }
+          if (!cur.empty()) parts.push_back(trim(cur));
+        }
+        if (parts.size() >= 3) {
+            // parts[0] = "in <space>" (ignored beyond mixing in sRGB), parts[1], parts[2] = colors
+            auto splitColorPct = [](const std::string& s, float& pct) -> std::string {
+                std::string t = trim(s);
+                size_t sp = t.rfind(' ');
+                if (sp != std::string::npos && !t.empty() && t.back() == '%') {
+                    std::string pctStr = trim(t.substr(sp + 1));
+                    if (!pctStr.empty() && pctStr.back() == '%') {
+                        try { pct = std::stof(pctStr.substr(0, pctStr.size() - 1)) / 100.0f; } catch (...) {}
+                        return trim(t.substr(0, sp));
+                    }
+                }
+                return t;
+            };
+            float p1 = -1.0f, p2 = -1.0f;
+            std::string c1s = splitColorPct(parts[1], p1);
+            std::string c2s = splitColorPct(parts[2], p2);
+            Color c1 = parseColor(c1s);
+            Color c2 = parseColor(c2s);
+            // Normalize percentages (CSS Color 5 rules)
+            if (p1 < 0 && p2 < 0) { p1 = 0.5f; p2 = 0.5f; }
+            else if (p1 < 0)      { p1 = 1.0f - p2; }
+            else if (p2 < 0)      { p2 = 1.0f - p1; }
+            float sum = p1 + p2;
+            if (sum <= 0.0f) return Color();
+            p1 /= sum; p2 /= sum;
+            // Mix in sRGB (component-wise) — approximation of in oklab/srgb
+            return Color(c1.r * p1 + c2.r * p2,
+                         c1.g * p1 + c2.g * p2,
+                         c1.b * p1 + c2.b * p2,
+                         c1.a * p1 + c2.a * p2);
+        }
+        return Color();
+    }
+
+    // ── oklch(L C H [/ A]) ──────────────────────────────────
+    if (lower.rfind("oklch(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 3) {
+            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
+            return Color::fromOklch(parseOklabLightness(t[0]),
+                                    parseOklchChroma(t[1]),
+                                    parseHue(t[2]), a);
+        }
+    }
+    // ── oklab(L a b [/ A]) ──────────────────────────────────
+    if (lower.rfind("oklab(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 3) {
+            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
+            return Color::fromOklab(parseOklabLightness(t[0]),
+                                    parseOklabAxis(t[1]),
+                                    parseOklabAxis(t[2]), a);
+        }
+    }
+    // ── lch(L C H [/ A]) ────────────────────────────────────
+    if (lower.rfind("lch(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 3) {
+            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
+            return Color::fromLch(parseLabLightness(t[0]),
+                                  parseLchChroma(t[1]),
+                                  parseHue(t[2]), a);
+        }
+    }
+    // ── lab(L a b [/ A]) ────────────────────────────────────
+    if (lower.rfind("lab(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 3) {
+            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
+            return Color::fromLab(parseLabLightness(t[0]),
+                                  parseLabAxis(t[1]),
+                                  parseLabAxis(t[2]), a);
+        }
+    }
+    // ── hwb(H W B [/ A]) ────────────────────────────────────
+    if (lower.rfind("hwb(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 3) {
+            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
+            return Color::fromHWB(parseHue(t[0]),
+                                  parseHslPercent(t[1]),
+                                  parseHslPercent(t[2]), a);
+        }
+    }
+    // ── color(<space> c1 c2 c3 [/ A]) ───────────────────────
+    if (lower.rfind("color(", 0) == 0) {
+        auto t = splitColorTokens(functionInner(v));
+        if (t.size() >= 4) {
+            std::string space = lowerAscii(t[0]);
+            float a = t.size() >= 5 ? parseAlphaChannel(t[4]) : 1.0f;
+            return Color::fromColorFunction(space,
+                                            parseColorFnComponent(t[1]),
+                                            parseColorFnComponent(t[2]),
+                                            parseColorFnComponent(t[3]), a);
+        }
+    }
     if (lower.rfind("rgb", 0) == 0) {
         auto tokens = splitColorTokens(functionInner(v));
         if (tokens.size() >= 3) {

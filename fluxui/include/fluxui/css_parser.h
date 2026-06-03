@@ -127,6 +127,16 @@ public:
     float viewportWidth() const { return viewportWidth_; }
     float viewportHeight() const { return viewportHeight_; }
 
+    // ── Color scheme state (CSS Color Adjust 1 / Media Queries 5) ──
+    // Drives prefers-color-scheme media queries and light-dark() resolution.
+    enum class ColorScheme { Light, Dark };
+    void setColorScheme(ColorScheme scheme) { colorScheme_ = scheme; }
+    ColorScheme colorScheme() const { return colorScheme_; }
+    bool prefersDark() const { return colorScheme_ == ColorScheme::Dark; }
+    // forced-colors (Media Queries 5)
+    void setForcedColors(bool active) { forcedColors_ = active; }
+    bool forcedColors() const { return forcedColors_; }
+
     // Get style for a specific class/id/type
     Style resolve(std::string_view className,
                   std::string_view id = "",
@@ -260,6 +270,8 @@ private:
     std::vector<size_t> universalRuleIndex_;
     float viewportWidth_ = 1920.0f;
     float viewportHeight_ = 1080.0f;
+    ColorScheme colorScheme_ = ColorScheme::Light;
+    bool forcedColors_ = false;
     uint32_t nextPropertyOrder_ = 0;
 
     struct CSSToken {
