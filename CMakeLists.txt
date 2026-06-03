@@ -610,4 +610,15 @@ target_include_directories(test_var_cycle PRIVATE
 )
 enable_release_lto(test_var_cycle)
 
+add_executable(test_cascade
+    examples/cpp/test_cascade.cpp
+)
+target_link_libraries(test_cascade PRIVATE
+    fluxui
+)
+target_include_directories(test_cascade PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_cascade)
+
 

@@ -1816,7 +1816,68 @@ void StyleSheet::parseRulesFromTokens(const std::vector<CSSToken>& tokens, const
         } else {
             if (!preludeStr.empty() && preludeStr[0] == '@') {
                 std::string lowerPrelude = lowerAscii(preludeStr);
-                if (lowerPrelude.rfind("@layer", 0) == 0) {
+                if (lowerPrelude.rfind("@import", 0) == 0) {
+                    // @import url("...") [layer] [media];
+                    // CSS Cascading Level 5 / Blink CSSImportRule parity.
+                    // Parse the URL and optional layer/media list.
+                    std::string args = trim(preludeStr.substr(7));
+                    std::string url;
+                    std::string importLayer;
+                    std::string importMedia;
+                    // Extract URL (url("...") or "..." or '...')
+                    if (args.rfind("url(", 0) == 0) {
+                        size_t close = args.find(')', 4);
+                        if (close != std::string::npos) {
+                            url = trim(args.substr(4, close - 4));
+                            args = trim(args.substr(close + 1));
+                        }
+                    } else if (!args.empty() && (args[0] == '"' || args[0] == '\'')) {
+                        char q = args[0];
+                        size_t close = args.find(q, 1);
+                        if (close != std::string::npos) {
+                            url = args.substr(1, close - 1);
+                            args = trim(args.substr(close + 1));
+                        }
+                    }
+                    // Strip quotes from url
+                    if (!url.empty() && (url[0] == '"' || url[0] == '\'')) url = url.substr(1);
+                    if (!url.empty() && (url.back() == '"' || url.back() == '\'')) url.pop_back();
+                    // Check for "layer" or "layer(name)" keyword
+                    std::string argsLower = lowerAscii(args);
+                    if (argsLower.rfind("layer", 0) == 0) {
+                        if (argsLower.size() > 5 && argsLower[5] == '(') {
+                            size_t cp = argsLower.find(')', 6);
+                            importLayer = trim(args.substr(6, cp != std::string::npos ? cp - 6 : std::string::npos));
+                            args = (cp != std::string::npos) ? trim(args.substr(cp + 1)) : "";
+                        } else {
+                            // Anonymous import layer
+                            static int importLayerCount = 0;
+                            importLayer = "::import_layer_" + std::to_string(++importLayerCount);
+                            args = trim(args.substr(5));
+                        }
+                        if (!importLayer.empty()) {
+                            std::string fullLayer = currentLayer.empty() ? importLayer : currentLayer + "." + importLayer;
+                            registerLayer(fullLayer);
+                            importLayer = fullLayer;
+                        }
+                    }
+                    // Remaining args = media query (if any)
+                    if (!args.empty()) importMedia = args;
+                    // Store import for external loading (FluxUI loads via loadFile() externally).
+                    // Record it so the host can resolve imports after parsing.
+                    CSSProperty importProp;
+                    importProp.name = "@import";
+                    importProp.value = url;
+                    importProp.sourceOrder = nextPropertyOrder_++;
+                    // Store as a special internal record (accessible via rules for import order)
+                    CSSRule importRule;
+                    importRule.selector = "@import";
+                    importRule.mediaQuery = importMedia;
+                    importRule.layer = importLayer;
+                    importRule.properties.push_back(importProp);
+                    importRule.specificity = -1; // marker for import rules
+                    rules.push_back(importRule);
+                } else if (lowerPrelude.rfind("@layer", 0) == 0) {
                     std::string names = trim(preludeStr.substr(6));
                     size_t start = 0;
                     while (true) {
@@ -2805,10 +2866,45 @@ static bool applyCSSWideProperty(Style& target,
                                  const std::string& keyword,
                                  const Style* parentStyle,
                                  const Style& initialStyle) {
-    if (keyword != "inherit" && keyword != "initial" && keyword != "unset") {
+    // CSS-wide keywords: inherit, initial, unset, revert, revert-layer
+    // (CSS Cascading Level 5 / Blink StyleCascade parity)
+    if (keyword != "inherit" && keyword != "initial" && keyword != "unset" &&
+        keyword != "revert" && keyword != "revert-layer") {
         return false;
     }
-    const Style& source = cssWideSource(name, keyword, parentStyle, initialStyle);
+
+    // Determine the source style for this keyword.
+    // revert: roll back to the previous cascade origin (author → user → UA).
+    //   In practice, since we don't track per-origin resolved styles separately,
+    //   we approximate by using the UA default (initialStyle) for author revert,
+    //   or parentStyle for inherited properties. This matches Blink's behavior
+    //   where revert in author style falls back to UA computed value.
+    // revert-layer: roll back to the previous cascade layer.
+    //   Since we apply all layers in a single pass, we approximate this by
+    //   using the same logic as revert (fallback to initial/parent).
+    //   Full fidelity would require per-layer style snapshots.
+    const Style& source = [&]() -> const Style& {
+        if (keyword == "inherit") {
+            return parentStyle ? *parentStyle : initialStyle;
+        }
+        if (keyword == "unset") {
+            if (isInheritedCSSProperty(name))
+                return parentStyle ? *parentStyle : initialStyle;
+            return initialStyle;
+        }
+        if (keyword == "revert" || keyword == "revert-layer") {
+            // Blink: revert in author origin → use user/UA value.
+            // For inherited properties, use parent (inheriting from parent
+            // effectively gives the "previous origin" value for inherited props).
+            // For non-inherited, use the initial value.
+            if (isInheritedCSSProperty(name))
+                return parentStyle ? *parentStyle : initialStyle;
+            return initialStyle;
+        }
+        // initial
+        return initialStyle;
+    }();
+
     if (name == "all") {
         copyAllNonCustomProperties(target, source);
     } else if (name == "color") {
