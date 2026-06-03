@@ -1,8 +1,10 @@
 ﻿// FluxUI Structural/Relational Pseudo-Class Parity Test
 // Mirrors Blink's selector matching for :nth-child, :has, :not, :is, :where.
 //
-// Reference: https://www.w3.org/TR/selectors-4/
-//            chromium/src/third_party/blink/renderer/core/css/selector_checker.cc
+// All tests use background-color (not color) because the UA stylesheet
+// sets color:white on all widgets, making negative assertions impossible.
+// background-color defaults to transparent (a=0), so we can cleanly
+// distinguish matched (a>0) from unmatched (a==0).
 
 #include "fluxui/core.h"
 #include "fluxui/css_parser.h"
@@ -28,10 +30,12 @@ using namespace FluxUI;
     } \
 } while (0)
 
-// Helper to build a parent with N children of given classes
-static std::shared_ptr<Panel> makeParentWithChildren(
-    const std::string& parentCls,
-    const std::vector<std::string>& childClasses) {
+// Helpers: matched = background-color has alpha > 0; unmatched = alpha == 0
+static bool matched(const Style& s)   { return s.backgroundColor.a > 0.01f; }
+static bool unmatched(const Style& s)  { return s.backgroundColor.a < 0.01f; }
+
+static std::shared_ptr<Panel> makeParent(const std::string& parentCls,
+                                         const std::vector<std::string>& childClasses) {
     auto parent = std::make_shared<Panel>(parentCls);
     for (const auto& cls : childClasses) {
         auto child = std::make_shared<Panel>(cls);
@@ -41,27 +45,19 @@ static std::shared_ptr<Panel> makeParentWithChildren(
     return parent;
 }
 
-// Helper: check that a color is approximately red (#ff0000)
-static bool isRed(const Style& s) { return s.hasColor && s.color.r > 0.9f && s.color.g < 0.1f && s.color.b < 0.1f; }
-static bool isGreen(const Style& s) { return s.hasColor && s.color.g > 0.9f && s.color.r < 0.1f && s.color.b < 0.1f; }
-static bool isBlue(const Style& s) { return s.hasColor && s.color.b > 0.9f && s.color.r < 0.1f && s.color.g < 0.1f; }
-static bool isNotRed(const Style& s) { return !s.hasColor || s.color.g > 0.5f || s.color.r < 0.5f; }
-static bool isNotGreen(const Style& s) { return !s.hasColor || s.color.r > 0.5f || s.color.g < 0.5f; }
-static bool isNotBlue(const Style& s) { return !s.hasColor || s.color.r > 0.5f || s.color.b < 0.5f; }
-
 // ── [1] :first-child ────────────────────────────────────────
 int test_first_child() {
     std::cout << "[1] :first-child" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:first-child { color: #ff0000; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style s1 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    Style s2 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[1].get());
-    CHECK(isRed(s1));    // 1st matches :first-child
-    CHECK(isNotRed(s2)); // 2nd does not
+    sheet.parse(".item:first-child { background-color: #ff0000; }");
+    auto p = makeParent("list", {"item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s2 = sheet.resolve("item", "", "panel", a, nullptr, p->children[1].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(matched(s1));
+    CHECK(unmatched(s2));
+    CHECK(unmatched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -70,15 +66,13 @@ int test_first_child() {
 int test_last_child() {
     std::cout << "[2] :last-child" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:last-child { color: #00ff00; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style sl = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    Style sf = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    CHECK(isGreen(sl));    // last matches
-    CHECK(isNotGreen(sf)); // first does not
+    sheet.parse(".item:last-child { background-color: #00ff00; }");
+    auto p = makeParent("list", {"item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(unmatched(s1));
+    CHECK(matched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -87,17 +81,15 @@ int test_last_child() {
 int test_nth_child_number() {
     std::cout << "[3] :nth-child(2)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:nth-child(2) { color: #0000ff; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style s1 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    Style s2 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[1].get());
-    Style s3 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    CHECK(isNotBlue(s1));
-    CHECK(isBlue(s2)); // blue, 1e-3f);
-    CHECK(isNotBlue(s3));
+    sheet.parse(".item:nth-child(2) { background-color: #0000ff; }");
+    auto p = makeParent("list", {"item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s2 = sheet.resolve("item", "", "panel", a, nullptr, p->children[1].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(unmatched(s1));
+    CHECK(matched(s2));
+    CHECK(unmatched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -106,21 +98,18 @@ int test_nth_child_number() {
 int test_nth_child_even_odd() {
     std::cout << "[4] :nth-child(odd) / :nth-child(even)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:nth-child(odd) { color: #ff0000; }"
-               ".item:nth-child(even) { color: #00ff00; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style s1 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    Style s2 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[1].get());
-    Style s3 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    Style s4 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[3].get());
-    // 1=odd(red), 2=even(green), 3=odd(red), 4=even(green)
-    CHECK(isRed(s1));
-    CHECK(isGreen(s2));
-    CHECK(isRed(s3));
-    CHECK(isGreen(s4));
+    sheet.parse(".item:nth-child(odd) { background-color: #ff0000; }"
+               ".item:nth-child(even) { background-color: #00ff00; }");
+    auto p = makeParent("list", {"item", "item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s2 = sheet.resolve("item", "", "panel", a, nullptr, p->children[1].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    Style s4 = sheet.resolve("item", "", "panel", a, nullptr, p->children[3].get());
+    CHECK_NEAR(s1.backgroundColor.r, 1.0f, 1e-2f); // odd → red
+    CHECK_NEAR(s2.backgroundColor.g, 1.0f, 1e-2f); // even → green
+    CHECK_NEAR(s3.backgroundColor.r, 1.0f, 1e-2f); // odd → red
+    CHECK_NEAR(s4.backgroundColor.g, 1.0f, 1e-2f); // even → green
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -129,17 +118,15 @@ int test_nth_child_even_odd() {
 int test_nth_child_formula() {
     std::cout << "[5] :nth-child(2n+1)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:nth-child(2n+1) { color: #ff0000; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style s1 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    Style s2 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[1].get());
-    Style s3 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    CHECK(isRed(s1)); // 1st = match
-    CHECK(isNotRed(s2)); // 2nd = no match
-    CHECK(isRed(s3)); // 3rd = match
+    sheet.parse(".item:nth-child(2n+1) { background-color: #ff0000; }");
+    auto p = makeParent("list", {"item", "item", "item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s2 = sheet.resolve("item", "", "panel", a, nullptr, p->children[1].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(matched(s1));
+    CHECK(unmatched(s2));
+    CHECK(matched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -148,15 +135,13 @@ int test_nth_child_formula() {
 int test_nth_last_child() {
     std::cout << "[6] :nth-last-child(1)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:nth-last-child(1) { color: #0000ff; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style sl = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    Style sf = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    CHECK(isBlue(sl));
-    CHECK(isNotBlue(sf));
+    sheet.parse(".item:nth-last-child(1) { background-color: #0000ff; }");
+    auto p = makeParent("list", {"item", "item", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(unmatched(s1));
+    CHECK(matched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -165,20 +150,15 @@ int test_nth_last_child() {
 int test_not() {
     std::cout << "[7] :not(.excluded)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:not(.excluded) { color: #ff0000; }");
-
-    auto parent = makeParentWithChildren("list", {"item", "item excluded", "item"});
-    std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
-
-    Style s1 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[0].get());
-    Style s2 = sheet.resolve("item excluded", "", "panel", ancestors, nullptr, parent->children[1].get());
-    Style s3 = sheet.resolve("item", "", "panel", ancestors, nullptr, parent->children[2].get());
-    CHECK(s1.hasColor);
-    CHECK(isRed(s1));
-    // .excluded should NOT match :not(.excluded)
-    CHECK(isNotRed(s2));
-    CHECK(s3.hasColor);
-    CHECK(isRed(s3));
+    sheet.parse(".item:not(.excluded) { background-color: #ff0000; }");
+    auto p = makeParent("list", {"item", "item excluded", "item"});
+    std::vector<CSSSelectorNode> a = {{"list", "", "panel", p.get()}};
+    Style s1 = sheet.resolve("item", "", "panel", a, nullptr, p->children[0].get());
+    Style s2 = sheet.resolve("item excluded", "", "panel", a, nullptr, p->children[1].get());
+    Style s3 = sheet.resolve("item", "", "panel", a, nullptr, p->children[2].get());
+    CHECK(matched(s1));
+    CHECK(unmatched(s2));
+    CHECK(matched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -187,18 +167,16 @@ int test_not() {
 int test_is() {
     std::cout << "[8] :is(.a, .b)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(":is(.a, .b) { color: #ff0000; }");
-
+    sheet.parse(":is(.a, .b) { background-color: #ff0000; }");
     auto wa = std::make_shared<Panel>("a");
     auto wb = std::make_shared<Panel>("b");
     auto wc = std::make_shared<Panel>("c");
-
     Style sa = sheet.resolve("a", "", "panel", {}, nullptr, wa.get());
     Style sb = sheet.resolve("b", "", "panel", {}, nullptr, wb.get());
     Style sc = sheet.resolve("c", "", "panel", {}, nullptr, wc.get());
-    CHECK(isRed(sa));
-    CHECK(isRed(sb));
-    CHECK(isNotRed(sc));
+    CHECK(matched(sa));
+    CHECK(matched(sb));
+    CHECK(unmatched(sc));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -207,39 +185,32 @@ int test_is() {
 int test_where() {
     std::cout << "[9] :where(.x) has zero specificity" << std::endl;
     StyleSheet sheet;
-    // :where has zero specificity, .y has specificity 0-1-0.
-    // When both match, .y should win.
-    sheet.parse(":where(.x) { color: #ff0000; }"
-               ".x { color: #00ff00; }");
-
+    sheet.parse(":where(.x) { background-color: #ff0000; }"
+               ".x { background-color: #00ff00; }");
     auto wx = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x", "", "panel", {}, nullptr, wx.get());
-    // .x (green) should win over :where(.x) (red) due to higher specificity
-    CHECK(isGreen(s));
+    // .x (green) wins over :where(.x) (red) because :where has 0 specificity
+    CHECK(matched(s));
+    CHECK_NEAR(s.backgroundColor.g, 1.0f, 1e-2f);
+    CHECK_NEAR(s.backgroundColor.r, 0.0f, 1e-2f);
     std::cout << "  PASS" << std::endl;
     return 0;
 }
 
-// ── [10] :has(.child) — descendant matching ─────────────────
+// ── [10] :has(.child) ───────────────────────────────────────
 int test_has() {
     std::cout << "[10] :has(.child)" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".container:has(.target) { color: #ff0000; }");
-
+    sheet.parse(".container:has(.target) { background-color: #ff0000; }");
     auto container = std::make_shared<Panel>("container");
     auto target = std::make_shared<Panel>("target");
     target->parent = container.get();
     container->children.push_back(target);
-
-    auto empty = std::make_shared<Panel>("container");
-
-    std::vector<CSSSelectorNode> noAncestors;
-    Style s1 = sheet.resolve("container", "", "panel", noAncestors, nullptr, container.get());
-    Style s2 = sheet.resolve("container", "", "panel", noAncestors, nullptr, empty.get());
-    CHECK(s1.hasColor);
-    CHECK(isRed(s1));
-    // empty container should NOT match :has(.target)
-    CHECK(isNotRed(s2));
+    auto empty = std::make_shared<Panel>("container"); // no children
+    Style s1 = sheet.resolve("container", "", "panel", {}, nullptr, container.get());
+    Style s2 = sheet.resolve("container", "", "panel", {}, nullptr, empty.get());
+    CHECK(matched(s1));
+    CHECK(unmatched(s2));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -248,18 +219,15 @@ int test_has() {
 int test_only_child() {
     std::cout << "[11] :only-child" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".item:only-child { color: #ff0000; }");
-
-    auto single = makeParentWithChildren("list", {"item"});
-    auto multi = makeParentWithChildren("list", {"item", "item"});
+    sheet.parse(".item:only-child { background-color: #ff0000; }");
+    auto single = makeParent("list", {"item"});
+    auto multi = makeParent("list", {"item", "item"});
     std::vector<CSSSelectorNode> a1 = {{"list", "", "panel", single.get()}};
     std::vector<CSSSelectorNode> a2 = {{"list", "", "panel", multi.get()}};
-
     Style s1 = sheet.resolve("item", "", "panel", a1, nullptr, single->children[0].get());
     Style s2 = sheet.resolve("item", "", "panel", a2, nullptr, multi->children[0].get());
-    CHECK(s1.hasColor);
-    CHECK(isRed(s1));
-    CHECK(isNotRed(s2));
+    CHECK(matched(s1));
+    CHECK(unmatched(s2));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -268,17 +236,15 @@ int test_only_child() {
 int test_empty() {
     std::cout << "[12] :empty" << std::endl;
     StyleSheet sheet;
-    sheet.parse(".box:empty { color: #0000ff; }");
-
-    auto empty = std::make_shared<Panel>("box"); // no children
+    sheet.parse(".box:empty { background-color: #0000ff; }");
+    auto empty = std::make_shared<Panel>("box");
     auto full = std::make_shared<Panel>("box");
     full->children.push_back(std::make_shared<Panel>("child"));
     full->children[0]->parent = full.get();
-
     Style se = sheet.resolve("box", "", "panel", {}, nullptr, empty.get());
     Style sf = sheet.resolve("box", "", "panel", {}, nullptr, full.get());
-    CHECK(isBlue(se));
-    CHECK(isNotBlue(sf));
+    CHECK(matched(se));
+    CHECK(unmatched(sf));
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -287,21 +253,19 @@ int test_empty() {
 int test_nth_of_type() {
     std::cout << "[13] :nth-of-type(2)" << std::endl;
     StyleSheet sheet;
-    sheet.parse("panel:nth-of-type(2) { color: #ff0000; }");
-
+    sheet.parse("panel:nth-of-type(2) { background-color: #ff0000; }");
     auto parent = std::make_shared<Panel>("list");
     auto c1 = std::make_shared<Panel>("a"); c1->parent = parent.get(); c1->type = "panel";
     auto c2 = std::make_shared<Panel>("b"); c2->parent = parent.get(); c2->type = "panel";
     auto c3 = std::make_shared<Panel>("c"); c3->parent = parent.get(); c3->type = "panel";
     parent->children = {c1, c2, c3};
-
     std::vector<CSSSelectorNode> ancestors = {{"list", "", "panel", parent.get()}};
     Style s1 = sheet.resolve("a", "", "panel", ancestors, nullptr, c1.get());
     Style s2 = sheet.resolve("b", "", "panel", ancestors, nullptr, c2.get());
     Style s3 = sheet.resolve("c", "", "panel", ancestors, nullptr, c3.get());
-    CHECK(isNotRed(s1));
-    CHECK(isRed(s2)); // red, 1e-2f);
-    CHECK(isNotRed(s3));
+    CHECK(unmatched(s1));
+    CHECK(matched(s2));
+    CHECK(unmatched(s3));
     std::cout << "  PASS" << std::endl;
     return 0;
 }

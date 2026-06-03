@@ -2082,6 +2082,20 @@ Style StyleSheet::resolve(std::string_view className,
                           std::string_view targetPseudo) const {
     const auto* inheritedCustomProperties = parentStyle ? &parentStyle->customProperties : nullptr;
     StyleCacheKey key = buildCacheKey(className, id, type, ancestors, parentStyle);
+    // Mix widget pointer and targetPseudo into cache key to avoid
+    // false cache hits for structural pseudo-classes (:nth-child etc.)
+    // and pseudo-element targets (Blink StyleResolverState parity).
+    if (widget) {
+        auto wp = reinterpret_cast<uintptr_t>(widget);
+        key.h1 ^= wp * 2654435761ULL;
+        key.h2 ^= wp * 40503ULL;
+    }
+    if (!targetPseudo.empty()) {
+        for (char c : targetPseudo) {
+            key.h1 ^= static_cast<uint64_t>(c);
+            key.h1 *= 1099511628211ULL;
+        }
+    }
 #if FLUXUI_STYLE_CACHE_SIZE > 0
     {
         size_t cacheIdx = (key.h1 ^ key.h2) % FLUXUI_STYLE_CACHE_SIZE;
