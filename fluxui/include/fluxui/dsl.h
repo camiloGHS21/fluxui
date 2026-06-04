@@ -123,6 +123,14 @@ class State {
     std::vector<std::function<void()>> listeners_;
 public:
     explicit State(T initial = {}) : value_(std::move(initial)) {}
+
+    // Non-copyable: copying would duplicate listeners and detach observers from
+    // the original. Share a State by reference or pointer instead. Movable so it
+    // can still be returned from factories / stored in containers.
+    State(const State&) = delete;
+    State& operator=(const State&) = delete;
+    State(State&&) noexcept = default;
+
     const T& get() const { return value_; }
     void set(T newValue) {
         value_ = std::move(newValue);
@@ -136,6 +144,8 @@ public:
     State& operator=(const T& v) { set(v); return *this; }
     template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
     State& operator++() { set(value_ + 1); return *this; }
+    template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+    State& operator--() { set(value_ - 1); return *this; }
     template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
     State& operator+=(const T& v) { set(value_ + v); return *this; }
     template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
@@ -209,6 +219,24 @@ public:
     Element& href(const std::string& url) { return attr("href", url); }
     Element& src(const std::string& url) { content = url; return *this; }
     Element& visible(bool v) { hasVisible_ = true; visible_ = v; return *this; }
+
+    // --- Typed style helpers (sugar over style(prop, val)) ---
+    Element& color(const std::string& c)            { return style("color", c); }
+    Element& background(const std::string& c)       { return style("background-color", c); }
+    Element& width(const std::string& v)            { return style("width", v); }
+    Element& height(const std::string& v)           { return style("height", v); }
+    Element& padding(const std::string& v)          { return style("padding", v); }
+    Element& margin(const std::string& v)           { return style("margin", v); }
+    Element& gap(const std::string& v)              { return style("gap", v); }
+    Element& fontSize(const std::string& v)         { return style("font-size", v); }
+    Element& fontWeight(const std::string& v)       { return style("font-weight", v); }
+    Element& borderRadius(const std::string& v)     { return style("border-radius", v); }
+    Element& flexGrow(const std::string& v)         { return style("flex-grow", v); }
+    Element& flexDirection(const std::string& v)    { return style("flex-direction", v); }
+    Element& display(const std::string& v)          { return style("display", v); }
+    Element& justify(const std::string& v)          { return style("justify-content", v); }
+    Element& align(const std::string& v)            { return style("align-items", v); }
+
     // Post-mount hook: receive the materialized widget for advanced setup
     // (e.g. configuring a Video, Canvas, or wiring extra event listeners).
     Element& onMount(std::function<void(FluxUI::Widget*)> fn) { onMount_ = std::move(fn); return *this; }
@@ -293,6 +321,9 @@ inline Element leaf(const char* tag, const std::string& content) {
     e.content = content;
     return e;
 }
+inline Element tagOnly(const char* tag) {
+    return Element(tag);
+}
 } // namespace detail
 
 // ============================================================
@@ -359,21 +390,21 @@ inline Element A(const std::string& content, const std::string& href = "") {
     return e;
 }
 inline Element Img(const std::string& src)   { return detail::leaf("img", src); }
-inline Element Video(const std::string& src) { Element e("video"); e.content = src; return e; }
-inline Element Canvas()                      { return Element("canvas"); }
-inline Element Hr()                          { return Element("hr"); }
-inline Element Br()                          { return Element("br"); }
+inline Element Video(const std::string& src) { return detail::leaf("video", src); }
+inline Element Canvas()                      { return detail::tagOnly("canvas"); }
+inline Element Hr()                          { return detail::tagOnly("hr"); }
+inline Element Br()                          { return detail::tagOnly("br"); }
 
 // Icon glyph (configured on mount; routes to the Icon widget).
 inline Element Icon(const std::string& glyph) {
-    Element e("icon");
+    Element e = detail::tagOnly("icon");
     e.onMount<FluxUI::Icon>([glyph](FluxUI::Icon* i) { i->glyph = glyph; });
     return e;
 }
 
 // Animated progress bar with a value in [0,1] and optional accent color.
 inline Element ProgressBar(float value, const std::string& colorHex = "") {
-    Element e("progress-bar");
+    Element e = detail::tagOnly("progress-bar");
     e.content = std::to_string(value);
     if (!colorHex.empty()) e.attr("__color", colorHex);
     return e;
@@ -382,7 +413,7 @@ inline Element ProgressBar(float value, const std::string& colorHex = "") {
 // Statistic card (title / value / subtitle / accent), a common dashboard widget.
 inline Element StatCard(const std::string& title, const std::string& value,
                         const std::string& subtitle = "", const std::string& accentHex = "#6C5CE7") {
-    Element e("stat-card");
+    Element e = detail::tagOnly("stat-card");
     e.content = title;
     e.attr("__value", value);
     e.attr("__subtitle", subtitle);
@@ -393,12 +424,12 @@ inline Element StatCard(const std::string& title, const std::string& value,
 
 // Checkbox / Radio with an initial checked state via post-mount hook.
 inline Element Checkbox(bool checked = false) {
-    Element e("checkbox");
+    Element e = detail::tagOnly("checkbox");
     if (checked) e.onMount<FluxUI::Checkbox>([](FluxUI::Checkbox* c) { c->setChecked(true); });
     return e;
 }
 inline Element Radio(bool checked = false, const std::string& group = "") {
-    Element e("radio");
+    Element e = detail::tagOnly("radio");
     e.onMount<FluxUI::Radio>([checked, group](FluxUI::Radio* r) {
         if (!group.empty()) r->group = group;
         if (checked) r->setChecked(true);
@@ -408,7 +439,7 @@ inline Element Radio(bool checked = false, const std::string& group = "") {
 
 // Range slider (min/max/step/value) configured on mount.
 inline Element Range(float value = 0.5f, float min = 0.0f, float max = 1.0f, float step = 0.01f) {
-    Element e("range");
+    Element e = detail::tagOnly("range");
     e.onMount<FluxUI::RangeInput>([=](FluxUI::RangeInput* r) {
         r->min = min; r->max = max; r->step = step; r->setValue(value, false);
     });
@@ -417,20 +448,19 @@ inline Element Range(float value = 0.5f, float min = 0.0f, float max = 1.0f, flo
 
 // Typed <input> (text/email/password/search/number/...).
 inline Element Input(const std::string& type, const std::string& placeholder) {
-    Element e("input");
-    e.content = placeholder;
+    Element e = detail::leaf("input", placeholder);
     e.onMount<FluxUI::TextInput>([type](FluxUI::TextInput* in) { in->setInputType(type); });
     return e;
 }
 
 // Meter and Progress with their value range.
 inline Element Meter(float value, float min = 0.0f, float max = 1.0f) {
-    Element e("meter");
+    Element e = detail::tagOnly("meter");
     e.onMount<FluxUI::Meter>([=](FluxUI::Meter* m) { m->min = min; m->max = max; m->value = value; });
     return e;
 }
 inline Element Progress(float value = -1.0f, float max = 1.0f) {
-    Element e("progress");
+    Element e = detail::tagOnly("progress");
     e.onMount<FluxUI::Progress>([=](FluxUI::Progress* p) { p->max = max; p->value = value; });
     return e;
 }

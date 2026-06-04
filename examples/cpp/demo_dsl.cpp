@@ -43,7 +43,7 @@ int main() {
                 }).className("metrics"),
                 Button("Escanear ahora")
                     .className("primary")
-                    .onClick([&]{ ++devices; })  // ← new shorthand!
+                    .onClick([&]{ ++devices; })  // ← shorthand operator
             }).className("content")
         }).className("app")
     );

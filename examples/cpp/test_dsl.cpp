@@ -131,6 +131,52 @@ int test_anchor_href() {
     std::cout << "  PASS" << std::endl; return 0;
 }
 
+int test_state_operators() {
+    std::cout << "[8] State shorthand operators (++, +=, -=, =, toggle)" << std::endl;
+    auto count = State<int>(0);
+    ++count;            CHECK(count.get() == 1);
+    count += 5;         CHECK(count.get() == 6);
+    count -= 2;         CHECK(count.get() == 4);
+    --count;            CHECK(count.get() == 3);
+    count = 42;         CHECK(count.get() == 42);
+    auto flag = State<bool>(false);
+    flag.toggle();      CHECK(flag.get() == true);
+    flag.toggle();      CHECK(flag.get() == false);
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_typed_style_helpers() {
+    std::cout << "[9] typed style helpers (color/width/padding/...)" << std::endl;
+    auto root = mountRoot(
+        Div().color("red").background("#111").width("250px").padding("16px")
+             .gap("8px").fontSize("24px").flexDirection("column")
+    );
+    auto* w = root->children[0].get();
+    // Each helper pushes an inline property; verify a couple resolved through.
+    bool hasColor = false, hasWidth = false, hasDir = false;
+    for (const auto& p : w->inlineProperties) {
+        if (p.name == "color" && p.value == "red") hasColor = true;
+        if (p.name == "width" && p.value == "250px") hasWidth = true;
+        if (p.name == "flex-direction" && p.value == "column") hasDir = true;
+    }
+    CHECK(hasColor);
+    CHECK(hasWidth);
+    CHECK(hasDir);
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_ref_capture() {
+    std::cout << "[10] Ref<T> captures widget on mount (shared slot)" << std::endl;
+    auto ref = Ref<FluxUI::Button>();
+    // Pass the ref by value into onMount (stored in std::function) — shared slot
+    // must still let the original see the captured widget.
+    auto root = mountRoot(Button("Go").onMount(ref));
+    CHECK((bool)ref);
+    CHECK(ref->type == "button");
+    CHECK(ref->label == "Go");
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
 int main() {
     std::cout << "=== FluxUI DSL Test (HTML/Blink-named) ===" << std::endl;
     int rc = 0;
@@ -141,6 +187,9 @@ int main() {
     rc |= test_reactive_text();
     rc |= test_onclick_mutates_state();
     rc |= test_anchor_href();
+    rc |= test_state_operators();
+    rc |= test_typed_style_helpers();
+    rc |= test_ref_capture();
     if (rc == 0) std::cout << "All DSL tests passed!" << std::endl;
     return rc;
 }
