@@ -29,7 +29,6 @@ def main():
     """)
 
     title = fluxui.State("FluxUI Native Style Console")
-    username = fluxui.State("")
 
     # Hold native widget handles captured at mount for imperative actions.
     refs = {}
