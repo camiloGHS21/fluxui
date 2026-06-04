@@ -1,9 +1,31 @@
 // DataLeak Guard — Rules view
 #pragma once
-#include "../state.h"
 #include "../components.h"
+#include <array>
 
 namespace dlg {
+
+inline Element RuleRow(int idx, const std::string& name, const std::string& detail,
+                       const std::string& scope, const std::string& hits) {
+    static std::array<State<bool>, 5> enabled = {
+        State<bool>(true), State<bool>(true), State<bool>(true),
+        State<bool>(false), State<bool>(true)
+    };
+    auto& rule = enabled[idx];
+    return Div({
+        Div({ Span(name).className("rule-name"), Span(detail).className("rule-detail") }).className("rule-main"),
+        Div({ Pill(scope,"info"), Pill(hits,"warning") }).className("rule-meta"),
+        Button("")
+            .className(rule.get() ? "toggle toggle-on" : "toggle toggle-off")
+            .onMount([&rule](FluxUI::Widget* w) {
+                w->onClick = [&rule, w]() {
+                    rule.toggle();
+                    w->className = rule.get() ? "toggle toggle-on" : "toggle toggle-off";
+                    w->markStyleDirty();
+                };
+            })
+    }).className("rule-row");
+}
 
 inline Element RulesView() {
     return Div({
@@ -20,11 +42,11 @@ inline Element RulesView() {
         Div({
             Div({
                 SectionHeader("Rule Library", "Production rules with live hit counts"),
-                RuleRow(0,"Payment card data to removable media","Block PAN-like values when destination is external drive.","Endpoints","47 hits"),
-                RuleRow(1,"Employee identifiers in shared folders","Flag national ID, employee ID, and payroll markers.","Shares","18 hits"),
-                RuleRow(2,"Secret material in outbound email","Detect API keys, tokens, and private key headers.","Email","12 hits"),
-                RuleRow(3,"Source archives to cloud sync","Monitor large code archives moving to personal cloud.","Cloud","0 hits"),
-                RuleRow(4,"Legal hold document export","Require approval for legal-hold tagged records.","Legal","6 hits")
+                RuleRow(0,"Payment card data to removable media","Block PAN-like values.","Endpoints","47 hits"),
+                RuleRow(1,"Employee identifiers in shared folders","Flag national ID.","Shares","18 hits"),
+                RuleRow(2,"Secret material in outbound email","Detect API keys.","Email","12 hits"),
+                RuleRow(3,"Source archives to cloud sync","Monitor code archives.","Cloud","0 hits"),
+                RuleRow(4,"Legal hold document export","Require approval.","Legal","6 hits")
             }).className("panel-card panel-wide"),
             Div({
                 SectionHeader("Rule Packs", "Installed coverage"),

@@ -55,35 +55,12 @@ inline Element ToggleRow(const std::string& title, const std::string& desc,
             .className(value.get() ? "toggle toggle-on" : "toggle toggle-off")
             .onMount([&value](FluxUI::Widget* w) {
                 w->onClick = [&value, w]() {
-                    value.set(!value.get());
+                    value.toggle();
                     w->className = value.get() ? "toggle toggle-on" : "toggle toggle-off";
                     w->markStyleDirty();
                 };
-            }),
-        Div({}).className("toggle-knob")
-    }).className("toggle-row");
-}
-
-inline Element RuleRow(int idx, const std::string& name, const std::string& detail,
-                       const std::string& scope, const std::string& hits) {
-    auto& rules = ruleEnabled();
-    return Div({
-        Div({
-            Span(name).className("rule-name"),
-            Span(detail).className("rule-detail")
-        }).className("rule-main"),
-        Div({ Pill(scope, "info"), Pill(hits, "warning") }).className("rule-meta"),
-        Button("")
-            .className(rules[idx].get() ? "toggle toggle-on" : "toggle toggle-off")
-            .onMount([idx](FluxUI::Widget* w) {
-                auto& r = ruleEnabled()[idx];
-                w->onClick = [&r, w]() {
-                    r.set(!r.get());
-                    w->className = r.get() ? "toggle toggle-on" : "toggle toggle-off";
-                    w->markStyleDirty();
-                };
             })
-    }).className("rule-row");
+    }).className("toggle-row");
 }
 
 inline Element TableRow(const std::string& cls,

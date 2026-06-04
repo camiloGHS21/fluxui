@@ -511,11 +511,16 @@ public:
     const std::string& route() const { return currentRoute_; }
 
     // Build the shell + initial route. Call after addRoute/setLayout.
+    // If no initialRoute given, uses the first registered route.
     void build(const std::string& initialRoute = "") {
         auto rootWidget = app_.root();
         rootWidget->clearChildren();
 
-        if (!initialRoute.empty()) currentRoute_ = initialRoute;
+        if (!initialRoute.empty()) {
+            currentRoute_ = initialRoute;
+        } else if (currentRoute_.empty() && !routes_.empty()) {
+            currentRoute_ = routes_.begin()->first;
+        }
 
         if (layout_) {
             // Build the content element for the initial route.
@@ -544,6 +549,8 @@ public:
     }
 
     int run() {
+        // If build() was never called, do it now (convenience for simple apps).
+        if (!contentSlot_ && !routes_.empty()) build();
         app_.onUpdate = [this](float /*dt*/) {
             detail::pumpReactiveBindings();
         };

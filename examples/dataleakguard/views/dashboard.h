@@ -1,20 +1,24 @@
-// DataLeak Guard — Dashboard view
+// DataLeak Guard — Dashboard view (state lives here, not in a separate file)
 #pragma once
-#include "../state.h"
 #include "../components.h"
 
 namespace dlg {
 
 inline Element DashboardView() {
+    // State lives inside the view — no separate state file needed.
+    static auto blockMode       = State<bool>(true);
+    static auto quarantineMode  = State<bool>(true);
+    static auto endpointIsolation = State<bool>(false);
+
     return Div({
         TopBar("Command Center", "Leakage posture, response pressure, and policy health"),
 
-        // Hero panel
+        // Hero
         Div({
             Div({
                 H2("Data exfiltration posture is contained").className("hero-title"),
-                P("Automated block rules stopped 47 transfers while 4 incidents wait "
-                  "for analyst sign-off.").className("hero-text"),
+                P("Automated block rules stopped 47 transfers while 4 incidents "
+                  "wait for analyst sign-off.").className("hero-text"),
                 Div({
                     Pill("Block mode on", "ok"),
                     Pill("94% compliant", "info"),
@@ -23,19 +27,21 @@ inline Element DashboardView() {
             }).className("hero-copy"),
             Div({
                 Button("Run Full Scan").className("btn btn-primary"),
-                Button("Monitor Mode").className("btn btn-danger")
+                Button(blockMode.get() ? "Monitor Mode" : "Block Mode")
+                    .className("btn btn-danger")
+                    .onClick([&]{ blockMode.toggle(); })
             }).className("hero-actions")
         }).className("hero-panel"),
 
-        // Stats row
+        // Stats
         Div({
-            StatCard("Files Monitored", filesMonitored, "+234 this week", "#37C6A3"),
-            StatCard("Threats Blocked", threatsBlocked, "3 critical today", "#FF5D6C"),
-            StatCard("USB Transfers", usbTransfers, "12 flagged", "#F3B64B"),
-            StatCard("Compliance Score", complianceScore, "Above target", "#6AA9FF")
+            StatCard("Files Monitored", "12,847", "+234 this week", "#37C6A3"),
+            StatCard("Threats Blocked", "47", "3 critical today", "#FF5D6C"),
+            StatCard("USB Transfers", "156", "12 flagged", "#F3B64B"),
+            StatCard("Compliance Score", "94%", "Above target", "#6AA9FF")
         }).className("stats-row"),
 
-        // Risk + Response grid
+        // Risk + Response
         Div({
             Div({
                 SectionHeader("Risk Flow", "Where sensitive data is moving right now"),
@@ -46,13 +52,13 @@ inline Element DashboardView() {
             }).className("panel-card panel-wide"),
             Div({
                 SectionHeader("Live Containment", "Automations ready for escalation"),
-                ToggleRow("Block removable media", "Stop copy operations to untrusted USB devices.", blockMode()),
-                ToggleRow("Auto quarantine", "Move high-confidence matches to isolated storage.", quarantineMode()),
-                ToggleRow("Endpoint isolation", "Cut network access for repeat offenders.", endpointIsolation())
+                ToggleRow("Block removable media", "Stop copy to untrusted USB.", blockMode),
+                ToggleRow("Auto quarantine", "Isolate high-confidence matches.", quarantineMode),
+                ToggleRow("Endpoint isolation", "Cut network for repeat offenders.", endpointIsolation)
             }).className("panel-card panel-side")
         }).className("dashboard-grid"),
 
-        // Recent activity
+        // Activity
         SectionHeader("Recent Activity"),
         Div({
             ActivityRow("usb",  "Sensitive contract archive blocked on USB-A72", "2 min ago", "danger"),

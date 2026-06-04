@@ -1,6 +1,5 @@
 // DataLeak Guard — App shell layout (sidebar + content slot)
 #pragma once
-#include "state.h"
 #include "components.h"
 
 namespace dlg {
@@ -15,6 +14,8 @@ inline Element NavItem(const std::string& label, const std::string& icon,
 
 // The persistent shell wrapping all views.
 inline Element ShellLayout(App& app, const Element& content) {
+    static auto blockMode = State<bool>(true);
+
     return Div({
         // Sidebar
         Nav({
@@ -40,8 +41,9 @@ inline Element ShellLayout(App& app, const Element& content) {
             Div({
                 Span("POSTURE").className("nav-label"),
                 Text([]{
-                    return blockMode().get() ? std::string("Containment active")
-                                            : std::string("Monitor only");
+                    static auto& bm = blockMode;
+                    return bm.get() ? std::string("Containment active")
+                                    : std::string("Monitor only");
                 }).className("posture-title"),
                 Span("4 high-risk events require review").className("posture-copy"),
                 Div({ Pill("DLP","ok"), Pill("SIEM","info") }).className("posture-pills")

@@ -1,6 +1,5 @@
 // DataLeak Guard — Alerts view
 #pragma once
-#include "../state.h"
 #include "../components.h"
 
 namespace dlg {

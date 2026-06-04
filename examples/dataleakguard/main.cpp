@@ -1,16 +1,13 @@
 // DataLeak Guard — Enterprise DLP Console
 // Built with FluxUI declarative DSL.
 //
-// File-based routing (like Next.js): views are auto-registered from the
-// views/ folder. Just add a new .h file there and CMake picks it up on
-// reconfigure — no manual addRoute() calls needed.
+// File-based routing: views are auto-registered from views/*.h by CMake.
+// Just add a new .h file → reconfigure → route exists. Like Next.js.
 #include <fluxui/dsl.h>
 #include "embedded_font_atlas.h"
 #include "embedded_theme.h"
-
-#include "state.h"
 #include "layout.h"
-#include "dlg_routes_gen.h"   // ← auto-generated from views/*.h by CMake
+#include "dlg_routes_gen.h"   // ← auto-generated from views/*.h
 
 using namespace fluxui;
 
@@ -18,16 +15,13 @@ int main() {
     App app(1400, 900, "DataLeak Guard - Enterprise DLP");
     app.addCSS(dataleakguardEmbeddedThemeCss());
 
-    // Auto-register all views from the views/ folder (file-based routing).
+    // File-based routing: all views from views/ registered automatically.
     dlg::generated::registerRoutes(app);
 
-    // Shell layout wraps a persistent sidebar + content slot.
+    // Shell layout (sidebar + content slot). No route specified — starts at first.
     app.setLayout([&](const Element& content) {
         return dlg::ShellLayout(app, content);
     });
-
-    // Build and navigate to the initial route.
-    app.build("/dashboard");
 
     return app.run();
 }
