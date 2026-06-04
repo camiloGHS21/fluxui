@@ -157,6 +157,22 @@ public final class Dsl {
         return new Node(tag).children(children);
     }
 
+    // ---- Skeleton loading placeholders ----
+
+    /** A shimmer skeleton with `lines` placeholder lines. */
+    public static Node skeleton(int lines) {
+        Node[] kids = new Node[lines];
+        for (int i = 0; i < lines; i++) {
+            kids[i] = new Node("div").className("skeleton-line");
+        }
+        return new Node("div").children(kids).className("skeleton");
+    }
+
+    /** A skeleton block of the given CSS width/height. */
+    public static Node skeletonBox(String w, String h) {
+        return new Node("div").className("skeleton skeleton-box").style("width", w).style("height", h);
+    }
+
     // ---- App helpers for the declarative flow. ----
 
     /** Mount a declarative Node tree as the application root. */
@@ -185,12 +201,14 @@ public final class Dsl {
             new java.util.LinkedHashMap<>();
         private java.util.function.Function<Node, Node> layout;
         private String current = "";
+        private final java.util.Map<String, String> params = new java.util.HashMap<>();
+        private final java.util.Map<String, String> query = new java.util.HashMap<>();
 
         public Router(App app) {
             this.app = app;
         }
 
-        /** Register a route. view.get() returns the Node tree for that path. */
+        /** Register a route. Supports params: "/user/:id" and exact paths. */
         public Router addRoute(String path, java.util.function.Supplier<Node> view) {
             routes.put(path, view);
             return this;
@@ -214,6 +232,59 @@ public final class Dsl {
             return current;
         }
 
+        /** Route param captured from a pattern like "/user/:id". */
+        public String param(String name) {
+            return params.getOrDefault(name, "");
+        }
+
+        /** Query-string value (e.g. ?tab=info -> query("tab")). */
+        public String query(String name) {
+            return query.getOrDefault(name, "");
+        }
+
+        private static boolean matchPattern(String pattern, String path, java.util.Map<String, String> out) {
+            String clean = path;
+            int q = clean.indexOf('?');
+            if (q >= 0) clean = clean.substring(0, q);
+            String[] pp = java.util.Arrays.stream(pattern.split("/")).filter(s -> !s.isEmpty()).toArray(String[]::new);
+            String[] cp = java.util.Arrays.stream(clean.split("/")).filter(s -> !s.isEmpty()).toArray(String[]::new);
+            if (pp.length != cp.length) return false;
+            for (int i = 0; i < pp.length; i++) {
+                if (pp[i].startsWith(":")) {
+                    out.put(pp[i].substring(1), cp[i]);
+                } else if (!pp[i].equals(cp[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private java.util.function.Supplier<Node> resolveRoute() {
+            params.clear();
+            query.clear();
+            String path = current;
+            int q = path.indexOf('?');
+            if (q >= 0) {
+                for (String pair : path.substring(q + 1).split("&")) {
+                    if (pair.isEmpty()) continue;
+                    int eq = pair.indexOf('=');
+                    if (eq >= 0) query.put(pair.substring(0, eq), pair.substring(eq + 1));
+                    else query.put(pair, "");
+                }
+                path = path.substring(0, q);
+            }
+            java.util.function.Supplier<Node> exact = routes.get(path);
+            if (exact != null) return exact;
+            for (java.util.Map.Entry<String, java.util.function.Supplier<Node>> e : routes.entrySet()) {
+                java.util.Map<String, String> p = new java.util.HashMap<>();
+                if (matchPattern(e.getKey(), path, p)) {
+                    params.putAll(p);
+                    return e.getValue();
+                }
+            }
+            return null;
+        }
+
         /** Switch to a route and rebuild the shell (nav highlights refresh). */
         public void navigate(String path) {
             current = path;
@@ -234,7 +305,7 @@ public final class Dsl {
             }
 
             Node content = null;
-            java.util.function.Supplier<Node> view = routes.get(current);
+            java.util.function.Supplier<Node> view = resolveRoute();
             if (view != null) {
                 content = view.get();
             }

@@ -128,6 +128,12 @@ pub const App = struct {
         return dsl.routerCurrent();
     }
 
+    /// Route param captured from a pattern like "/user/:id".
+    pub fn param(self: App, name: [*:0]const u8) [*:0]const u8 {
+        _ = self;
+        return dsl.param(name);
+    }
+
     /// Switch to a route and rebuild the shell (nav highlights refresh).
     pub fn navigate(self: App, path: [*:0]const u8) void {
         dsl.routerSetCurrent(path);
@@ -818,11 +824,86 @@ fn routerHasRoutes() bool {
 }
 
 fn findRoute(path: [*:0]const u8) ?ViewFn {
+    // Exact match first.
     var i: usize = 0;
     while (i < g_route_count) : (i += 1) {
         if (cstrEql(g_routes[i].path, path)) return g_routes[i].view;
     }
+    // Param match (e.g. "/user/:id" against "/user/42").
+    i = 0;
+    while (i < g_route_count) : (i += 1) {
+        if (matchPattern(g_routes[i].path, path)) return g_routes[i].view;
+    }
     return null;
+}
+
+// ---- Route params (fixed-capacity storage; no allocator) ----
+const Param = struct { name: [64]u8, value: [128]u8 };
+var g_params: [16]Param = undefined;
+var g_param_count: usize = 0;
+
+fn copyZ(dst: []u8, src: [*:0]const u8) void {
+    var i: usize = 0;
+    while (src[i] != 0 and i < dst.len - 1) : (i += 1) dst[i] = src[i];
+    dst[i] = 0;
+}
+
+// Returns the length of a segment starting at i until '/' or end (ignoring query).
+fn segLen(s: [*:0]const u8, start: usize) usize {
+    var i = start;
+    while (s[i] != 0 and s[i] != '/' and s[i] != '?') : (i += 1) {}
+    return i - start;
+}
+
+fn matchPattern(pattern: [*:0]const u8, path: [*:0]const u8) bool {
+    g_param_count = 0;
+    var pi: usize = 0;
+    var ci: usize = 0;
+    while (true) {
+        while (pattern[pi] == '/') pi += 1;
+        while (path[ci] == '/') ci += 1;
+        const pEnd = pattern[pi] == 0;
+        const cEnd = path[ci] == 0 or path[ci] == '?';
+        if (pEnd and cEnd) return true;
+        if (pEnd or cEnd) return false;
+
+        const pl = segLen(pattern, pi);
+        const cl = segLen(path, ci);
+        if (pattern[pi] == ':') {
+            if (g_param_count < g_params.len) {
+                // name = pattern segment without ':'
+                var ni: usize = 0;
+                while (ni < pl - 1 and ni < 63) : (ni += 1) g_params[g_param_count].name[ni] = pattern[pi + 1 + ni];
+                g_params[g_param_count].name[ni] = 0;
+                // value = path segment
+                var vi: usize = 0;
+                while (vi < cl and vi < 127) : (vi += 1) g_params[g_param_count].value[vi] = path[ci + vi];
+                g_params[g_param_count].value[vi] = 0;
+                g_param_count += 1;
+            }
+        } else {
+            // compare literal segments
+            if (pl != cl) return false;
+            var k: usize = 0;
+            while (k < pl) : (k += 1) {
+                if (pattern[pi + k] != path[ci + k]) return false;
+            }
+        }
+        pi += pl;
+        ci += cl;
+    }
+}
+
+/// Read a route param captured from a pattern like "/user/:id".
+pub fn param(name: [*:0]const u8) [*:0]const u8 {
+    var i: usize = 0;
+    while (i < g_param_count) : (i += 1) {
+        const pn: [*:0]const u8 = @ptrCast(&g_params[i].name);
+        if (cstrEql(pn, name)) {
+            return @ptrCast(&g_params[i].value);
+        }
+    }
+    return "";
 }
 
 fn routerBuild(rootWidget: Widget, initial_route: [*:0]const u8) void {
@@ -843,6 +924,59 @@ fn routerBuild(rootWidget: Widget, initial_route: [*:0]const u8) void {
     } else if (content) |node| {
         _ = node.mount(rootWidget) catch {};
     }
+}
+
+// ---- Skeleton — loading placeholders ----
+// Zig Node children are slices; use a static buffer of skeleton lines.
+var g_skel_lines: [16]Node = undefined;
+
+/// A shimmer skeleton with `lines` placeholder lines (max 16).
+pub fn skeleton(lines: usize) Node {
+    const n = if (lines > g_skel_lines.len) g_skel_lines.len else lines;
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        g_skel_lines[i] = (Node{ .tag = "div" }).class("skeleton-line");
+    }
+    return (Node{ .tag = "div", .children = g_skel_lines[0..n] }).class("skeleton");
+}
+
+/// A skeleton block. Apply width/height via .css() at the call site, e.g.
+/// `dsl.skeletonBox().css("width:100%;height:120px")`.
+pub fn skeletonBox() Node {
+    return (Node{ .tag = "div" }).class("skeleton skeleton-box");
+}
+
+// ============================================================
+//  Store(T) — global state container (Zustand-style). T is a value type.
+// ============================================================
+pub fn Store(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const MaxSubs = 16;
+        value: T,
+        subs: [MaxSubs]?*const fn () void = [_]?*const fn () void{null} ** MaxSubs,
+        sub_count: usize = 0,
+
+        pub fn init(initial: T) Self {
+            return .{ .value = initial };
+        }
+        pub fn get(self: *const Self) T {
+            return self.value;
+        }
+        pub fn set(self: *Self, v: T) void {
+            self.value = v;
+            var i: usize = 0;
+            while (i < self.sub_count) : (i += 1) {
+                if (self.subs[i]) |cb| cb();
+            }
+        }
+        pub fn subscribe(self: *Self, cb: *const fn () void) void {
+            if (self.sub_count < MaxSubs) {
+                self.subs[self.sub_count] = cb;
+                self.sub_count += 1;
+            }
+        }
+    };
 }
 
 }; // pub const dsl

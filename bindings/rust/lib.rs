@@ -1497,6 +1497,29 @@ pub mod dsl {
         order: Vec<String>,
         layout: Option<Box<dyn Fn(Option<Node>) -> Node>>,
         current: String,
+        params: std::collections::HashMap<String, String>,
+        query: std::collections::HashMap<String, String>,
+    }
+
+    fn match_pattern(
+        pattern: &str,
+        path: &str,
+        params: &mut std::collections::HashMap<String, String>,
+    ) -> bool {
+        let clean = path.split('?').next().unwrap_or(path);
+        let pp: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
+        let cp: Vec<&str> = clean.split('/').filter(|s| !s.is_empty()).collect();
+        if pp.len() != cp.len() {
+            return false;
+        }
+        for (a, b) in pp.iter().zip(cp.iter()) {
+            if let Some(name) = a.strip_prefix(':') {
+                params.insert(name.to_string(), b.to_string());
+            } else if a != b {
+                return false;
+            }
+        }
+        true
     }
 
     thread_local! {
@@ -1505,6 +1528,8 @@ pub mod dsl {
             order: Vec::new(),
             layout: None,
             current: String::new(),
+            params: std::collections::HashMap::new(),
+            query: std::collections::HashMap::new(),
         });
 
         // Views collected by inventory-style registration before the app exists.
@@ -1591,6 +1616,16 @@ pub mod dsl {
             ROUTER.with(|r| r.borrow().current.clone())
         }
 
+        /// Route param captured from a pattern like "/user/:id".
+        pub fn param(&self, name: &str) -> String {
+            ROUTER.with(|r| r.borrow().params.get(name).cloned().unwrap_or_default())
+        }
+
+        /// Query-string value (e.g. ?tab=info -> query("tab")).
+        pub fn query(&self, name: &str) -> String {
+            ROUTER.with(|r| r.borrow().query.get(name).cloned().unwrap_or_default())
+        }
+
         /// Switch to a route and rebuild the shell (nav highlights refresh).
         pub fn navigate(&self, path: &str) {
             ROUTER.with(|r| r.borrow_mut().current = path.to_string());
@@ -1614,10 +1649,40 @@ pub mod dsl {
                 } else if router.current.is_empty() && !router.order.is_empty() {
                     router.current = router.order[0].clone();
                 }
-                let content = router
-                    .routes
-                    .get(&router.current)
-                    .map(|f| f());
+                // Resolve route with param/query support.
+                router.params.clear();
+                router.query.clear();
+                let cur = router.current.clone();
+                // Parse query string.
+                if let Some(qpos) = cur.find('?') {
+                    for pair in cur[qpos + 1..].split('&') {
+                        if pair.is_empty() { continue; }
+                        if let Some(eq) = pair.find('=') {
+                            router.query.insert(pair[..eq].to_string(), pair[eq + 1..].to_string());
+                        } else {
+                            router.query.insert(pair.to_string(), String::new());
+                        }
+                    }
+                }
+                let path = cur.split('?').next().unwrap_or(&cur).to_string();
+                // Exact match first, else param match against ordered patterns.
+                let mut builder: Option<&Box<dyn Fn() -> Node>> = router.routes.get(&path);
+                let mut matched_params = std::collections::HashMap::new();
+                if builder.is_none() {
+                    let order = router.order.clone();
+                    for pat in &order {
+                        let mut params = std::collections::HashMap::new();
+                        if match_pattern(pat, &path, &mut params) {
+                            matched_params = params;
+                            builder = router.routes.get(pat);
+                            break;
+                        }
+                    }
+                }
+                let content = builder.map(|f| f());
+                if !matched_params.is_empty() {
+                    router.params = matched_params;
+                }
                 (content, router.layout.is_some())
             });
 
@@ -1646,5 +1711,211 @@ pub mod dsl {
             });
             self.run();
         }
+    }
+
+    // ============================================================
+    //  Store<T> — global state container (Zustand-style)
+    // ============================================================
+    pub struct Store<T> {
+        inner: Rc<RefCell<StoreInner<T>>>,
+    }
+
+    struct StoreInner<T> {
+        state: T,
+        subscribers: Vec<Box<dyn Fn()>>,
+    }
+
+    impl<T> Clone for Store<T> {
+        fn clone(&self) -> Self {
+            Store { inner: self.inner.clone() }
+        }
+    }
+
+    impl<T: Clone + 'static> Store<T> {
+        pub fn new(initial: T) -> Self {
+            Store {
+                inner: Rc::new(RefCell::new(StoreInner {
+                    state: initial,
+                    subscribers: Vec::new(),
+                })),
+            }
+        }
+        pub fn get(&self) -> T {
+            self.inner.borrow().state.clone()
+        }
+        /// Mutate via a reducer; notifies subscribers.
+        pub fn set<F: FnOnce(&mut T)>(&self, mutator: F) {
+            mutator(&mut self.inner.borrow_mut().state);
+            let n = self.inner.borrow().subscribers.len();
+            for i in 0..n {
+                let cb: *const dyn Fn() = &*self.inner.borrow().subscribers[i];
+                unsafe { (*cb)() };
+            }
+        }
+        pub fn select<R, F: Fn(&T) -> R>(&self, selector: F) -> R {
+            selector(&self.inner.borrow().state)
+        }
+        pub fn subscribe<F: Fn() + 'static>(&self, f: F) {
+            self.inner.borrow_mut().subscribers.push(Box::new(f));
+        }
+    }
+
+    // ============================================================
+    //  Schema + Rule — runtime validation (Zod-style)
+    // ============================================================
+    #[derive(Clone, Copy, PartialEq)]
+    enum RuleKind { Str, Num, Bool }
+
+    #[derive(Clone)]
+    pub struct Rule {
+        kind: RuleKind,
+        required: bool,
+        min: Option<f64>,
+        max: Option<f64>,
+        min_len: Option<usize>,
+        max_len: Option<usize>,
+        email: bool,
+    }
+
+    impl Rule {
+        fn base(kind: RuleKind) -> Self {
+            Rule { kind, required: true, min: None, max: None, min_len: None, max_len: None, email: false }
+        }
+        pub fn string() -> Self { Rule::base(RuleKind::Str) }
+        pub fn number() -> Self { Rule::base(RuleKind::Num) }
+        pub fn boolean() -> Self { Rule::base(RuleKind::Bool) }
+        pub fn optional(mut self) -> Self { self.required = false; self }
+        pub fn min(mut self, v: f64) -> Self { self.min = Some(v); self }
+        pub fn max(mut self, v: f64) -> Self { self.max = Some(v); self }
+        pub fn min_length(mut self, v: usize) -> Self { self.min_len = Some(v); self }
+        pub fn max_length(mut self, v: usize) -> Self { self.max_len = Some(v); self }
+        pub fn email(mut self) -> Self { self.email = true; self }
+
+        fn check(&self, field: &str, value: &str) -> Option<String> {
+            if value.is_empty() {
+                return if self.required { Some(format!("{} is required", field)) } else { None };
+            }
+            match self.kind {
+                RuleKind::Num => {
+                    match value.parse::<f64>() {
+                        Ok(d) => {
+                            if let Some(m) = self.min { if d < m { return Some(format!("{} is too small", field)); } }
+                            if let Some(m) = self.max { if d > m { return Some(format!("{} is too large", field)); } }
+                        }
+                        Err(_) => return Some(format!("{} must be a number", field)),
+                    }
+                }
+                RuleKind::Str => {
+                    if let Some(m) = self.min_len { if value.len() < m { return Some(format!("{} is too short", field)); } }
+                    if let Some(m) = self.max_len { if value.len() > m { return Some(format!("{} is too long", field)); } }
+                    if self.email && !value.contains('@') { return Some(format!("{} must be a valid email", field)); }
+                }
+                RuleKind::Bool => {
+                    if value != "true" && value != "false" { return Some(format!("{} must be true/false", field)); }
+                }
+            }
+            None
+        }
+    }
+
+    pub struct ValidationResult {
+        pub ok: bool,
+        pub errors: std::collections::HashMap<String, String>,
+    }
+
+    pub struct Schema {
+        fields: Vec<(String, Rule)>,
+    }
+
+    impl Schema {
+        pub fn new() -> Self { Schema { fields: Vec::new() } }
+        pub fn field(mut self, name: &str, rule: Rule) -> Self {
+            self.fields.push((name.to_string(), rule));
+            self
+        }
+        pub fn validate(&self, data: &std::collections::HashMap<String, String>) -> ValidationResult {
+            let mut errors = std::collections::HashMap::new();
+            for (name, rule) in &self.fields {
+                let empty = String::new();
+                let val = data.get(name).unwrap_or(&empty);
+                if let Some(err) = rule.check(name, val) {
+                    errors.insert(name.clone(), err);
+                }
+            }
+            ValidationResult { ok: errors.is_empty(), errors }
+        }
+    }
+
+    impl Default for Schema {
+        fn default() -> Self { Schema::new() }
+    }
+
+    // ============================================================
+    //  Query<T> — async fetch with loading/error/data states
+    // ============================================================
+    #[derive(Clone, Copy, PartialEq)]
+    pub enum QueryStatus { Idle, Loading, Success, Error }
+
+    pub struct Query<T> {
+        fetcher: Rc<dyn Fn() -> Result<T, String>>,
+        status: Rc<std::cell::Cell<QueryStatus>>,
+        data: Rc<RefCell<Option<T>>>,
+        error: Rc<RefCell<String>>,
+    }
+
+    impl<T: Clone + 'static> Query<T> {
+        pub fn new<F: Fn() -> Result<T, String> + 'static>(fetcher: F) -> Self {
+            Query {
+                fetcher: Rc::new(fetcher),
+                status: Rc::new(std::cell::Cell::new(QueryStatus::Idle)),
+                data: Rc::new(RefCell::new(None)),
+                error: Rc::new(RefCell::new(String::new())),
+            }
+        }
+        pub fn status(&self) -> QueryStatus { self.status.get() }
+        pub fn is_loading(&self) -> bool { self.status.get() == QueryStatus::Loading }
+        pub fn is_success(&self) -> bool { self.status.get() == QueryStatus::Success }
+        pub fn is_error(&self) -> bool { self.status.get() == QueryStatus::Error }
+
+        /// Run the fetcher synchronously on the UI thread (FFI is single-threaded
+        /// here; wrap your own threads if you need true async).
+        pub fn start(&self) {
+            if self.status.get() == QueryStatus::Loading { return; }
+            self.status.set(QueryStatus::Loading);
+            match (self.fetcher)() {
+                Ok(v) => { *self.data.borrow_mut() = Some(v); self.status.set(QueryStatus::Success); }
+                Err(e) => { *self.error.borrow_mut() = e; self.status.set(QueryStatus::Error); }
+            }
+        }
+        pub fn refetch(&self) { self.status.set(QueryStatus::Idle); self.start(); }
+
+        pub fn view<L, S, E>(&self, on_loading: L, on_success: S, on_error: E) -> Node
+        where
+            L: Fn() -> Node,
+            S: Fn(&T) -> Node,
+            E: Fn(&str) -> Node,
+        {
+            match self.status.get() {
+                QueryStatus::Success => {
+                    if let Some(d) = self.data.borrow().as_ref() { on_success(d) } else { on_loading() }
+                }
+                QueryStatus::Error => on_error(&self.error.borrow()),
+                _ => on_loading(),
+            }
+        }
+    }
+
+    // ============================================================
+    //  Skeleton — loading placeholders
+    // ============================================================
+    pub fn skeleton(lines: usize) -> Node {
+        let mut children = Vec::new();
+        for _ in 0..lines {
+            children.push(super::dsl::div(vec![]).class("skeleton-line"));
+        }
+        div(children).class("skeleton")
+    }
+    pub fn skeleton_box(w: &str, h: &str) -> Node {
+        div(vec![]).class("skeleton skeleton-box").css(&format!("width:{}", w)).css(&format!("height:{}", h))
     }
 }
