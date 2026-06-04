@@ -1140,8 +1140,19 @@ def Button(label):
     return _leaf("button", label)
 
 
-def Input(placeholder=""):
-    return _leaf("input", placeholder)
+def Input(type_or_placeholder="", placeholder=None):
+    """Input("text") for an untyped placeholder, or Input("email", "name@x.com")."""
+    if placeholder is None:
+        return _leaf("input", type_or_placeholder)
+    e = _leaf("input", placeholder)
+    e.on_mount(lambda w: w.set_type(type_or_placeholder))
+    return e
+
+
+def PasswordInput(placeholder=""):
+    e = _leaf("input", placeholder)
+    e.on_mount(lambda w: w.set_type("password"))
+    return e
 
 
 def TextArea(placeholder=""):
@@ -1159,12 +1170,48 @@ def Img(src):
     return _leaf("img", src)
 
 
-def Checkbox():
-    return Element("checkbox")
+def Checkbox(checked=False):
+    e = Element("checkbox")
+    if checked:
+        e.on_mount(lambda w: w.set_checked(True))
+    return e
 
 
-def Radio():
-    return Element("radio")
+def Radio(checked=False, group=""):
+    e = Element("radio")
+    if checked:
+        e.on_mount(lambda w: w.set_checked(True))
+    return e
+
+
+def Range(value=0.5, min=0.0, max=100.0, step=1.0):
+    e = Element("range")
+    e.on_mount(lambda w: w.set_range_value(value))
+    return e
+
+
+def Meter(value, min=0.0, max=100.0):
+    e = Element("meter")
+    e.on_mount(lambda w: w.set_meter_value(value))
+    return e
+
+
+def Progress(value=-1.0, max=100.0):
+    e = Element("progress")
+    e.on_mount(lambda w: w.set_progress_value(value))
+    return e
+
+
+def Details(children=None):
+    return _container("details", children)
+
+
+def Summary(content):
+    return _leaf("summary", content)
+
+
+def Dialog(children=None):
+    return _container("dialog", children)
 
 
 def Hr():

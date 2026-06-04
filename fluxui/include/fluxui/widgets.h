@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "core.h"
 #include "css_parser.h"
 #include "renderer.h"
@@ -344,7 +344,7 @@ public:
     std::shared_ptr<Widget> afterPseudoNode;
     // Pseudo-element resolved styles (Blink PseudoId parity).
     // Lazily allocated only when the stylesheet has matching pseudo rules,
-    // avoiding 3×sizeof(Style) (~18KB) overhead per widget in the common case.
+    // avoiding 3Ã—sizeof(Style) (~18KB) overhead per widget in the common case.
     std::unique_ptr<Style> placeholderStyle;   // ::placeholder
     std::unique_ptr<Style> selectionStyle;     // ::selection
     std::unique_ptr<Style> markerStyle;        // ::marker
@@ -2058,159 +2058,7 @@ private:
     std::vector<ResizeObserver*> resizeObservers_;
 };
 
-class QuickApp {
-public:
-    QuickApp(const std::string& title = "FluxUI App",
-             int width = 960,
-             int height = 640,
-             RenderBackendType backend = RenderBackendType::Auto) {
-        if (!app_.init(title, width, height, backend)) {
-            std::cerr << "Failed to initialize FluxUI QuickApp." << std::endl;
-            return;
-        }
-
-        // Auto-load high-quality font
-        if (!app_.renderer().loadDefaultFont(16.0f)) {
-            app_.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
-        }
-        app_.renderer().warmFontCache(std::vector<float>{12.0f, 14.0f, 16.0f, 18.0f, 24.0f, 28.0f});
-        app_.renderer().releaseFontSources();
-
-        // Add a premium dark-themed default stylesheet out-of-the-box (wow factors, smooth animations, elegant colors)
-        app_.addStylesheet(
-            ".root { display: flex; flex-direction: column; background: radial-gradient(circle at top, #141923 0%, #0b0d13 100%); padding: 40px; gap: 20px; font-family: 'Segoe UI', system-ui; color: #edf3f8; }"
-            "h1 { font-size: 32px; font-weight: 800; color: #ffffff; margin: 0; background: linear-gradient(135deg, #ffffff 0%, #b0c4de 100%); -webkit-background-clip: text; }"
-            "h2 { font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; }"
-            "p { font-size: 14px; color: rgba(237, 243, 248, 0.7); line-height: 1.6; margin: 0; }"
-            ".btn { display: flex; justify-content: center; align-items: center; padding: 12px 24px; border-radius: 8px; background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%); color: #ffffff; font-weight: 600; cursor: pointer; transition: all 0.2s ease; border: none; min-width: 120px; box-shadow: 0 4px 15px rgba(108, 92, 231, 0.25); }"
-            ".btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(108, 92, 231, 0.4); background: linear-gradient(135deg, #7d6df3 0%, #b3adff 100%); }"
-            ".btn:active { transform: translateY(1px); }"
-            ".card { display: flex; flex-direction: column; padding: 24px; border-radius: 12px; background-color: rgba(20, 26, 38, 0.6); border: 1px solid rgba(255, 255, 255, 0.08); gap: 12px; backdrop-filter: blur(10px); }"
-            ".input { padding: 12px 16px; border-radius: 8px; background-color: #161b26; border: 1px solid rgba(255, 255, 255, 0.1); color: #ffffff; font-size: 14px; transition: border-color 0.2s ease; }"
-            ".input:focus { border-color: #6c5ce7; outline: none; }"
-        );
-    }
-
-    Widget* root() {
-        return app_.root();
-    }
-
-    Application& app() {
-        return app_;
-    }
-
-    void addStylesheet(const std::string& css) {
-        app_.addStylesheet(css);
-    }
-
-    Panel* div(const std::string& cls = "", size_t reserve = 0) {
-        return root()->div(cls, reserve);
-    }
-
-    Text* h1(const std::string& content, const std::string& cls = "") {
-        return root()->h1(content, cls);
-    }
-
-    Text* h2(const std::string& content, const std::string& cls = "") {
-        return root()->h2(content, cls);
-    }
-
-    Text* h3(const std::string& content, const std::string& cls = "") {
-        return root()->h3(content, cls);
-    }
-
-    Text* h4(const std::string& content, const std::string& cls = "") {
-        return root()->h4(content, cls);
-    }
-
-    Text* h5(const std::string& content, const std::string& cls = "") {
-        return root()->h5(content, cls);
-    }
-
-    Text* h6(const std::string& content, const std::string& cls = "") {
-        return root()->h6(content, cls);
-    }
-
-    Text* p(const std::string& content, const std::string& cls = "") {
-        return root()->p(content, cls);
-    }
-
-    Button* button(const std::string& label = "", const std::string& cls = "", std::function<void()> onClick = {}) {
-        return root()->button(label, cls, onClick);
-    }
-
-    TextInput* input(const std::string& placeholder = "", const std::string& cls = "") {
-        return root()->input(placeholder, cls);
-    }
-
-    Text* span(const std::string& content, const std::string& cls = "") {
-        return root()->span(content, cls);
-    }
-
-    Text* strong(const std::string& content, const std::string& cls = "") {
-        return root()->strong(content, cls);
-    }
-
-    Text* small(const std::string& content, const std::string& cls = "") {
-        return root()->small(content, cls);
-    }
-
-    Anchor* a(const std::string& content, const std::string& href = "", const std::string& cls = "") {
-        return root()->a(content, href, cls);
-    }
-
-    Image* img(const std::string& source, const std::string& cls = "") {
-        return root()->img(source, cls);
-    }
-
-    ProgressBar* progress(float value, const std::string& cls = "", const Color& color = Color(0.42f, 0.36f, 0.91f, 1.0f)) {
-        return root()->progress(value, cls, color);
-    }
-
-    Checkbox* checkbox(bool checked = false, const std::string& cls = "", std::function<void(bool)> onChange = {}) {
-        return root()->checkbox(checked, cls, onChange);
-    }
-
-    Select* select(const std::string& cls = "", std::function<void(size_t, const std::string&)> onChange = {}) {
-        return root()->select(cls, onChange);
-    }
-
-    TextInput* textarea(const std::string& placeholder = "", const std::string& cls = "") {
-        return root()->textarea(placeholder, cls);
-    }
-
-    Panel* ul(const std::string& cls = "", size_t reserve = 0) {
-        return root()->ul(cls, reserve);
-    }
-
-    Panel* ol(const std::string& cls = "", size_t reserve = 0) {
-        return root()->ol(cls, reserve);
-    }
-
-    Panel* li(const std::string& cls = "", size_t reserve = 0) {
-        return root()->li(cls, reserve);
-    }
-
-    Panel* section(const std::string& cls = "", size_t reserve = 0) {
-        return root()->section(cls, reserve);
-    }
-
-    Canvas* canvas(const std::string& cls = "") {
-        return root()->canvas(cls);
-    }
-
-    int run(std::function<void(QuickApp&)> buildCallback = nullptr) {
-        if (buildCallback) {
-            buildCallback(*this);
-        }
-        app_.run();
-        app_.shutdown();
-        return 0;
-    }
-
-private:
-    Application app_;
-};
+// QuickApp has been removed. Use fluxui::App from <fluxui/dsl.h> instead.
 
 }
 

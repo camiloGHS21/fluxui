@@ -39,6 +39,7 @@
 #include <functional>
 #include <initializer_list>
 #include <algorithm>
+#include <unordered_map>
 
 namespace fluxui {
 
@@ -279,11 +280,90 @@ inline Element A(const std::string& content, const std::string& href = "") {
 }
 inline Element Img(const std::string& src)   { return detail::leaf("img", src); }
 inline Element Video(const std::string& src) { Element e("video"); e.content = src; return e; }
-inline Element Checkbox()                    { return Element("checkbox"); }
-inline Element Radio()                       { return Element("radio"); }
 inline Element Canvas()                      { return Element("canvas"); }
 inline Element Hr()                          { return Element("hr"); }
 inline Element Br()                          { return Element("br"); }
+
+// Icon glyph (configured on mount; routes to the Icon widget).
+inline Element Icon(const std::string& glyph) {
+    Element e("icon");
+    e.onMount<FluxUI::Icon>([glyph](FluxUI::Icon* i) { i->glyph = glyph; });
+    return e;
+}
+
+// Animated progress bar with a value in [0,1] and optional accent color.
+inline Element ProgressBar(float value, const std::string& colorHex = "") {
+    Element e("progress-bar");
+    e.onMount<FluxUI::ProgressBar>([value, colorHex](FluxUI::ProgressBar* p) {
+        p->progress = value;
+        if (!colorHex.empty()) p->barColor = FluxUI::Color::fromHex(colorHex);
+    });
+    return e;
+}
+
+// Statistic card (title / value / subtitle / accent), a common dashboard widget.
+inline Element StatCard(const std::string& title, const std::string& value,
+                        const std::string& subtitle = "", const std::string& accentHex = "#6C5CE7") {
+    Element e("stat-card");
+    e.onMount<FluxUI::StatCard>([=](FluxUI::StatCard* s) {
+        s->title = title;
+        s->value = value;
+        s->subtitle = subtitle;
+        s->accentColor = FluxUI::Color::fromHex(accentHex);
+    });
+    return e;
+}
+
+
+// Checkbox / Radio with an initial checked state via post-mount hook.
+inline Element Checkbox(bool checked = false) {
+    Element e("checkbox");
+    if (checked) e.onMount<FluxUI::Checkbox>([](FluxUI::Checkbox* c) { c->setChecked(true); });
+    return e;
+}
+inline Element Radio(bool checked = false, const std::string& group = "") {
+    Element e("radio");
+    e.onMount<FluxUI::Radio>([checked, group](FluxUI::Radio* r) {
+        if (!group.empty()) r->group = group;
+        if (checked) r->setChecked(true);
+    });
+    return e;
+}
+
+// Range slider (min/max/step/value) configured on mount.
+inline Element Range(float value = 0.5f, float min = 0.0f, float max = 1.0f, float step = 0.01f) {
+    Element e("range");
+    e.onMount<FluxUI::RangeInput>([=](FluxUI::RangeInput* r) {
+        r->min = min; r->max = max; r->step = step; r->setValue(value, false);
+    });
+    return e;
+}
+
+// Typed <input> (text/email/password/search/number/...).
+inline Element Input(const std::string& type, const std::string& placeholder) {
+    Element e("input");
+    e.content = placeholder;
+    e.onMount<FluxUI::TextInput>([type](FluxUI::TextInput* in) { in->setInputType(type); });
+    return e;
+}
+
+// Meter and Progress with their value range.
+inline Element Meter(float value, float min = 0.0f, float max = 1.0f) {
+    Element e("meter");
+    e.onMount<FluxUI::Meter>([=](FluxUI::Meter* m) { m->min = min; m->max = max; m->value = value; });
+    return e;
+}
+inline Element Progress(float value = -1.0f, float max = 1.0f) {
+    Element e("progress");
+    e.onMount<FluxUI::Progress>([=](FluxUI::Progress* p) { p->max = max; p->value = value; });
+    return e;
+}
+
+// Disclosure widgets.
+inline Element Details(std::initializer_list<Element> kids = {}) { return detail::container("details", kids); }
+inline Element Summary(const std::string& content) { return detail::leaf("summary", content); }
+inline Element Dialog(std::initializer_list<Element> kids = {}) { return detail::container("dialog", kids); }
+
 inline Element Select(std::initializer_list<Element> options = {}) { return detail::container("select", options); }
 inline Element Option(const std::string& label) { return detail::leaf("option", label); }
 
@@ -301,10 +381,22 @@ inline Element El(const std::string& tag, const std::string& content) {
 
 // ============================================================
 //  App — owns a FluxUI::Application and drives the reactive loop
+//
+//  Supports declarative routing: register views as functions that return an
+//  Element, navigate between them with navigate(). The layout is:
+//
+//      Shell (permanent: sidebar/header/footer) + Content (swapped per route)
+//
+//  Use setLayout() for the shell, and addRoute()/navigate() for views.
+//  Or use setRoot() for a simple single-page app without routing.
 // ============================================================
 class App {
     FluxUI::Application app_;
     bool windowReady_ = false;
+    std::string currentRoute_;
+    std::unordered_map<std::string, std::function<Element()>> routes_;
+    std::function<Element(const Element& content)> layout_;  // shell wrapping content
+    FluxUI::Widget* contentSlot_ = nullptr;   // widget where the view gets mounted
 
     void ensureWindow(int width, int height, const std::string& title) {
         if (windowReady_) return;
@@ -318,6 +410,17 @@ class App {
         }
     }
 
+    void mountRoute() {
+        if (!contentSlot_) return;
+        contentSlot_->clearChildren();
+        auto it = routes_.find(currentRoute_);
+        if (it != routes_.end()) {
+            Element view = it->second();
+            view.mount(contentSlot_);
+        }
+        app_.requestRedraw();
+    }
+
 public:
     App(const App&) = delete;
     App& operator=(const App&) = delete;
@@ -329,20 +432,77 @@ public:
     void addCSS(const std::string& css)   { app_.addStylesheet(css); }
     void loadStyle(const std::string& path) { loadCSS(path); }
 
+    // --- Simple single-page mode (no routing) ---
     void setRoot(const Element& root) {
         auto rootWidget = app_.root();
         rootWidget->clearChildren();
         root.mount(rootWidget);
     }
 
+    // --- Multi-view routing mode ---
+
+    // Register a named route (e.g. "/dashboard") with a view builder function.
+    void addRoute(const std::string& path, std::function<Element()> builder) {
+        routes_[path] = std::move(builder);
+    }
+
+    // Set the app shell layout. It receives the view content as an argument.
+    // The shell should contain a Div({}).id("__content__") where the view mounts.
+    // Alternatively, use setLayout with a slot callback.
+    void setLayout(std::function<Element(const Element& content)> layout) {
+        layout_ = std::move(layout);
+    }
+
+    // Navigate to a registered route; re-mounts the view in the content slot.
+    void navigate(const std::string& path) {
+        currentRoute_ = path;
+        mountRoute();
+    }
+
+    const std::string& route() const { return currentRoute_; }
+
+    // Build the shell + initial route. Call after addRoute/setLayout.
+    void build(const std::string& initialRoute = "") {
+        auto rootWidget = app_.root();
+        rootWidget->clearChildren();
+
+        if (!initialRoute.empty()) currentRoute_ = initialRoute;
+
+        if (layout_) {
+            // Build the content element for the initial route.
+            Element content;
+            auto it = routes_.find(currentRoute_);
+            if (it != routes_.end()) content = it->second();
+
+            Element shell = layout_(content);
+            shell.mount(rootWidget);
+
+            // Find the content slot: the widget with id "__content__"
+            std::function<FluxUI::Widget*(FluxUI::Widget*)> findSlot;
+            findSlot = [&](FluxUI::Widget* w) -> FluxUI::Widget* {
+                if (w->id == "__content__") return w;
+                for (auto& child : w->children) {
+                    if (auto* found = findSlot(child.get())) return found;
+                }
+                return nullptr;
+            };
+            contentSlot_ = findSlot(rootWidget);
+        } else if (!routes_.empty()) {
+            // No layout, just mount the route directly into root.
+            contentSlot_ = rootWidget;
+            mountRoute();
+        }
+    }
+
     int run() {
-        app_.onUpdate = [](float /*dt*/) {
+        app_.onUpdate = [this](float /*dt*/) {
             detail::pumpReactiveBindings();
         };
         app_.run();
         return 0;
     }
 
+    void stop() { app_.running = false; }
     FluxUI::Application& raw() { return app_; }
 };
 

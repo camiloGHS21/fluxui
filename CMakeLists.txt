@@ -351,7 +351,7 @@ function(configure_fluxui_target target_name)
 endfunction()
 
 configure_fluxui_target(fluxui)
-target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC)
+target_compile_definitions(fluxui PUBLIC FLUXUI_STATIC FLUXUI_INTERNAL)
 enable_release_lto(fluxui)
 
 option(FLUXUI_BUILD_SHARED "Build FluxUI shared library for C/Rust/Zig/Java FFI" ON)
@@ -361,7 +361,7 @@ if(FLUXUI_BUILD_SHARED)
         ${FLUXUI_SOURCES}
     )
     configure_fluxui_target(fluxui_shared)
-    target_compile_definitions(fluxui_shared PRIVATE FLUXUI_SHARED FLUXUI_BUILDING_DLL)
+    target_compile_definitions(fluxui_shared PRIVATE FLUXUI_SHARED FLUXUI_BUILDING_DLL FLUXUI_INTERNAL)
     enable_release_lto(fluxui_shared)
 
     if(FLUXUI_BUILD_JAVA)
@@ -400,6 +400,7 @@ target_link_libraries(dataleakguard PRIVATE
 
 target_include_directories(dataleakguard PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
+    "${CMAKE_SOURCE_DIR}/examples/dataleakguard"
 )
 if(DATALEAKGUARD_PREBAKE_UI_FONTS)
     add_dependencies(dataleakguard dataleakguard_prebaked_fonts)

@@ -8,9 +8,7 @@ typedef int (*fluxui_app_init_t)(void*, const char*, int, int);
 typedef void (*fluxui_app_run_t)(void*);
 typedef void (*fluxui_app_stop_t)(void*);
 typedef void* (*fluxui_app_root_t)(void*);
-typedef void* (*fluxui_widget_add_panel_t)(void*, const char*);
-typedef void* (*fluxui_widget_add_button_t)(void*, const char*, const char*);
-typedef void* (*fluxui_widget_add_text_t)(void*, const char*, const char*);
+typedef void* (*fluxui_widget_add_element_t)(void*, const char*, const char*, const char*);
 typedef void (*fluxui_style_width_px_t)(void*, float);
 typedef void (*fluxui_style_height_px_t)(void*, float);
 typedef int (*fluxui_app_set_backend_t)(void*, int);
@@ -45,9 +43,7 @@ int main() {
     auto run = (fluxui_app_run_t)GetProcAddress(hDll, "fluxui_app_run");
     auto set_backend = (fluxui_app_set_backend_t)GetProcAddress(hDll, "fluxui_app_set_backend");
     auto root_fn = (fluxui_app_root_t)GetProcAddress(hDll, "fluxui_app_root");
-    auto add_panel = (fluxui_widget_add_panel_t)GetProcAddress(hDll, "fluxui_widget_add_panel");
-    auto add_button = (fluxui_widget_add_button_t)GetProcAddress(hDll, "fluxui_widget_add_button");
-    auto add_text = (fluxui_widget_add_text_t)GetProcAddress(hDll, "fluxui_widget_add_text");
+    auto add_element = (fluxui_widget_add_element_t)GetProcAddress(hDll, "fluxui_widget_add_element");
     auto width_px = (fluxui_style_width_px_t)GetProcAddress(hDll, "fluxui_style_width_px");
     auto height_px = (fluxui_style_height_px_t)GetProcAddress(hDll, "fluxui_style_height_px");
 
@@ -75,11 +71,12 @@ int main() {
     std::cout << "Adding widgets..." << std::endl;
     void* root = root_fn(app);
     if (root) {
-        void* panel = add_panel(root, "container");
-        if (panel) {
-            width_px(panel, 600);
-            height_px(panel, 400);
-            add_text(panel, "Hello from Dynamic C++!", "");
+        // Use HTML element names via the C ABI add_element factory.
+        void* container = add_element(root, "div", "", "container");
+        if (container) {
+            width_px(container, 600);
+            height_px(container, 400);
+            add_element(container, "h1", "Hello from Dynamic C++!", "");
         }
     }
 
