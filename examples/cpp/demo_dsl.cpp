@@ -1,4 +1,4 @@
-// FluxUI Declarative DSL Demo — modern HTML/Blink-named functional API.
+// FluxUI Declarative DSL Demo — modern HTML/Blink-named API with reactive State.
 #include <fluxui/dsl.h>
 using namespace fluxui;
 
@@ -17,7 +17,8 @@ int main() {
         .primary:hover { background-color: #2563eb; }
     )");
 
-    auto devices = State<int>(128);
+    // State lives right here — no separate file needed.
+    static auto devices = State<int>(128);
 
     app.setRoot(
         Div({
@@ -33,7 +34,7 @@ int main() {
                 Div({
                     Div({
                         Span("Equipos activos"),
-                        Text([&] { return std::to_string(devices.get()); })
+                        Text([&]{ return std::to_string(devices.get()); })  // reactive
                     }).className("metric-card"),
                     Div({
                         Span("Alertas"),
@@ -42,9 +43,7 @@ int main() {
                 }).className("metrics"),
                 Button("Escanear ahora")
                     .className("primary")
-                    .onClick([&] {
-                        devices.set(devices.get() + 1);
-                    })
+                    .onClick([&]{ ++devices; })  // ← new shorthand!
             }).className("content")
         }).className("app")
     );
