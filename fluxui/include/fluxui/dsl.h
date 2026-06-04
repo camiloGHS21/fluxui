@@ -40,6 +40,7 @@
 #include <initializer_list>
 #include <algorithm>
 #include <unordered_map>
+#include <type_traits>
 
 namespace fluxui {
 
@@ -102,6 +103,19 @@ inline bool pumpReactiveBindings() {
 
 // ============================================================
 //  State<T> — lightweight reactive primitive
+//
+//  Similar to React's useState. Holds a value; calling set() triggers
+//  re-render of any reactive Text bound to it. Use it like:
+//
+//      auto count = State<int>(0);
+//      Text([&]{ return std::to_string(count.get()); })   // auto-updates
+//      Button("+1").onClick([&]{ count.set(count.get() + 1); })
+//
+//  Shorthand for common patterns:
+//      count++;          // operator++ for numeric types
+//      count += 5;       // operator+= for numeric types
+//      count = 42;       // operator= calls set()
+//
 // ============================================================
 template <typename T>
 class State {
@@ -117,6 +131,41 @@ public:
     }
     void onChange(std::function<void()> fn) { listeners_.push_back(std::move(fn)); }
     operator const T&() const { return value_; }
+
+    // Shorthand operators for numeric/common types.
+    State& operator=(const T& v) { set(v); return *this; }
+    template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+    State& operator++() { set(value_ + 1); return *this; }
+    template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+    State& operator+=(const T& v) { set(value_ + v); return *this; }
+    template <typename U = T, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+    State& operator-=(const T& v) { set(value_ - v); return *this; }
+
+    // Toggle helper for bool states.
+    template <typename U = T, typename = std::enable_if_t<std::is_same_v<U, bool>>>
+    void toggle() { set(!value_); }
+};
+
+// ============================================================
+//  Ref<T> — capture a native widget pointer after mount (like React's useRef)
+//
+//      auto myBtn = Ref<FluxUI::Button>();
+//      Button("Go").onMount(myBtn)          // captures the widget
+//      // later: myBtn->label = "Done";
+//
+// ============================================================
+template <typename T = FluxUI::Widget>
+class Ref {
+    T* ptr_ = nullptr;
+public:
+    Ref() = default;
+    T* get() const { return ptr_; }
+    T* operator->() const { return ptr_; }
+    T& operator*() const { return *ptr_; }
+    explicit operator bool() const { return ptr_ != nullptr; }
+
+    // Use as an onMount handler: Button("X").onMount(myRef)
+    void operator()(FluxUI::Widget* w) { ptr_ = static_cast<T*>(w); }
 };
 
 // ============================================================

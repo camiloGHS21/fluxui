@@ -389,8 +389,17 @@ endif()
 # ============================================================
 #  DataLeak Guard Showcase Example
 # ============================================================
+include(cmake/AutoRoutes.cmake)
+
 add_executable(dataleakguard
     examples/dataleakguard/main.cpp
+)
+
+fluxui_auto_routes(
+    TARGET      dataleakguard
+    VIEWS_DIR   "${CMAKE_SOURCE_DIR}/examples/dataleakguard/views"
+    OUTPUT      "${CMAKE_BINARY_DIR}/generated/dlg_routes_gen.h"
+    NAMESPACE   dlg
 )
 
 target_link_libraries(dataleakguard PRIVATE

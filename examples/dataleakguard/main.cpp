@@ -1,36 +1,25 @@
 // DataLeak Guard — Enterprise DLP Console
-// Built with FluxUI declarative DSL (modern HTML/Blink-named API).
-// Multi-view architecture: each view is a separate header file.
+// Built with FluxUI declarative DSL.
+//
+// File-based routing (like Next.js): views are auto-registered from the
+// views/ folder. Just add a new .h file there and CMake picks it up on
+// reconfigure — no manual addRoute() calls needed.
 #include <fluxui/dsl.h>
 #include "embedded_font_atlas.h"
 #include "embedded_theme.h"
 
 #include "state.h"
 #include "layout.h"
-#include "views/dashboard.h"
-#include "views/scanner.h"
-#include "views/alerts.h"
-#include "views/rules.h"
-#include "views/reports.h"
-#include "views/settings.h"
-#include "views/blink.h"
+#include "dlg_routes_gen.h"   // ← auto-generated from views/*.h by CMake
 
 using namespace fluxui;
 
 int main() {
     App app(1400, 900, "DataLeak Guard - Enterprise DLP");
-
-    // Load embedded theme CSS (generated at build time from assets/styles/theme.css).
     app.addCSS(dataleakguardEmbeddedThemeCss());
 
-    // Register views — each is a pure function returning an Element tree.
-    app.addRoute("/dashboard", dlg::DashboardView);
-    app.addRoute("/scanner",   dlg::ScannerView);
-    app.addRoute("/alerts",    dlg::AlertsView);
-    app.addRoute("/rules",     dlg::RulesView);
-    app.addRoute("/reports",   dlg::ReportsView);
-    app.addRoute("/settings",  dlg::SettingsView);
-    app.addRoute("/blink",     dlg::BlinkView);
+    // Auto-register all views from the views/ folder (file-based routing).
+    dlg::generated::registerRoutes(app);
 
     // Shell layout wraps a persistent sidebar + content slot.
     app.setLayout([&](const Element& content) {
