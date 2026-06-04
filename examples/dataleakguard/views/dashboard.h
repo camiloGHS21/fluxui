@@ -1,6 +1,7 @@
 // DataLeak Guard — Dashboard view (state lives here, not in a separate file)
 #pragma once
 #include "../components.h"
+#include "scanner.h"   // for scannerRunning()/scanProgress() shared state
 
 namespace dlg {
 
@@ -26,7 +27,12 @@ inline Element DashboardView() {
                 }).className("hero-pills")
             }).className("hero-copy"),
             Div({
-                Button("Run Full Scan").className("btn btn-primary"),
+                Button("Run Full Scan").className("btn btn-primary")
+                    .onClick([]{
+                        scanProgress().set(0.06f);
+                        scannerRunning().set(true);
+                        App::current().navigate("/scanner");
+                    }),
                 Button(blockMode.get() ? "Monitor Mode" : "Block Mode")
                     .className("btn btn-danger")
                     .onClick([&]{ blockMode.toggle(); })
@@ -66,9 +72,7 @@ inline Element DashboardView() {
             ActivityRow("id",   "Employee IDs found in shared Sales folder", "1 hour ago", "warning"),
             ActivityRow("check","Weekly compliance scan completed at 94%", "3 hours ago", "ok"),
             ActivityRow("rules","Rule pack updated: Financial identifiers", "5 hours ago", "info")
-        }).className("activity-panel"),
-
-        StatusBar()
+        }).className("activity-panel")
     }).className("main-scroll");
 }
 

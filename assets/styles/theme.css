@@ -240,6 +240,7 @@ input:focus {
     flex-direction: column;
     padding: 0;
     overflow: hidden;
+    align-items: stretch;
 }
 
 .top-bar {
@@ -299,11 +300,13 @@ input:focus {
 
 .main-scroll {
     flex-grow: 1;
-    padding: 24px 44px 34px 38px;
+    width: 100%;
+    padding: 24px 38px 34px 38px;
     display: flex;
     flex-direction: column;
     gap: 24px;
-    overflow: scroll;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .status-bar {

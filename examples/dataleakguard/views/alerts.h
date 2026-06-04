@@ -36,9 +36,7 @@ inline Element AlertsView() {
             ActivityRow("clock",  "SOC assigned incident DLG-4701 to Dana R.", "now", "info"),
             ActivityRow("block",  "Endpoint copy operation killed by kernel monitor", "2 min ago", "danger"),
             ActivityRow("report", "Evidence bundle sealed for DLG-4698", "16 min ago", "ok")
-        }).className("activity-panel"),
-
-        StatusBar()
+        }).className("activity-panel")
     }).className("main-scroll");
 }
 

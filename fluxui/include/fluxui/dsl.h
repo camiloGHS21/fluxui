@@ -153,19 +153,21 @@ public:
 //      Button("Go").onMount(myBtn)          // captures the widget
 //      // later: myBtn->label = "Done";
 //
+//  Uses a shared slot so copies (e.g. when stored in a std::function) all
+//  point to the same captured widget.
 // ============================================================
 template <typename T = FluxUI::Widget>
 class Ref {
-    T* ptr_ = nullptr;
+    std::shared_ptr<T*> slot_ = std::make_shared<T*>(nullptr);
 public:
     Ref() = default;
-    T* get() const { return ptr_; }
-    T* operator->() const { return ptr_; }
-    T& operator*() const { return *ptr_; }
-    explicit operator bool() const { return ptr_ != nullptr; }
+    T* get() const { return *slot_; }
+    T* operator->() const { return *slot_; }
+    T& operator*() const { return **slot_; }
+    explicit operator bool() const { return *slot_ != nullptr; }
 
     // Use as an onMount handler: Button("X").onMount(myRef)
-    void operator()(FluxUI::Widget* w) { ptr_ = static_cast<T*>(w); }
+    void operator()(FluxUI::Widget* w) { *slot_ = static_cast<T*>(w); }
 };
 
 // ============================================================
@@ -226,6 +228,34 @@ public:
                 auto sp = std::static_pointer_cast<FluxUI::Text>(parent->children.back());
                 detail::registerReactiveText(sp, textFn_, initial);
             }
+        } else if (tag == "stat-card") {
+            // Special: create a StatCard directly (not in element() factory).
+            std::string val, sub, accent = "#6C5CE7";
+            for (const auto& a : attrs_) {
+                if (a.first == "__value") val = a.second;
+                else if (a.first == "__subtitle") sub = a.second;
+                else if (a.first == "__accent") accent = a.second;
+            }
+            auto sc = std::make_shared<FluxUI::StatCard>(content, val, sub, FluxUI::Color::fromHex(accent));
+            sc->parent = parent;
+            if (!className_.empty()) sc->className = className_;
+            parent->children.push_back(sc);
+            w = sc.get();
+        } else if (tag == "progress-bar") {
+            // Special: create a ProgressBar directly.
+            float val = 0.0f;
+            std::string colorHex;
+            try { val = std::stof(content); } catch (...) {}
+            for (const auto& a : attrs_) {
+                if (a.first == "__color") colorHex = a.second;
+            }
+            auto pb = std::make_shared<FluxUI::ProgressBar>();
+            pb->progress = val;
+            if (!colorHex.empty()) pb->barColor = FluxUI::Color::fromHex(colorHex);
+            pb->parent = parent;
+            if (!className_.empty()) pb->className = className_;
+            parent->children.push_back(pb);
+            w = pb.get();
         } else {
             w = parent->element(tag, content, className_);
         }
@@ -241,6 +271,7 @@ public:
             w->inlineProperties.push_back(p);
         }
         for (const auto& a : attrs_) {
+            if (a.first.empty() || a.first[0] == '_') continue; // skip internal attrs
             w->setAttribute(a.first, a.second);
         }
         if (onMount_) onMount_(w);
@@ -343,10 +374,8 @@ inline Element Icon(const std::string& glyph) {
 // Animated progress bar with a value in [0,1] and optional accent color.
 inline Element ProgressBar(float value, const std::string& colorHex = "") {
     Element e("progress-bar");
-    e.onMount<FluxUI::ProgressBar>([value, colorHex](FluxUI::ProgressBar* p) {
-        p->progress = value;
-        if (!colorHex.empty()) p->barColor = FluxUI::Color::fromHex(colorHex);
-    });
+    e.content = std::to_string(value);
+    if (!colorHex.empty()) e.attr("__color", colorHex);
     return e;
 }
 
@@ -354,12 +383,10 @@ inline Element ProgressBar(float value, const std::string& colorHex = "") {
 inline Element StatCard(const std::string& title, const std::string& value,
                         const std::string& subtitle = "", const std::string& accentHex = "#6C5CE7") {
     Element e("stat-card");
-    e.onMount<FluxUI::StatCard>([=](FluxUI::StatCard* s) {
-        s->title = title;
-        s->value = value;
-        s->subtitle = subtitle;
-        s->accentColor = FluxUI::Color::fromHex(accentHex);
-    });
+    e.content = title;
+    e.attr("__value", value);
+    e.attr("__subtitle", subtitle);
+    e.attr("__accent", accentHex);
     return e;
 }
 
@@ -444,8 +471,10 @@ class App {
     bool windowReady_ = false;
     std::string currentRoute_;
     std::unordered_map<std::string, std::function<Element()>> routes_;
-    std::function<Element(const Element& content)> layout_;  // shell wrapping content
-    FluxUI::Widget* contentSlot_ = nullptr;   // widget where the view gets mounted
+    std::function<Element(const Element& content)> layout_;
+    FluxUI::Widget* contentSlot_ = nullptr;
+    static inline App* s_instance = nullptr;
+    std::function<void(float)> onTick_;
 
     void ensureWindow(int width, int height, const std::string& title) {
         if (windowReady_) return;
@@ -474,8 +503,11 @@ public:
     App(const App&) = delete;
     App& operator=(const App&) = delete;
 
-    App() { ensureWindow(1200, 800, "FluxUI App"); }
-    App(int width, int height, const std::string& title) { ensureWindow(width, height, title); }
+    App() { ensureWindow(1200, 800, "FluxUI App"); s_instance = this; }
+    App(int width, int height, const std::string& title) { ensureWindow(width, height, title); s_instance = this; }
+
+    // Global access to the current app (there's only one per process).
+    static App& current() { return *s_instance; }
 
     void loadCSS(const std::string& path) { app_.loadStylesheet(path); }
     void addCSS(const std::string& css)   { app_.addStylesheet(css); }
@@ -502,10 +534,14 @@ public:
         layout_ = std::move(layout);
     }
 
-    // Navigate to a registered route; re-mounts the view in the content slot.
+    // Navigate to a registered route; rebuilds the shell so nav highlights update.
     void navigate(const std::string& path) {
         currentRoute_ = path;
-        mountRoute();
+        if (layout_) {
+            build(path);  // full rebuild so sidebar nav highlights refresh
+        } else {
+            mountRoute();
+        }
     }
 
     const std::string& route() const { return currentRoute_; }
@@ -515,6 +551,21 @@ public:
     void build(const std::string& initialRoute = "") {
         auto rootWidget = app_.root();
         rootWidget->clearChildren();
+
+        // The shell layout owns the flex-row split (sidebar + content). The root
+        // must not scroll — its content area handles its own scrolling — and must
+        // not clip, so child scrollbars reach the window edge (browser-like).
+        auto& rootStyle = rootWidget->style;
+        rootStyle.overflowY = FluxUI::Overflow::Visible;
+        rootStyle.overflowX = FluxUI::Overflow::Visible;
+        rootStyle.display = FluxUI::Display::Flex;
+        rootStyle.flexDirection = FluxUI::FlexDirection::Row;
+        // init() force-sets computedStyle directly; override it too.
+        auto& rootComputed = rootWidget->computedStyle.ensureMutable();
+        rootComputed.overflowY = FluxUI::Overflow::Visible;
+        rootComputed.overflowX = FluxUI::Overflow::Visible;
+        rootComputed.display = FluxUI::Display::Flex;
+        rootComputed.flexDirection = FluxUI::FlexDirection::Row;
 
         if (!initialRoute.empty()) {
             currentRoute_ = initialRoute;
@@ -529,7 +580,15 @@ public:
             if (it != routes_.end()) content = it->second();
 
             Element shell = layout_(content);
-            shell.mount(rootWidget);
+            // Mount the shell's children directly onto root (root already has
+            // the .root class with display:flex from the theme CSS).
+            for (const auto& child : shell.children_) {
+                child.mount(rootWidget);
+            }
+            // If shell has no children, mount it as-is (single-element layout).
+            if (shell.children_.empty()) {
+                shell.mount(rootWidget);
+            }
 
             // Find the content slot: the widget with id "__content__"
             std::function<FluxUI::Widget*(FluxUI::Widget*)> findSlot;
@@ -551,12 +610,16 @@ public:
     int run() {
         // If build() was never called, do it now (convenience for simple apps).
         if (!contentSlot_ && !routes_.empty()) build();
-        app_.onUpdate = [this](float /*dt*/) {
+        app_.onUpdate = [this](float dt) {
             detail::pumpReactiveBindings();
+            if (onTick_) onTick_(dt);
         };
         app_.run();
         return 0;
     }
+
+    // Register a per-frame callback for animations/timers (receives delta seconds).
+    void onTick(std::function<void(float)> fn) { onTick_ = std::move(fn); }
 
     void stop() { app_.running = false; }
     FluxUI::Application& raw() { return app_; }

@@ -3244,15 +3244,24 @@ bool Widget::getScrollBarRects(Rect& track, Rect& thumb) const {
         thumb = {};
         return false;
     }
-    float trackW = 14.0f;
-    float inset = 2.0f;
-    float trackH = std::max(24.0f, bounds.h - inset * 2.0f);
+    // Browser-style scrollbar: flush to the right edge of the padding/border box.
+    // The layout stores bounds as the content box, so extend by padding to reach
+    // the true outer edge (where a browser paints the scrollbar).
+    float padRight = computedStyle->padding.right;
+    float padTop = computedStyle->padding.top;
+    float padBottom = computedStyle->padding.bottom;
+    float boxRight = bounds.x + bounds.w + padRight;
+    float boxTop = bounds.y - padTop;
+    float boxH = bounds.h + padTop + padBottom;
+    float trackW = 12.0f;
+    float trackH = boxH;
     float visibleRatio = bounds.h / std::max(contentHeight, bounds.h);
     float thumbH = std::clamp(trackH * visibleRatio, 32.0f, trackH);
     float thumbTravel = std::max(0.0f, trackH - thumbH);
-    float thumbY = bounds.y + inset + thumbTravel * (scrollY / maxScroll);
-    track = {bounds.x + bounds.w - trackW, bounds.y + inset, trackW, trackH};
-    thumb = {bounds.x + bounds.w - 12.0f, thumbY, 10.0f, thumbH};
+    float thumbY = boxTop + thumbTravel * (scrollY / maxScroll);
+    float thumbInset = 2.0f;
+    track = {boxRight - trackW, boxTop, trackW, trackH};
+    thumb = {boxRight - trackW + thumbInset, thumbY, trackW - thumbInset * 2.0f, thumbH};
     return true;
 }
 void Widget::clampScroll() {

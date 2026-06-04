@@ -39,8 +39,7 @@ inline Element ReportsView() {
             TableRow("table-row","May DLP Executive Summary","Enterprise","CISO","Ready"),
             TableRow("table-row","PCI Evidence Packet","Finance","Audit","Review"),
             TableRow("table-row","Endpoint Exception Register","Workstations","IT Ops","Scheduled")
-        }).className("data-table"),
-        StatusBar()
+        }).className("data-table")
     }).className("main-scroll");
 }
 

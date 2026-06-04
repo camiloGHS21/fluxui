@@ -18,10 +18,11 @@ int main() {
     // File-based routing: all views from views/ registered automatically.
     dlg::generated::registerRoutes(app);
 
-    // Shell layout (sidebar + content slot). No route specified — starts at first.
+    // Shell layout (sidebar + content slot). Starts at /dashboard.
     app.setLayout([&](const Element& content) {
         return dlg::ShellLayout(app, content);
     });
+    app.build("/dashboard");
 
     return app.run();
 }

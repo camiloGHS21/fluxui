@@ -52,11 +52,11 @@ function(fluxui_auto_routes)
     endforeach()
 
     # Write the generated header.
-    # The first route alphabetically or "index" becomes the default.
+    # The first route alphabetically or "dashboard"/"index" becomes the default.
     set(DEFAULT_ROUTE "")
     foreach(VIEW_FILE ${VIEW_FILES})
         get_filename_component(VNAME "${VIEW_FILE}" NAME_WE)
-        if(VNAME STREQUAL "index")
+        if(VNAME STREQUAL "index" OR VNAME STREQUAL "dashboard")
             string(REPLACE "_" "-" ROUTE_PATH "${VNAME}")
             set(DEFAULT_ROUTE "/${ROUTE_PATH}")
             break()

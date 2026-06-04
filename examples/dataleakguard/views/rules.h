@@ -54,8 +54,7 @@ inline Element RulesView() {
                 MetricStrip("Health records","Needs review","warning",0.72f),
                 MetricStrip("Source secrets","Current","info",0.88f)
             }).className("panel-card panel-side")
-        }).className("dashboard-grid"),
-        StatusBar()
+        }).className("dashboard-grid")
     }).className("main-scroll");
 }
 

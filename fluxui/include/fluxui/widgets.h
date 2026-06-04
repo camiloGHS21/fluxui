@@ -1262,6 +1262,8 @@ inline Widget* Widget::element(const std::string& tag,
     if (lower == "br" || lower == "wbr") return br(cls);
     if (lower == "checkbox") return checkbox(false, cls);
     if (lower == "radio") return radio(false, "", cls);
+    if (lower == "range") return range(0.5f, 0.0f, 1.0f, 0.01f, cls);
+    if (lower == "icon") return addIcon(content, cls);
     if (lower == "svg") return svg(cls);
     if (lower == "g") return svgG(cls);
     if (lower == "path") return svgPath("", cls);

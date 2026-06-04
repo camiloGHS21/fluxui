@@ -1,18 +1,11 @@
-// DataLeak Guard — App shell layout (sidebar + content slot)
+// DataLeak Guard — App shell layout (sidebar + status bar + content slot)
 #pragma once
 #include "components.h"
 
 namespace dlg {
 
-// Navigation item that triggers route change on the App.
-inline Element NavItem(const std::string& label, const std::string& icon,
-                       const std::string& route, App& app) {
-    return Button(label)
-        .className(app.route() == route ? "nav-item active" : "nav-item")
-        .onClick([&app, route]{ app.navigate(route); });
-}
-
-// The persistent shell wrapping all views.
+// The persistent shell: sidebar (left) + content area (center) + status bar (bottom).
+// The content slot has id "__content__" where views are swapped.
 inline Element ShellLayout(App& app, const Element& content) {
     static auto blockMode = State<bool>(true);
 
@@ -20,24 +13,31 @@ inline Element ShellLayout(App& app, const Element& content) {
         // Sidebar
         Nav({
             Div({
-                Div({
-                    Icon("shield").className("logo-icon")
-                }).className("logo-mark"),
+                Div({ Icon("shield").className("logo-icon") }).className("logo-mark"),
                 Div({
                     Span("DataLeak Guard").className("sidebar-logo"),
                     Span("Enterprise DLP Console").className("sidebar-subtitle")
                 }).className("logo-copy")
-            }).className("logo-row"),
+            }).className("logo-row sidebar-header"),
 
-            Span("WORKSPACE").className("nav-label"),
-            NavItem("Dashboard", "dashboard", "/dashboard", app),
-            NavItem("Scanner",   "scanner",   "/scanner",   app),
-            NavItem("Alerts",    "alert",     "/alerts",    app),
-            NavItem("Rules",     "rules",     "/rules",     app),
-            NavItem("Reports",   "report",    "/reports",   app),
-            NavItem("Settings",  "settings",  "/settings",  app),
-            NavItem("Blink UI",  "rules",     "/blink",     app),
+            // Nav section wraps the workspace label + nav items (gives horizontal padding).
+            Div({
+                Span("WORKSPACE").className("nav-label"),
+                Button("Dashboard").className(app.route() == "/dashboard" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/dashboard"); }),
+                Button("Scanner").className(app.route() == "/scanner" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/scanner"); }),
+                Button("Alerts").className(app.route() == "/alerts" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/alerts"); }),
+                Button("Rules").className(app.route() == "/rules" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/rules"); }),
+                Button("Reports").className(app.route() == "/reports" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/reports"); }),
+                Button("Settings").className(app.route() == "/settings" ? "nav-item active" : "nav-item")
+                    .onClick([&app]{ app.navigate("/settings"); })
+            }).className("nav-section"),
 
+            // Posture card (pushed to bottom via nav-section flex-grow)
             Div({
                 Span("POSTURE").className("nav-label"),
                 Text([]{
@@ -50,9 +50,12 @@ inline Element ShellLayout(App& app, const Element& content) {
             }).className("posture-card")
         }).className("sidebar"),
 
-        // Content area — views get mounted here.
-        Div({ content }).className("content").id("__content__")
-    }).className("app-shell");
+        // Main content column: scrollable content + fixed status bar.
+        Div({
+            Div({ content }).className("main-scroll").id("__content__"),
+            StatusBar()
+        }).className("content")
+    });
 }
 
 } // namespace dlg

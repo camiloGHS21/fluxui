@@ -51,9 +51,15 @@ inline Element ToggleRow(const std::string& title, const std::string& desc,
             Span(title).className("toggle-title"),
             Span(desc).className("toggle-desc")
         }).className("toggle-copy"),
+        // Toggle switch: a button that contains the knob.
         Button("")
             .className(value.get() ? "toggle toggle-on" : "toggle toggle-off")
             .onMount([&value](FluxUI::Widget* w) {
+                // Add the knob as a child of the button widget.
+                auto knob = std::make_shared<FluxUI::Panel>();
+                knob->className = "toggle-knob";
+                knob->parent = w;
+                w->children.push_back(knob);
                 w->onClick = [&value, w]() {
                     value.toggle();
                     w->className = value.get() ? "toggle toggle-on" : "toggle toggle-off";

@@ -33,8 +33,7 @@ inline Element SettingsView() {
             TableRow("table-row","Evidence retention","365 days","All incidents","Legal"),
             TableRow("table-row","Low-risk telemetry","30 days","Endpoints","IT Ops"),
             TableRow("table-row","PII masking","Enabled","Reports","Compliance")
-        }).className("data-table"),
-        StatusBar()
+        }).className("data-table")
     }).className("main-scroll");
 }
 
