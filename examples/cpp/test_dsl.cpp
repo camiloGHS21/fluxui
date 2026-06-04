@@ -177,6 +177,76 @@ int test_ref_capture() {
     std::cout << "  PASS" << std::endl; return 0;
 }
 
+int test_store_zustand() {
+    std::cout << "[11] Store<T> (Zustand-style global state)" << std::endl;
+    struct CartState { int count = 0; std::string last; };
+    Store<CartState> cart;
+    int notified = 0;
+    cart.subscribe([&]{ notified++; });
+    cart.set([](CartState& s){ s.count += 1; s.last = "apple"; });
+    CHECK(cart.get().count == 1);
+    CHECK(cart.get().last == "apple");
+    CHECK(notified == 1);
+    int doubled = cart.select<int>([](const CartState& s){ return s.count * 2; });
+    CHECK(doubled == 2);
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_schema_zod() {
+    std::cout << "[12] Schema validation (Zod-style)" << std::endl;
+    auto schema = Schema()
+        .field("email", Rule::string().email())
+        .field("age", Rule::number().min(18).max(120))
+        .field("nick", Rule::string().optional().maxLength(5));
+
+    auto ok = schema.validate({{"email", "a@b.com"}, {"age", "25"}, {"nick", "joe"}});
+    CHECK(ok.ok);
+
+    auto bad = schema.validate({{"email", "not-an-email"}, {"age", "12"}});
+    CHECK(!bad.ok);
+    CHECK(bad.errors.count("email") == 1);
+    CHECK(bad.errors.count("age") == 1);
+
+    auto missing = schema.validate({{"age", "20"}});
+    CHECK(!missing.ok);
+    CHECK(missing.errors.count("email") == 1);  // required
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_skeleton() {
+    std::cout << "[13] Skeleton loading placeholder" << std::endl;
+    auto root = mountRoot(Skeleton(4));
+    auto* w = root->children[0].get();
+    CHECK(w->className == "skeleton");
+    CHECK(w->children.size() == 4);
+    CHECK(w->children[0]->className == "skeleton-line");
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_route_param_match() {
+    std::cout << "[14] route param matching (/user/:id)" << std::endl;
+    std::map<std::string, std::string> params;
+    CHECK(App::matchPattern("/user/:id", "/user/42", params));
+    CHECK(params["id"] == "42");
+    CHECK(App::matchPattern("/post/:cat/:slug", "/post/news/hello", params));
+    CHECK(params["cat"] == "news");
+    CHECK(params["slug"] == "hello");
+    CHECK(!App::matchPattern("/user/:id", "/post/42", params));
+    CHECK(!App::matchPattern("/user/:id", "/user/1/extra", params));
+    // Query string is stripped before matching.
+    CHECK(App::matchPattern("/user/:id", "/user/7?tab=info", params));
+    CHECK(params["id"] == "7");
+    // param/query accessors round-trip.
+    App::currentParams().clear();
+    App::currentParams()["id"] = "42";
+    App::currentQuery().clear();
+    App::currentQuery()["tab"] = "info";
+    CHECK(App::param("id") == "42");
+    CHECK(App::param("missing", "def") == "def");
+    CHECK(App::query("tab") == "info");
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
 int main() {
     std::cout << "=== FluxUI DSL Test (HTML/Blink-named) ===" << std::endl;
     int rc = 0;
@@ -190,6 +260,10 @@ int main() {
     rc |= test_state_operators();
     rc |= test_typed_style_helpers();
     rc |= test_ref_capture();
+    rc |= test_store_zustand();
+    rc |= test_schema_zod();
+    rc |= test_skeleton();
+    rc |= test_route_param_match();
     if (rc == 0) std::cout << "All DSL tests passed!" << std::endl;
     return rc;
 }

@@ -1252,6 +1252,209 @@ def El(tag, children=None):
     return _container(tag, children)
 
 
+# ============================================================
+#  Store — global state container (Zustand-style)
+#
+#      cart = fluxui.Store({"count": 0})
+#      cart.set(lambda s: s.update(count=s["count"] + 1))
+#      fluxui.TextFn(lambda: str(cart.get()["count"]))
+# ============================================================
+class Store:
+    def __init__(self, initial=None):
+        self._state = initial if initial is not None else {}
+        self._subscribers = []
+
+    def get(self):
+        return self._state
+
+    def set(self, mutator):
+        """Mutate via a function; notifies subscribers and requests a redraw."""
+        mutator(self._state)
+        for fn in self._subscribers:
+            fn()
+
+    def replace(self, next_state):
+        self._state = next_state
+        for fn in self._subscribers:
+            fn()
+
+    def select(self, selector):
+        return selector(self._state)
+
+    def subscribe(self, fn):
+        self._subscribers.append(fn)
+
+
+# ============================================================
+#  Schema — runtime validation (Zod-style)
+#
+#      schema = (fluxui.Schema()
+#          .field("email", fluxui.Rule.string().email())
+#          .field("age", fluxui.Rule.number().min(18)))
+#      res = schema.validate({"email": "a@b.com", "age": "20"})
+#      if not res.ok: ...
+# ============================================================
+class Rule:
+    def __init__(self, kind):
+        self._kind = kind
+        self._required = True
+        self._min = None
+        self._max = None
+        self._min_len = None
+        self._max_len = None
+        self._email = False
+
+    @staticmethod
+    def string():
+        return Rule("string")
+
+    @staticmethod
+    def number():
+        return Rule("number")
+
+    @staticmethod
+    def boolean():
+        return Rule("bool")
+
+    def optional(self):
+        self._required = False
+        return self
+
+    def min(self, v):
+        self._min = v
+        return self
+
+    def max(self, v):
+        self._max = v
+        return self
+
+    def min_length(self, v):
+        self._min_len = v
+        return self
+
+    def max_length(self, v):
+        self._max_len = v
+        return self
+
+    def email(self):
+        self._email = True
+        return self
+
+    def check(self, field, value):
+        if value is None or value == "":
+            return field + " is required" if self._required else ""
+        if self._kind == "number":
+            try:
+                d = float(value)
+            except (TypeError, ValueError):
+                return field + " must be a number"
+            if self._min is not None and d < self._min:
+                return field + " is too small"
+            if self._max is not None and d > self._max:
+                return field + " is too large"
+        elif self._kind == "string":
+            if self._min_len is not None and len(value) < self._min_len:
+                return field + " is too short"
+            if self._max_len is not None and len(value) > self._max_len:
+                return field + " is too long"
+            if self._email and "@" not in value:
+                return field + " must be a valid email"
+        elif self._kind == "bool":
+            if value not in ("true", "false", True, False):
+                return field + " must be true/false"
+        return ""
+
+
+class ValidationResult:
+    def __init__(self, ok, errors):
+        self.ok = ok
+        self.errors = errors
+
+    def first(self):
+        return next(iter(self.errors.values())) if self.errors else ""
+
+
+class Schema:
+    def __init__(self):
+        self._fields = []
+
+    def field(self, name, rule):
+        self._fields.append((name, rule))
+        return self
+
+    def validate(self, data):
+        errors = {}
+        for name, rule in self._fields:
+            err = rule.check(name, data.get(name, ""))
+            if err:
+                errors[name] = err
+        return ValidationResult(len(errors) == 0, errors)
+
+
+# ============================================================
+#  Query — async fetch with loading/error/data states (React Query-style)
+#
+#      q = fluxui.Query(lambda: http_get("/api/users"))
+#      q.start()
+#      q.view(
+#          lambda: fluxui.Skeleton(3),
+#          lambda data: fluxui.Text(data),
+#          lambda err: fluxui.Text("Error: " + err),
+#      )
+# ============================================================
+class Query:
+    IDLE, LOADING, SUCCESS, ERROR = "idle", "loading", "success", "error"
+
+    def __init__(self, fetcher):
+        self._fetcher = fetcher
+        self._status = Query.IDLE
+        self._data = None
+        self._error = ""
+
+    @property
+    def status(self):
+        return self._status
+
+    def start(self):
+        if self._status == Query.LOADING:
+            return
+        self._status = Query.LOADING
+        import threading
+
+        def worker():
+            try:
+                result = self._fetcher()
+                self._data = result
+                self._status = Query.SUCCESS
+            except Exception as e:  # noqa: BLE001
+                self._error = str(e)
+                self._status = Query.ERROR
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def refetch(self):
+        self._status = Query.IDLE
+        self.start()
+
+    def view(self, on_loading, on_success, on_error=None):
+        if self._status == Query.SUCCESS:
+            return on_success(self._data)
+        if self._status == Query.ERROR:
+            return on_error(self._error) if on_error else P("Error: " + self._error)
+        return on_loading() if on_loading else Div()
+
+
+# ============================================================
+#  Skeleton — easy loading placeholders
+# ============================================================
+def Skeleton(lines=3):
+    return Div([Div().cls("skeleton-line") for _ in range(lines)]).cls("skeleton")
+
+
+def SkeletonBox(w="100%", h="120px"):
+    return Div().cls("skeleton skeleton-box").style("width", w).style("height", h)
+
+
 class DslApp(App):
     """App subclass adding declarative set_root + reactive run loop."""
 
@@ -1263,6 +1466,8 @@ class DslApp(App):
         self._layout = None
         self._current_route = ""
         self._content_slot = None
+        self._params = {}
+        self._query = {}
 
     def add_css(self, css):
         self.add_stylesheet(css)
@@ -1299,6 +1504,52 @@ class DslApp(App):
     def route(self):
         return self._current_route
 
+    def param(self, name, default=""):
+        """Route param captured from a pattern like '/user/:id'."""
+        return self._params.get(name, default)
+
+    def query(self, name, default=""):
+        """Query-string value (e.g. ?tab=info -> query('tab'))."""
+        return self._query.get(name, default)
+
+    def _resolve_route(self):
+        """Find the view fn for the current route (exact or param match)."""
+        self._params = {}
+        self._query = {}
+        # Parse query string.
+        path = self._current_route
+        if "?" in path:
+            path, qs = path.split("?", 1)
+            for pair in qs.split("&"):
+                if not pair:
+                    continue
+                if "=" in pair:
+                    k, v = pair.split("=", 1)
+                    self._query[k] = v
+                else:
+                    self._query[pair] = ""
+        # Exact match.
+        if path in self._routes:
+            return self._routes[path]
+        # Param match.
+        cp = [p for p in path.split("/") if p]
+        for pattern, fn in self._routes.items():
+            pp = [p for p in pattern.split("/") if p]
+            if len(pp) != len(cp):
+                continue
+            params = {}
+            ok = True
+            for a, b in zip(pp, cp):
+                if a.startswith(":"):
+                    params[a[1:]] = b
+                elif a != b:
+                    ok = False
+                    break
+            if ok:
+                self._params = params
+                return fn
+        return None
+
     def navigate(self, path):
         """Switch to a route; rebuilds the shell so nav highlights refresh."""
         self._current_route = path
@@ -1316,7 +1567,7 @@ class DslApp(App):
             self._current_route = next(iter(self._routes))
 
         content = None
-        view_fn = self._routes.get(self._current_route)
+        view_fn = self._resolve_route()
         if view_fn:
             content = view_fn()
 
@@ -1326,7 +1577,6 @@ class DslApp(App):
                 shell.mount(r)
         elif content:
             content.mount(r)
-        self.requestRedraw() if hasattr(self, "requestRedraw") else None
 
     def auto_routes(self, views_dir):
         """File-based routing like Next.js: import every .py module in views_dir

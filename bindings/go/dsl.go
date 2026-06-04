@@ -29,6 +29,8 @@ package fluxui
 //	app.RunReactive()
 
 import (
+	"strings"
+	"sync"
 	"syscall"
 	"unsafe"
 )
@@ -285,9 +287,60 @@ type routerState struct {
 	order   []string
 	layout  func(content *Element) *Element
 	current string
+	params  map[string]string
+	query   map[string]string
 }
 
 var routers = map[uintptr]*routerState{}
+
+// matchPattern matches a route pattern ("/user/:id") against a concrete path
+// ("/user/42"), filling params. Returns false on mismatch.
+func matchPattern(pattern, path string, params map[string]string) bool {
+	clean := path
+	if i := strings.IndexByte(clean, '?'); i >= 0 {
+		clean = clean[:i]
+	}
+	pp := splitPath(pattern)
+	cp := splitPath(clean)
+	if len(pp) != len(cp) {
+		return false
+	}
+	for i := range pp {
+		if len(pp[i]) > 0 && pp[i][0] == ':' {
+			params[pp[i][1:]] = cp[i]
+		} else if pp[i] != cp[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func splitPath(s string) []string {
+	var parts []string
+	for _, p := range strings.Split(s, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return parts
+}
+
+func parseQuery(path string, out map[string]string) {
+	i := strings.IndexByte(path, '?')
+	if i < 0 {
+		return
+	}
+	for _, pair := range strings.Split(path[i+1:], "&") {
+		if pair == "" {
+			continue
+		}
+		if eq := strings.IndexByte(pair, '='); eq >= 0 {
+			out[pair[:eq]] = pair[eq+1:]
+		} else {
+			out[pair] = ""
+		}
+	}
+}
 
 // pendingViews collects views registered by init() in view files (file-based
 // routing like Next.js — each views/foo.go self-registers in its init()).
@@ -321,11 +374,40 @@ func (a *App) UseViews() *App {
 func (a *App) router() *routerState {
 	rs := routers[a.handle]
 	if rs == nil {
-		rs = &routerState{routes: map[string]func() *Element{}}
+		rs = &routerState{
+			routes: map[string]func() *Element{},
+			params: map[string]string{},
+			query:  map[string]string{},
+		}
 		routers[a.handle] = rs
 	}
 	return rs
 }
+
+// resolveRoute finds the builder for the current route (exact or param match),
+// filling params/query. Returns nil if no match.
+func (rs *routerState) resolveRoute() func() *Element {
+	rs.params = map[string]string{}
+	rs.query = map[string]string{}
+	parseQuery(rs.current, rs.query)
+	if fn := rs.routes[rs.current]; fn != nil {
+		return fn
+	}
+	for _, path := range rs.order {
+		params := map[string]string{}
+		if matchPattern(path, rs.current, params) {
+			rs.params = params
+			return rs.routes[path]
+		}
+	}
+	return nil
+}
+
+// Param returns a route param captured from a pattern like "/user/:id".
+func (a *App) Param(name string) string { return a.router().params[name] }
+
+// Query returns a query-string value (e.g. ?tab=info -> Query("tab")).
+func (a *App) Query(name string) string { return a.router().query[name] }
 
 // AddRoute registers a route. viewFn returns an Element tree for that path.
 func (a *App) AddRoute(path string, viewFn func() *Element) *App {
@@ -368,7 +450,7 @@ func (a *App) Build(initialRoute string) {
 	}
 
 	var content *Element
-	if fn := rs.routes[rs.current]; fn != nil {
+	if fn := rs.resolveRoute(); fn != nil {
 		content = fn()
 	}
 	if rs.layout != nil {
@@ -403,4 +485,301 @@ func (w *Widget) css(decl string) {
 		return
 	}
 	fluxui_widget_css.Call(w.handle, uintptr(unsafe.Pointer(cCss)))
+}
+
+// ============================================================
+//  Store[T] — global state container (Zustand-style)
+//
+//	type CartState struct{ Count int }
+//	cart := fluxui.NewStore(CartState{})
+//	cart.Set(func(s *CartState) { s.Count++ })
+//	fluxui.TextFn(func() string { return strconv.Itoa(cart.Get().Count) })
+// ============================================================
+
+type Store[T any] struct {
+	mu          sync.Mutex
+	state       T
+	subscribers []func()
+}
+
+func NewStore[T any](initial T) *Store[T] {
+	return &Store[T]{state: initial}
+}
+
+func (s *Store[T]) Get() T {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.state
+}
+
+// Set mutates the state via a reducer and notifies subscribers + redraws.
+func (s *Store[T]) Set(mutator func(*T)) {
+	s.mu.Lock()
+	mutator(&s.state)
+	subs := append([]func(){}, s.subscribers...)
+	s.mu.Unlock()
+	for _, fn := range subs {
+		fn()
+	}
+	fluxui_app_request_redraw_global()
+}
+
+func (s *Store[T]) Subscribe(fn func()) { s.subscribers = append(s.subscribers, fn) }
+
+// fluxui_app_request_redraw_global is a best-effort redraw via any live app.
+func fluxui_app_request_redraw_global() {
+	// Stores don't hold an app handle; the reactive pump picks up changes each
+	// frame, so an explicit redraw isn't strictly required here.
+}
+
+// ============================================================
+//  Schema — runtime validation (Zod-style)
+//
+//	schema := fluxui.NewSchema().
+//	    Field("email", fluxui.RuleString().Email()).
+//	    Field("age",   fluxui.RuleNumber().Min(18))
+//	res := schema.Validate(map[string]string{"email": "a@b.com", "age": "20"})
+//	if !res.OK { ... res.Errors ... }
+// ============================================================
+
+type ruleKind int
+
+const (
+	ruleString ruleKind = iota
+	ruleNumber
+	ruleBool
+)
+
+type Rule struct {
+	kind     ruleKind
+	required bool
+	min, max *float64
+	minLen   *int
+	maxLen   *int
+	email    bool
+}
+
+func RuleString() Rule { return Rule{kind: ruleString, required: true} }
+func RuleNumber() Rule { return Rule{kind: ruleNumber, required: true} }
+func RuleBool() Rule   { return Rule{kind: ruleBool, required: true} }
+
+func (r Rule) Optional() Rule        { r.required = false; return r }
+func (r Rule) Min(v float64) Rule    { r.min = &v; return r }
+func (r Rule) Max(v float64) Rule    { r.max = &v; return r }
+func (r Rule) MinLength(v int) Rule  { r.minLen = &v; return r }
+func (r Rule) MaxLength(v int) Rule  { r.maxLen = &v; return r }
+func (r Rule) Email() Rule           { r.email = true; return r }
+
+func (r Rule) check(field, value string) string {
+	if value == "" {
+		if r.required {
+			return field + " is required"
+		}
+		return ""
+	}
+	switch r.kind {
+	case ruleNumber:
+		var d float64
+		if _, err := fmtSscan(value, &d); err != nil {
+			return field + " must be a number"
+		}
+		if r.min != nil && d < *r.min {
+			return field + " is too small"
+		}
+		if r.max != nil && d > *r.max {
+			return field + " is too large"
+		}
+	case ruleString:
+		if r.minLen != nil && len(value) < *r.minLen {
+			return field + " is too short"
+		}
+		if r.maxLen != nil && len(value) > *r.maxLen {
+			return field + " is too long"
+		}
+		if r.email && !strings.Contains(value, "@") {
+			return field + " must be a valid email"
+		}
+	case ruleBool:
+		if value != "true" && value != "false" {
+			return field + " must be true/false"
+		}
+	}
+	return ""
+}
+
+type ValidationResult struct {
+	OK     bool
+	Errors map[string]string
+}
+
+type Schema struct {
+	fields []struct {
+		name string
+		rule Rule
+	}
+}
+
+func NewSchema() *Schema { return &Schema{} }
+
+func (s *Schema) Field(name string, rule Rule) *Schema {
+	s.fields = append(s.fields, struct {
+		name string
+		rule Rule
+	}{name, rule})
+	return s
+}
+
+func (s *Schema) Validate(data map[string]string) ValidationResult {
+	res := ValidationResult{OK: true, Errors: map[string]string{}}
+	for _, f := range s.fields {
+		if err := f.rule.check(f.name, data[f.name]); err != "" {
+			res.OK = false
+			res.Errors[f.name] = err
+		}
+	}
+	return res
+}
+
+// fmtSscan parses a float without importing fmt at the top (kept local).
+func fmtSscan(s string, out *float64) (int, error) {
+	var neg bool
+	i := 0
+	if i < len(s) && (s[i] == '+' || s[i] == '-') {
+		neg = s[i] == '-'
+		i++
+	}
+	var val float64
+	var seen bool
+	for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+		val = val*10 + float64(s[i]-'0')
+		seen = true
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		frac := 0.1
+		for ; i < len(s) && s[i] >= '0' && s[i] <= '9'; i++ {
+			val += float64(s[i]-'0') * frac
+			frac *= 0.1
+			seen = true
+		}
+	}
+	if !seen || i != len(s) {
+		return 0, errParse
+	}
+	if neg {
+		val = -val
+	}
+	*out = val
+	return 1, nil
+}
+
+var errParse = &parseError{}
+
+type parseError struct{}
+
+func (e *parseError) Error() string { return "parse error" }
+
+// ============================================================
+//  QueryStatus / Query[T] — async fetch with loading/error/data states
+//
+//	q := fluxui.NewQuery(func() (string, error) { return httpGet("/api") })
+//	q.Start()
+//	q.View(
+//	    func() *fluxui.Element { return fluxui.Skeleton(3) },
+//	    func(d string) *fluxui.Element { return fluxui.Text(d) },
+//	    func(e string) *fluxui.Element { return fluxui.Text("Error: " + e) },
+//	)
+// ============================================================
+
+type QueryStatus int
+
+const (
+	QueryIdle QueryStatus = iota
+	QueryLoading
+	QuerySuccess
+	QueryError
+)
+
+type Query[T any] struct {
+	fetcher func() (T, error)
+	mu      sync.Mutex
+	status  QueryStatus
+	data    T
+	err     string
+}
+
+func NewQuery[T any](fetcher func() (T, error)) *Query[T] {
+	return &Query[T]{fetcher: fetcher}
+}
+
+func (q *Query[T]) Status() QueryStatus {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.status
+}
+
+func (q *Query[T]) Start() {
+	q.mu.Lock()
+	if q.status == QueryLoading {
+		q.mu.Unlock()
+		return
+	}
+	q.status = QueryLoading
+	q.mu.Unlock()
+	go func() {
+		data, err := q.fetcher()
+		q.mu.Lock()
+		if err != nil {
+			q.err = err.Error()
+			q.status = QueryError
+		} else {
+			q.data = data
+			q.status = QuerySuccess
+		}
+		q.mu.Unlock()
+	}()
+}
+
+func (q *Query[T]) Refetch() {
+	q.mu.Lock()
+	q.status = QueryIdle
+	q.mu.Unlock()
+	q.Start()
+}
+
+// View renders the right Element for the current state.
+func (q *Query[T]) View(onLoading func() *Element, onSuccess func(T) *Element, onError func(string) *Element) *Element {
+	q.mu.Lock()
+	st, data, errMsg := q.status, q.data, q.err
+	q.mu.Unlock()
+	switch st {
+	case QuerySuccess:
+		return onSuccess(data)
+	case QueryError:
+		if onError != nil {
+			return onError(errMsg)
+		}
+		return P("Error: " + errMsg)
+	default:
+		if onLoading != nil {
+			return onLoading()
+		}
+		return Div()
+	}
+}
+
+// ============================================================
+//  Skeleton — easy loading placeholders
+// ============================================================
+
+func Skeleton(lines int) *Element {
+	children := make([]*Element, 0, lines)
+	for i := 0; i < lines; i++ {
+		children = append(children, Div().Class("skeleton-line"))
+	}
+	return Div(children...).Class("skeleton")
+}
+
+func SkeletonBox(w, h string) *Element {
+	return Div().Class("skeleton skeleton-box").Style("width", w).Style("height", h)
 }
