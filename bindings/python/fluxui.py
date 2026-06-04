@@ -1512,6 +1512,26 @@ class DslApp(App):
         """Query-string value (e.g. ?tab=info -> query('tab'))."""
         return self._query.get(name, default)
 
+    @staticmethod
+    def _match_pattern(pattern, path, params):
+        """Match a route pattern ("/user/:id") against a concrete path
+        ("/user/42"), filling params. Returns False on mismatch. The query
+        string is stripped before matching. Mirrors C++ App::matchPattern."""
+        clean = path.split("?", 1)[0]
+        pp = [p for p in pattern.split("/") if p]
+        cp = [p for p in clean.split("/") if p]
+        if len(pp) != len(cp):
+            return False
+        found = {}
+        for a, b in zip(pp, cp):
+            if a.startswith(":"):
+                found[a[1:]] = b
+            elif a != b:
+                return False
+        params.clear()
+        params.update(found)
+        return True
+
     def _resolve_route(self):
         """Find the view fn for the current route (exact or param match)."""
         self._params = {}
@@ -1532,20 +1552,9 @@ class DslApp(App):
         if path in self._routes:
             return self._routes[path]
         # Param match.
-        cp = [p for p in path.split("/") if p]
         for pattern, fn in self._routes.items():
-            pp = [p for p in pattern.split("/") if p]
-            if len(pp) != len(cp):
-                continue
             params = {}
-            ok = True
-            for a, b in zip(pp, cp):
-                if a.startswith(":"):
-                    params[a[1:]] = b
-                elif a != b:
-                    ok = False
-                    break
-            if ok:
+            if App._match_pattern(pattern, path, params):
                 self._params = params
                 return fn
         return None

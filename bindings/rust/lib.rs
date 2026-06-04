@@ -1556,6 +1556,21 @@ pub mod dsl {
         app.navigate(path);
     }
 
+    /// Current route path (free-standing; usable inside view/layout closures).
+    pub fn route() -> String {
+        ROUTER.with(|r| r.borrow().current.clone())
+    }
+
+    /// Route param captured from a pattern like "/user/:id" (free-standing).
+    pub fn param(name: &str) -> String {
+        ROUTER.with(|r| r.borrow().params.get(name).cloned().unwrap_or_default())
+    }
+
+    /// Query-string value, e.g. ?tab=info -> query("tab") (free-standing).
+    pub fn query(name: &str) -> String {
+        ROUTER.with(|r| r.borrow().query.get(name).cloned().unwrap_or_default())
+    }
+
     /// Register a view for file-based routing (call from a view module). The
     /// route is materialized into the app when `App::use_views()` is called.
     ///

@@ -102,12 +102,92 @@ def test_onclick_drives_reactive():
     print("[5] onClick -> State -> reactive Text  PASS")
 
 
+def test_store_zustand():
+    cart = fluxui.Store({"count": 0, "last": ""})
+    notified = []
+    cart.subscribe(lambda: notified.append(1))
+    cart.set(lambda s: s.update(count=s["count"] + 1, last="apple"))
+    assert cart.get()["count"] == 1
+    assert cart.get()["last"] == "apple"
+    assert len(notified) == 1
+    doubled = cart.select(lambda s: s["count"] * 2)
+    assert doubled == 2
+    print("[6] Store (Zustand-style global state)  PASS")
+
+
+def test_schema_zod():
+    schema = (fluxui.Schema()
+              .field("email", fluxui.Rule.string().email())
+              .field("age", fluxui.Rule.number().min(18).max(120))
+              .field("nick", fluxui.Rule.string().optional().max_length(5)))
+
+    ok = schema.validate({"email": "a@b.com", "age": "25", "nick": "joe"})
+    assert ok.ok, "valid input should pass"
+
+    bad = schema.validate({"email": "not-an-email", "age": "12"})
+    assert not bad.ok
+    assert "email" in bad.errors
+    assert "age" in bad.errors
+
+    missing = schema.validate({"age": "20"})
+    assert not missing.ok
+    assert "email" in missing.errors  # required
+    print("[7] Schema validation (Zod-style)  PASS")
+
+
+def test_query_states():
+    q = fluxui.Query(lambda: "hello")
+    assert q.status == fluxui.Query.IDLE
+    q.start()
+    # Worker runs on a thread; join by polling briefly.
+    import time
+    for _ in range(50):
+        if q.status != fluxui.Query.LOADING:
+            break
+        time.sleep(0.01)
+    assert q.status == fluxui.Query.SUCCESS
+    node = q.view(lambda: fluxui.Skeleton(2),
+                  lambda data: fluxui.Text(data),
+                  lambda err: fluxui.Text("Error: " + err))
+    assert node._content == "hello"
+    print("[8] Query async fetch states + view()  PASS")
+
+
+def test_skeleton():
+    sk = fluxui.Skeleton(4)
+    assert sk._class_name == "skeleton"
+    assert len(sk._children) == 4
+    assert sk._children[0]._class_name == "skeleton-line"
+    print("[9] Skeleton loading placeholder  PASS")
+
+
+def test_route_param_match():
+    params = {}
+    assert fluxui.DslApp._match_pattern("/user/:id", "/user/42", params)
+    assert params["id"] == "42"
+    params = {}
+    assert fluxui.DslApp._match_pattern("/post/:cat/:slug", "/post/news/hello", params)
+    assert params["cat"] == "news"
+    assert params["slug"] == "hello"
+    params = {}
+    assert not fluxui.DslApp._match_pattern("/user/:id", "/post/42", params)
+    params = {}
+    assert fluxui.DslApp._match_pattern("/user/:id", "/user/7?tab=info", params)
+    assert params["id"] == "7"
+    print("[10] route param matching (/user/:id)  PASS")
+
+
 def main():
     test_state_basic()
     test_element_tags()
     test_element_tree()
     test_reactive_pump()
     test_onclick_drives_reactive()
+    test_store_zustand()
+    test_schema_zod()
+    test_query_states()
+    test_skeleton()
+    test_route_param_match()
     print("All Python DSL tests passed!")
 
 

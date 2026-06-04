@@ -719,6 +719,17 @@ target_include_directories(demo_dsl PRIVATE
 )
 enable_release_lto(demo_dsl)
 
+add_executable(demo_ecosystem
+    examples/cpp/demo_ecosystem.cpp
+)
+target_link_libraries(demo_ecosystem PRIVATE
+    fluxui
+)
+target_include_directories(demo_ecosystem PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(demo_ecosystem)
+
 add_executable(test_dsl
     examples/cpp/test_dsl.cpp
 )

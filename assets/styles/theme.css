@@ -1436,3 +1436,24 @@ hr {
 }
 
 
+
+/* ============================================================
+   Skeleton loading placeholders (Dsl.Skeleton / SkeletonBox).
+   Used by the Query loading state and any "is loading" UI.
+   ============================================================ */
+.skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.skeleton-line {
+    height: 14px;
+    border-radius: 6px;
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.skeleton-box {
+    border-radius: 10px;
+    background-color: rgba(255, 255, 255, 0.10);
+}

@@ -26,3 +26,7 @@ vcpkg/
 go.work
 go.work.sum
 go.mod
+
+# Python bytecode caches
+__pycache__/
+*.pyc

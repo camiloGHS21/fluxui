@@ -607,6 +607,20 @@ fn cstrEql(a: [*:0]const u8, b: [*:0]const u8) bool {
     }
 }
 
+fn cstrLen(s: [*:0]const u8) usize {
+    var i: usize = 0;
+    while (s[i] != 0) : (i += 1) {}
+    return i;
+}
+
+fn cstrContains(s: [*:0]const u8, ch: u8) bool {
+    var i: usize = 0;
+    while (s[i] != 0) : (i += 1) {
+        if (s[i] == ch) return true;
+    }
+    return false;
+}
+
 /// Re-evaluate every reactive `textFn` binding, pushing changed values into the
 /// underlying widgets. Returns true if anything changed. Called each frame.
 pub fn pumpReactiveBindings() bool {
@@ -974,6 +988,231 @@ pub fn Store(comptime T: type) type {
             if (self.sub_count < MaxSubs) {
                 self.subs[self.sub_count] = cb;
                 self.sub_count += 1;
+            }
+        }
+    };
+}
+
+// ============================================================
+//  Schema / Rule — runtime validation (Zod-style)
+//
+//  Build a Rule with Rule.string()/number()/boolean() and chained refinements,
+//  then validate a single value with `check()`. Schema groups named fields:
+//
+//      const schema = dsl.Schema.init(&.{
+//          .{ .name = "email", .rule = dsl.Rule.string().email() },
+//          .{ .name = "age",   .rule = dsl.Rule.number().min(18) },
+//      });
+//      const res = schema.validate(&.{
+//          .{ .name = "email", .value = "a@b.com" },
+//          .{ .name = "age",   .value = "20" },
+//      });
+//      if (!res.ok) { ... res.first() ... }
+// ============================================================
+pub const Rule = struct {
+    pub const Kind = enum { string, number, boolean };
+    kind: Kind,
+    required: bool = true,
+    min_val: ?f64 = null,
+    max_val: ?f64 = null,
+    min_len: ?usize = null,
+    max_len: ?usize = null,
+    is_email: bool = false,
+
+    pub fn string() Rule {
+        return .{ .kind = .string };
+    }
+    pub fn number() Rule {
+        return .{ .kind = .number };
+    }
+    pub fn boolean() Rule {
+        return .{ .kind = .boolean };
+    }
+
+    pub fn optional(self: Rule) Rule {
+        var r = self;
+        r.required = false;
+        return r;
+    }
+    pub fn min(self: Rule, v: f64) Rule {
+        var r = self;
+        r.min_val = v;
+        return r;
+    }
+    pub fn max(self: Rule, v: f64) Rule {
+        var r = self;
+        r.max_val = v;
+        return r;
+    }
+    pub fn minLength(self: Rule, v: usize) Rule {
+        var r = self;
+        r.min_len = v;
+        return r;
+    }
+    pub fn maxLength(self: Rule, v: usize) Rule {
+        var r = self;
+        r.max_len = v;
+        return r;
+    }
+    pub fn email(self: Rule) Rule {
+        var r = self;
+        r.is_email = true;
+        return r;
+    }
+
+    /// Validate a value; returns an error message ("" means valid).
+    pub fn check(self: Rule, field: [*:0]const u8, value: [*:0]const u8) [*:0]const u8 {
+        _ = field;
+        const len = cstrLen(value);
+        if (len == 0) {
+            return if (self.required) "field is required" else "";
+        }
+        switch (self.kind) {
+            .number => {
+                const slice = value[0..len];
+                const d = std.fmt.parseFloat(f64, slice) catch return "field must be a number";
+                if (self.min_val) |m| if (d < m) return "field is too small";
+                if (self.max_val) |m| if (d > m) return "field is too large";
+            },
+            .string => {
+                if (self.min_len) |m| if (len < m) return "field is too short";
+                if (self.max_len) |m| if (len > m) return "field is too long";
+                if (self.is_email and !cstrContains(value, '@')) return "field must be a valid email";
+            },
+            .boolean => {
+                if (!cstrEql(value, "true") and !cstrEql(value, "false")) return "field must be true/false";
+            },
+        }
+        return "";
+    }
+};
+
+pub const Field = struct { name: [*:0]const u8, rule: Rule };
+pub const Datum = struct { name: [*:0]const u8, value: [*:0]const u8 };
+
+pub const ValidationResult = struct {
+    ok: bool,
+    error_count: usize = 0,
+    first_error: [*:0]const u8 = "",
+    first_field: [*:0]const u8 = "",
+
+    pub fn first(self: ValidationResult) [*:0]const u8 {
+        return self.first_error;
+    }
+};
+
+pub const Schema = struct {
+    fields: []const Field,
+
+    pub fn init(fields: []const Field) Schema {
+        return .{ .fields = fields };
+    }
+
+    pub fn validate(self: Schema, data: []const Datum) ValidationResult {
+        var res = ValidationResult{ .ok = true };
+        for (self.fields) |f| {
+            var value: [*:0]const u8 = "";
+            for (data) |d| {
+                if (cstrEql(d.name, f.name)) {
+                    value = d.value;
+                    break;
+                }
+            }
+            const err = f.rule.check(f.name, value);
+            if (cstrLen(err) != 0) {
+                res.ok = false;
+                if (res.error_count == 0) {
+                    res.first_error = err;
+                    res.first_field = f.name;
+                }
+                res.error_count += 1;
+            }
+        }
+        return res;
+    }
+};
+
+// ============================================================
+//  Query(T) — async fetch with loading/error/data states.
+//
+//  Zig has no built-in async runtime here, so the fetcher runs on a spawned
+//  thread. Status transitions Idle -> Loading -> Success/Error are observable
+//  via status(); render per-state with view().
+//
+//      const Users = dsl.Query([]const u8);
+//      var q = Users.init(fetchUsers);
+//      q.start();
+//      const node = q.view(loadingView, successView, errorView);
+// ============================================================
+pub const QueryStatus = enum { idle, loading, success, err };
+
+pub fn Query(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        pub const Fetcher = *const fn () QueryError!T;
+        pub const QueryError = error{FetchFailed};
+        pub const LoadingFn = *const fn () Node;
+        pub const SuccessFn = *const fn (T) Node;
+        pub const ErrorFn = *const fn ([*:0]const u8) Node;
+
+        fetcher: Fetcher,
+        status_val: QueryStatus = .idle,
+        data_val: ?T = null,
+        error_val: [*:0]const u8 = "",
+        thread: ?std.Thread = null,
+
+        pub fn init(fetcher: Fetcher) Self {
+            return .{ .fetcher = fetcher };
+        }
+
+        pub fn status(self: *const Self) QueryStatus {
+            return self.status_val;
+        }
+        pub fn isLoading(self: *const Self) bool {
+            return self.status_val == .loading;
+        }
+        pub fn isSuccess(self: *const Self) bool {
+            return self.status_val == .success;
+        }
+        pub fn isError(self: *const Self) bool {
+            return self.status_val == .err;
+        }
+        pub fn data(self: *const Self) ?T {
+            return self.data_val;
+        }
+
+        fn worker(self: *Self) void {
+            if (self.fetcher()) |result| {
+                self.data_val = result;
+                self.status_val = .success;
+            } else |_| {
+                self.error_val = "fetch failed";
+                self.status_val = .err;
+            }
+        }
+
+        /// Kick off the fetch on a background thread (idempotent while loading).
+        pub fn start(self: *Self) void {
+            if (self.status_val == .loading) return;
+            self.status_val = .loading;
+            self.thread = std.Thread.spawn(.{}, worker, .{self}) catch blk: {
+                // Fall back to synchronous fetch if the thread can't spawn.
+                self.worker();
+                break :blk null;
+            };
+        }
+
+        pub fn refetch(self: *Self) void {
+            self.status_val = .idle;
+            self.start();
+        }
+
+        /// Render the right Node for the current state.
+        pub fn view(self: *const Self, on_loading: LoadingFn, on_success: SuccessFn, on_error: ?ErrorFn) Node {
+            switch (self.status_val) {
+                .success => return on_success(self.data_val.?),
+                .err => return if (on_error) |f| f(self.error_val) else leaf("p", "Error"),
+                else => return on_loading(),
             }
         }
     };

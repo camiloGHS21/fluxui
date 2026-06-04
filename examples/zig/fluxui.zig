@@ -2,6 +2,8 @@ pub const c = @cImport({
     @cInclude("fluxui/fluxui_c.h");
 });
 
+const std = @import("std");
+
 pub const Color = c.FluxUIColor;
 pub const Rect = c.FluxUIRect;
 
@@ -89,6 +91,70 @@ pub const App = struct {
 
     pub fn addStylesheet(self: App, css: [*:0]const u8) void {
         c.fluxui_app_add_stylesheet(self.raw, css);
+    }
+
+    pub fn setUpdateCallback(self: App, callback: c.FluxUIUpdateCallback, user_data: ?*anyopaque) void {
+        c.fluxui_app_set_update_callback(self.raw, callback, user_data);
+    }
+
+    /// Mount a declarative Node tree as the application root.
+    pub fn setRoot(self: App, node: dsl.Node) Error!void {
+        const r = try self.root();
+        r.clearChildren();
+        _ = try node.mount(r);
+    }
+
+    /// Register a route. `view` is a fn() that returns a Node tree for the path.
+    pub fn addRoute(self: App, path: [*:0]const u8, view: dsl.ViewFn) void {
+        _ = self;
+        dsl.routerAddRoute(path, view);
+    }
+
+    /// Register all views collected via dsl.registerView() (file-based routing).
+    pub fn useViews(self: App) void {
+        _ = self;
+        dsl.routerUseViews();
+    }
+
+    /// Set the app shell. `layout` is a fn(content) -> Node embedding the view.
+    pub fn setLayout(self: App, layout: dsl.LayoutFn) void {
+        _ = self;
+        dsl.routerSetLayout(layout);
+    }
+
+    /// Current route path.
+    pub fn route(self: App) [*:0]const u8 {
+        _ = self;
+        return dsl.routerCurrent();
+    }
+
+    /// Route param captured from a pattern like "/user/:id".
+    pub fn param(self: App, name: [*:0]const u8) [*:0]const u8 {
+        _ = self;
+        return dsl.param(name);
+    }
+
+    /// Switch to a route and rebuild the shell (nav highlights refresh).
+    pub fn navigate(self: App, path: [*:0]const u8) void {
+        dsl.routerSetCurrent(path);
+        self.build(path) catch {};
+    }
+
+    /// Mount the shell + initial route. Uses the first route if path is empty.
+    pub fn build(self: App, initial_route: [*:0]const u8) Error!void {
+        dsl.routerSetApp(self.raw);
+        const r = try self.root();
+        r.clearChildren();
+        dsl.routerBuild(r, initial_route);
+    }
+
+    /// Install the reactive pump into the update loop and run the app.
+    pub fn runReactive(self: App) void {
+        if (dsl.routerHasRoutes()) {
+            self.build(dsl.routerCurrent()) catch {};
+        }
+        self.setUpdateCallback(dsl.reactiveUpdateCallback, null);
+        self.run();
     }
 
     pub fn root(self: App) Error!Widget {
@@ -427,6 +493,22 @@ pub const Widget = struct {
         c.fluxui_style_text_color(self.raw, color);
     }
 
+    pub fn css(self: Widget, declarations: [*:0]const u8) void {
+        c.fluxui_widget_css(self.raw, declarations);
+    }
+
+    pub fn setContent(self: Widget, text: [*:0]const u8) void {
+        c.fluxui_text_set_content(self.raw, text);
+    }
+
+    pub fn setClassName(self: Widget, class_name: [*:0]const u8) void {
+        c.fluxui_widget_set_class(self.raw, class_name);
+    }
+
+    pub fn setId(self: Widget, widget_id: [*:0]const u8) void {
+        c.fluxui_widget_set_id(self.raw, widget_id);
+    }
+
     fn fromRaw(raw: ?*c.FluxUIWidget) Error!Widget {
         if (raw == null) return Error.MissingWidget;
         return .{ .raw = raw };
@@ -464,3 +546,676 @@ pub const Renderer = struct {
         c.fluxui_renderer_flush(self.raw);
     }
 };
+
+// ============================================================
+//  Declarative DSL — modern HTML/Blink-named functional builder.
+//
+//  Element names match HTML exactly (div, span, h1, button, nav, section, ...).
+//  Zig has no closures, so reactive text + click handlers use explicit C-ABI
+//  function pointers plus a global binding registry. Layout is expressed in CSS
+//  (display:flex/grid). Use via `fluxui.dsl.div(...)`, `fluxui.dsl.State(i32)`.
+// ============================================================
+pub const dsl = struct {
+
+/// Lightweight reactive primitive. `T` must be a value type.
+pub fn State(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        value: T,
+
+        pub fn init(initial: T) Self {
+            return .{ .value = initial };
+        }
+        pub fn get(self: *const Self) T {
+            return self.value;
+        }
+        pub fn set(self: *Self, v: T) void {
+            self.value = v;
+        }
+    };
+}
+
+// ---- Reactive binding registry (fixed capacity, no allocator needed). ----
+pub const TextFnPtr = *const fn (?*anyopaque) callconv(.c) [*:0]const u8;
+
+const ReactiveBinding = struct {
+    widget: Widget,
+    func: TextFnPtr,
+    user_data: ?*anyopaque,
+    last: [*:0]const u8,
+};
+
+var g_bindings: [256]ReactiveBinding = undefined;
+var g_binding_count: usize = 0;
+
+fn registerReactive(widget: Widget, func: TextFnPtr, user_data: ?*anyopaque, initial: [*:0]const u8) void {
+    if (g_binding_count >= g_bindings.len) return;
+    g_bindings[g_binding_count] = .{
+        .widget = widget,
+        .func = func,
+        .user_data = user_data,
+        .last = initial,
+    };
+    g_binding_count += 1;
+}
+
+fn cstrEql(a: [*:0]const u8, b: [*:0]const u8) bool {
+    var i: usize = 0;
+    while (true) : (i += 1) {
+        if (a[i] != b[i]) return false;
+        if (a[i] == 0) return true;
+    }
+}
+
+fn cstrLen(s: [*:0]const u8) usize {
+    var i: usize = 0;
+    while (s[i] != 0) : (i += 1) {}
+    return i;
+}
+
+fn cstrContains(s: [*:0]const u8, ch: u8) bool {
+    var i: usize = 0;
+    while (s[i] != 0) : (i += 1) {
+        if (s[i] == ch) return true;
+    }
+    return false;
+}
+
+/// Re-evaluate every reactive `textFn` binding, pushing changed values into the
+/// underlying widgets. Returns true if anything changed. Called each frame.
+pub fn pumpReactiveBindings() bool {
+    var changed = false;
+    var i: usize = 0;
+    while (i < g_binding_count) : (i += 1) {
+        const b = &g_bindings[i];
+        const v = b.func(b.user_data);
+        if (!cstrEql(v, b.last)) {
+            b.last = v;
+            b.widget.setContent(v);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+fn reactiveUpdateCallback(_: ?*c.FluxUIApp, _: f32, _: ?*anyopaque) callconv(.c) void {
+    _ = pumpReactiveBindings();
+}
+
+// ---- Node — deferred, HTML-named declarative element, materialized on mount. ----
+//
+// Every node carries an HTML tag name; mount() routes through Widget.addElement,
+// the single source of truth for the tag -> widget mapping (Blink UA parity).
+// Reactive text nodes use `is_text_fn` + a function pointer.
+pub const Node = struct {
+    tag: [*:0]const u8 = "div",
+    content: [*:0]const u8 = "",
+    class_name: [*:0]const u8 = "",
+    node_id: [*:0]const u8 = "",
+    inline_css: [*:0]const u8 = "",
+    on_click: ?c.FluxUIClickCallback = null,
+    on_click_data: ?*anyopaque = null,
+    is_text_fn: bool = false,
+    text_fn: ?TextFnPtr = null,
+    text_fn_data: ?*anyopaque = null,
+    children: []const Node = &.{},
+
+    pub fn class(self: Node, cls: [*:0]const u8) Node {
+        var n = self;
+        n.class_name = cls;
+        return n;
+    }
+    pub fn id(self: Node, node_id: [*:0]const u8) Node {
+        var n = self;
+        n.node_id = node_id;
+        return n;
+    }
+    pub fn css(self: Node, decl: [*:0]const u8) Node {
+        var n = self;
+        n.inline_css = decl;
+        return n;
+    }
+    pub fn onClick(self: Node, callback: c.FluxUIClickCallback, user_data: ?*anyopaque) Node {
+        var n = self;
+        n.on_click = callback;
+        n.on_click_data = user_data;
+        return n;
+    }
+
+    pub fn mount(self: Node, parent: Widget) Error!Widget {
+        var w: Widget = undefined;
+        if (self.is_text_fn) {
+            const initial = if (self.text_fn) |f| f(self.text_fn_data) else "";
+            w = try parent.addElement("span", initial, self.class_name);
+            if (self.text_fn) |f| registerReactive(w, f, self.text_fn_data, initial);
+        } else {
+            w = try parent.addElement(self.tag, self.content, self.class_name);
+        }
+
+        if (self.node_id[0] != 0) w.setId(self.node_id);
+        if (self.inline_css[0] != 0) w.css(self.inline_css);
+        if (self.on_click) |cb| w.setOnClick(cb, self.on_click_data);
+        for (self.children) |child| {
+            _ = try child.mount(w);
+        }
+        return w;
+    }
+};
+
+// ---- HTML element builders (names match HTML/Blink exactly). ----
+fn container(comptime tag: [*:0]const u8, children: []const Node) Node {
+    return .{ .tag = tag, .children = children };
+}
+fn leaf(comptime tag: [*:0]const u8, content: [*:0]const u8) Node {
+    return .{ .tag = tag, .content = content };
+}
+
+// Flow containers.
+pub fn div(children: []const Node) Node { return container("div", children); }
+pub fn section(children: []const Node) Node { return container("section", children); }
+pub fn article(children: []const Node) Node { return container("article", children); }
+pub fn aside(children: []const Node) Node { return container("aside", children); }
+pub fn header(children: []const Node) Node { return container("header", children); }
+pub fn footer(children: []const Node) Node { return container("footer", children); }
+pub fn mainEl(children: []const Node) Node { return container("main", children); }
+pub fn nav(children: []const Node) Node { return container("nav", children); }
+pub fn form(children: []const Node) Node { return container("form", children); }
+pub fn fieldset(children: []const Node) Node { return container("fieldset", children); }
+pub fn blockquote(children: []const Node) Node { return container("blockquote", children); }
+pub fn figure(children: []const Node) Node { return container("figure", children); }
+pub fn ul(children: []const Node) Node { return container("ul", children); }
+pub fn ol(children: []const Node) Node { return container("ol", children); }
+pub fn li(children: []const Node) Node { return container("li", children); }
+pub fn table(children: []const Node) Node { return container("table", children); }
+pub fn tr(children: []const Node) Node { return container("tr", children); }
+
+// Text content.
+pub fn text(content: [*:0]const u8) Node { return leaf("span", content); }
+pub fn span(content: [*:0]const u8) Node { return leaf("span", content); }
+pub fn p(content: [*:0]const u8) Node { return leaf("p", content); }
+pub fn h1(content: [*:0]const u8) Node { return leaf("h1", content); }
+pub fn h2(content: [*:0]const u8) Node { return leaf("h2", content); }
+pub fn h3(content: [*:0]const u8) Node { return leaf("h3", content); }
+pub fn h4(content: [*:0]const u8) Node { return leaf("h4", content); }
+pub fn h5(content: [*:0]const u8) Node { return leaf("h5", content); }
+pub fn h6(content: [*:0]const u8) Node { return leaf("h6", content); }
+pub fn strong(content: [*:0]const u8) Node { return leaf("strong", content); }
+pub fn em(content: [*:0]const u8) Node { return leaf("em", content); }
+pub fn small(content: [*:0]const u8) Node { return leaf("small", content); }
+pub fn label(content: [*:0]const u8) Node { return leaf("label", content); }
+pub fn legend(content: [*:0]const u8) Node { return leaf("legend", content); }
+pub fn code(content: [*:0]const u8) Node { return leaf("code", content); }
+pub fn pre(content: [*:0]const u8) Node { return leaf("pre", content); }
+pub fn td(content: [*:0]const u8) Node { return leaf("td", content); }
+pub fn th(content: [*:0]const u8) Node { return leaf("th", content); }
+
+/// Reactive text — re-evaluated whenever bound State changes.
+pub fn textFn(func: TextFnPtr, user_data: ?*anyopaque) Node {
+    return .{ .tag = "span", .is_text_fn = true, .text_fn = func, .text_fn_data = user_data };
+}
+
+// Interactive controls.
+pub fn button(lbl: [*:0]const u8) Node { return leaf("button", lbl); }
+pub fn input(placeholder: [*:0]const u8) Node { return leaf("input", placeholder); }
+pub fn textarea(placeholder: [*:0]const u8) Node { return leaf("textarea", placeholder); }
+pub fn img(source: [*:0]const u8) Node { return leaf("img", source); }
+pub fn checkbox() Node { return .{ .tag = "checkbox" }; }
+pub fn radio() Node { return .{ .tag = "radio" }; }
+pub fn hr() Node { return .{ .tag = "hr" }; }
+pub fn br() Node { return .{ .tag = "br" }; }
+pub fn select(options: []const Node) Node { return container("select", options); }
+pub fn option(lbl: [*:0]const u8) Node { return leaf("option", lbl); }
+
+/// Generic escape hatch for any HTML tag.
+pub fn el(tag: [*:0]const u8, children: []const Node) Node {
+    return .{ .tag = tag, .children = children };
+}
+
+// ---- Declarative routing (like Next.js) ----
+pub const ViewFn = *const fn () Node;
+pub const LayoutFn = *const fn (content: Node) Node;
+
+const Route = struct { path: [*:0]const u8, view: ViewFn };
+
+var g_routes: [64]Route = undefined;
+var g_route_count: usize = 0;
+var g_layout: ?LayoutFn = null;
+var g_current: [*:0]const u8 = "";
+var g_active_app: ?*c.FluxUIApp = null;
+
+/// Navigate the active app to a route (usable from C-ABI onClick handlers where
+/// you don't hold an App). Pairs with file-based routing.
+pub fn navigate(path: [*:0]const u8) void {
+    if (g_active_app) |raw| {
+        const app = App{ .raw = raw };
+        app.navigate(path);
+    }
+}
+
+// Pending views collected at comptime/startup for file-based routing.
+var g_pending: [64]Route = undefined;
+var g_pending_count: usize = 0;
+
+/// Register a view for file-based routing. Call from each view module's
+/// `pub fn register()` (Zig has no auto-init), then `app.useViews()` wires them.
+pub fn registerView(path: [*:0]const u8, view: ViewFn) void {
+    if (g_pending_count >= g_pending.len) return;
+    g_pending[g_pending_count] = .{ .path = path, .view = view };
+    g_pending_count += 1;
+}
+
+fn routerUseViews() void {
+    var i: usize = 0;
+    while (i < g_pending_count) : (i += 1) {
+        routerAddRoute(g_pending[i].path, g_pending[i].view);
+    }
+}
+
+fn routerSetApp(raw: ?*c.FluxUIApp) void {
+    g_active_app = raw;
+}
+
+fn routerAddRoute(path: [*:0]const u8, view: ViewFn) void {
+    if (g_route_count >= g_routes.len) return;
+    g_routes[g_route_count] = .{ .path = path, .view = view };
+    g_route_count += 1;
+}
+
+fn routerSetLayout(layout: LayoutFn) void {
+    g_layout = layout;
+}
+
+fn routerSetCurrent(path: [*:0]const u8) void {
+    g_current = path;
+}
+
+fn routerCurrent() [*:0]const u8 {
+    return g_current;
+}
+
+fn routerHasRoutes() bool {
+    return g_route_count > 0;
+}
+
+fn findRoute(path: [*:0]const u8) ?ViewFn {
+    // Exact match first.
+    var i: usize = 0;
+    while (i < g_route_count) : (i += 1) {
+        if (cstrEql(g_routes[i].path, path)) return g_routes[i].view;
+    }
+    // Param match (e.g. "/user/:id" against "/user/42").
+    i = 0;
+    while (i < g_route_count) : (i += 1) {
+        if (matchPattern(g_routes[i].path, path)) return g_routes[i].view;
+    }
+    return null;
+}
+
+// ---- Route params (fixed-capacity storage; no allocator) ----
+const Param = struct { name: [64]u8, value: [128]u8 };
+var g_params: [16]Param = undefined;
+var g_param_count: usize = 0;
+
+fn copyZ(dst: []u8, src: [*:0]const u8) void {
+    var i: usize = 0;
+    while (src[i] != 0 and i < dst.len - 1) : (i += 1) dst[i] = src[i];
+    dst[i] = 0;
+}
+
+// Returns the length of a segment starting at i until '/' or end (ignoring query).
+fn segLen(s: [*:0]const u8, start: usize) usize {
+    var i = start;
+    while (s[i] != 0 and s[i] != '/' and s[i] != '?') : (i += 1) {}
+    return i - start;
+}
+
+fn matchPattern(pattern: [*:0]const u8, path: [*:0]const u8) bool {
+    g_param_count = 0;
+    var pi: usize = 0;
+    var ci: usize = 0;
+    while (true) {
+        while (pattern[pi] == '/') pi += 1;
+        while (path[ci] == '/') ci += 1;
+        const pEnd = pattern[pi] == 0;
+        const cEnd = path[ci] == 0 or path[ci] == '?';
+        if (pEnd and cEnd) return true;
+        if (pEnd or cEnd) return false;
+
+        const pl = segLen(pattern, pi);
+        const cl = segLen(path, ci);
+        if (pattern[pi] == ':') {
+            if (g_param_count < g_params.len) {
+                // name = pattern segment without ':'
+                var ni: usize = 0;
+                while (ni < pl - 1 and ni < 63) : (ni += 1) g_params[g_param_count].name[ni] = pattern[pi + 1 + ni];
+                g_params[g_param_count].name[ni] = 0;
+                // value = path segment
+                var vi: usize = 0;
+                while (vi < cl and vi < 127) : (vi += 1) g_params[g_param_count].value[vi] = path[ci + vi];
+                g_params[g_param_count].value[vi] = 0;
+                g_param_count += 1;
+            }
+        } else {
+            // compare literal segments
+            if (pl != cl) return false;
+            var k: usize = 0;
+            while (k < pl) : (k += 1) {
+                if (pattern[pi + k] != path[ci + k]) return false;
+            }
+        }
+        pi += pl;
+        ci += cl;
+    }
+}
+
+/// Read a route param captured from a pattern like "/user/:id".
+pub fn param(name: [*:0]const u8) [*:0]const u8 {
+    var i: usize = 0;
+    while (i < g_param_count) : (i += 1) {
+        const pn: [*:0]const u8 = @ptrCast(&g_params[i].name);
+        if (cstrEql(pn, name)) {
+            return @ptrCast(&g_params[i].value);
+        }
+    }
+    return "";
+}
+
+fn routerBuild(rootWidget: Widget, initial_route: [*:0]const u8) void {
+    if (initial_route[0] != 0) {
+        g_current = initial_route;
+    } else if (g_current[0] == 0 and g_route_count > 0) {
+        g_current = g_routes[0].path;
+    }
+
+    var content: ?Node = null;
+    if (findRoute(g_current)) |view| {
+        content = view();
+    }
+
+    if (g_layout) |layout| {
+        const shell = layout(content orelse Node{ .tag = "div" });
+        _ = shell.mount(rootWidget) catch {};
+    } else if (content) |node| {
+        _ = node.mount(rootWidget) catch {};
+    }
+}
+
+// ---- Skeleton — loading placeholders ----
+// Zig Node children are slices; use a static buffer of skeleton lines.
+var g_skel_lines: [16]Node = undefined;
+
+/// A shimmer skeleton with `lines` placeholder lines (max 16).
+pub fn skeleton(lines: usize) Node {
+    const n = if (lines > g_skel_lines.len) g_skel_lines.len else lines;
+    var i: usize = 0;
+    while (i < n) : (i += 1) {
+        g_skel_lines[i] = (Node{ .tag = "div" }).class("skeleton-line");
+    }
+    return (Node{ .tag = "div", .children = g_skel_lines[0..n] }).class("skeleton");
+}
+
+/// A skeleton block. Apply width/height via .css() at the call site, e.g.
+/// `dsl.skeletonBox().css("width:100%;height:120px")`.
+pub fn skeletonBox() Node {
+    return (Node{ .tag = "div" }).class("skeleton skeleton-box");
+}
+
+// ============================================================
+//  Store(T) — global state container (Zustand-style). T is a value type.
+// ============================================================
+pub fn Store(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        const MaxSubs = 16;
+        value: T,
+        subs: [MaxSubs]?*const fn () void = [_]?*const fn () void{null} ** MaxSubs,
+        sub_count: usize = 0,
+
+        pub fn init(initial: T) Self {
+            return .{ .value = initial };
+        }
+        pub fn get(self: *const Self) T {
+            return self.value;
+        }
+        pub fn set(self: *Self, v: T) void {
+            self.value = v;
+            var i: usize = 0;
+            while (i < self.sub_count) : (i += 1) {
+                if (self.subs[i]) |cb| cb();
+            }
+        }
+        pub fn subscribe(self: *Self, cb: *const fn () void) void {
+            if (self.sub_count < MaxSubs) {
+                self.subs[self.sub_count] = cb;
+                self.sub_count += 1;
+            }
+        }
+    };
+}
+
+// ============================================================
+//  Schema / Rule — runtime validation (Zod-style)
+//
+//  Build a Rule with Rule.string()/number()/boolean() and chained refinements,
+//  then validate a single value with `check()`. Schema groups named fields:
+//
+//      const schema = dsl.Schema.init(&.{
+//          .{ .name = "email", .rule = dsl.Rule.string().email() },
+//          .{ .name = "age",   .rule = dsl.Rule.number().min(18) },
+//      });
+//      const res = schema.validate(&.{
+//          .{ .name = "email", .value = "a@b.com" },
+//          .{ .name = "age",   .value = "20" },
+//      });
+//      if (!res.ok) { ... res.first() ... }
+// ============================================================
+pub const Rule = struct {
+    pub const Kind = enum { string, number, boolean };
+    kind: Kind,
+    required: bool = true,
+    min_val: ?f64 = null,
+    max_val: ?f64 = null,
+    min_len: ?usize = null,
+    max_len: ?usize = null,
+    is_email: bool = false,
+
+    pub fn string() Rule {
+        return .{ .kind = .string };
+    }
+    pub fn number() Rule {
+        return .{ .kind = .number };
+    }
+    pub fn boolean() Rule {
+        return .{ .kind = .boolean };
+    }
+
+    pub fn optional(self: Rule) Rule {
+        var r = self;
+        r.required = false;
+        return r;
+    }
+    pub fn min(self: Rule, v: f64) Rule {
+        var r = self;
+        r.min_val = v;
+        return r;
+    }
+    pub fn max(self: Rule, v: f64) Rule {
+        var r = self;
+        r.max_val = v;
+        return r;
+    }
+    pub fn minLength(self: Rule, v: usize) Rule {
+        var r = self;
+        r.min_len = v;
+        return r;
+    }
+    pub fn maxLength(self: Rule, v: usize) Rule {
+        var r = self;
+        r.max_len = v;
+        return r;
+    }
+    pub fn email(self: Rule) Rule {
+        var r = self;
+        r.is_email = true;
+        return r;
+    }
+
+    /// Validate a value; returns an error message ("" means valid).
+    pub fn check(self: Rule, field: [*:0]const u8, value: [*:0]const u8) [*:0]const u8 {
+        _ = field;
+        const len = cstrLen(value);
+        if (len == 0) {
+            return if (self.required) "field is required" else "";
+        }
+        switch (self.kind) {
+            .number => {
+                const slice = value[0..len];
+                const d = std.fmt.parseFloat(f64, slice) catch return "field must be a number";
+                if (self.min_val) |m| if (d < m) return "field is too small";
+                if (self.max_val) |m| if (d > m) return "field is too large";
+            },
+            .string => {
+                if (self.min_len) |m| if (len < m) return "field is too short";
+                if (self.max_len) |m| if (len > m) return "field is too long";
+                if (self.is_email and !cstrContains(value, '@')) return "field must be a valid email";
+            },
+            .boolean => {
+                if (!cstrEql(value, "true") and !cstrEql(value, "false")) return "field must be true/false";
+            },
+        }
+        return "";
+    }
+};
+
+pub const Field = struct { name: [*:0]const u8, rule: Rule };
+pub const Datum = struct { name: [*:0]const u8, value: [*:0]const u8 };
+
+pub const ValidationResult = struct {
+    ok: bool,
+    error_count: usize = 0,
+    first_error: [*:0]const u8 = "",
+    first_field: [*:0]const u8 = "",
+
+    pub fn first(self: ValidationResult) [*:0]const u8 {
+        return self.first_error;
+    }
+};
+
+pub const Schema = struct {
+    fields: []const Field,
+
+    pub fn init(fields: []const Field) Schema {
+        return .{ .fields = fields };
+    }
+
+    pub fn validate(self: Schema, data: []const Datum) ValidationResult {
+        var res = ValidationResult{ .ok = true };
+        for (self.fields) |f| {
+            var value: [*:0]const u8 = "";
+            for (data) |d| {
+                if (cstrEql(d.name, f.name)) {
+                    value = d.value;
+                    break;
+                }
+            }
+            const err = f.rule.check(f.name, value);
+            if (cstrLen(err) != 0) {
+                res.ok = false;
+                if (res.error_count == 0) {
+                    res.first_error = err;
+                    res.first_field = f.name;
+                }
+                res.error_count += 1;
+            }
+        }
+        return res;
+    }
+};
+
+// ============================================================
+//  Query(T) — async fetch with loading/error/data states.
+//
+//  Zig has no built-in async runtime here, so the fetcher runs on a spawned
+//  thread. Status transitions Idle -> Loading -> Success/Error are observable
+//  via status(); render per-state with view().
+//
+//      const Users = dsl.Query([]const u8);
+//      var q = Users.init(fetchUsers);
+//      q.start();
+//      const node = q.view(loadingView, successView, errorView);
+// ============================================================
+pub const QueryStatus = enum { idle, loading, success, err };
+
+pub fn Query(comptime T: type) type {
+    return struct {
+        const Self = @This();
+        pub const Fetcher = *const fn () QueryError!T;
+        pub const QueryError = error{FetchFailed};
+        pub const LoadingFn = *const fn () Node;
+        pub const SuccessFn = *const fn (T) Node;
+        pub const ErrorFn = *const fn ([*:0]const u8) Node;
+
+        fetcher: Fetcher,
+        status_val: QueryStatus = .idle,
+        data_val: ?T = null,
+        error_val: [*:0]const u8 = "",
+        thread: ?std.Thread = null,
+
+        pub fn init(fetcher: Fetcher) Self {
+            return .{ .fetcher = fetcher };
+        }
+
+        pub fn status(self: *const Self) QueryStatus {
+            return self.status_val;
+        }
+        pub fn isLoading(self: *const Self) bool {
+            return self.status_val == .loading;
+        }
+        pub fn isSuccess(self: *const Self) bool {
+            return self.status_val == .success;
+        }
+        pub fn isError(self: *const Self) bool {
+            return self.status_val == .err;
+        }
+        pub fn data(self: *const Self) ?T {
+            return self.data_val;
+        }
+
+        fn worker(self: *Self) void {
+            if (self.fetcher()) |result| {
+                self.data_val = result;
+                self.status_val = .success;
+            } else |_| {
+                self.error_val = "fetch failed";
+                self.status_val = .err;
+            }
+        }
+
+        /// Kick off the fetch on a background thread (idempotent while loading).
+        pub fn start(self: *Self) void {
+            if (self.status_val == .loading) return;
+            self.status_val = .loading;
+            self.thread = std.Thread.spawn(.{}, worker, .{self}) catch blk: {
+                // Fall back to synchronous fetch if the thread can't spawn.
+                self.worker();
+                break :blk null;
+            };
+        }
+
+        pub fn refetch(self: *Self) void {
+            self.status_val = .idle;
+            self.start();
+        }
+
+        /// Render the right Node for the current state.
+        pub fn view(self: *const Self, on_loading: LoadingFn, on_success: SuccessFn, on_error: ?ErrorFn) Node {
+            switch (self.status_val) {
+                .success => return on_success(self.data_val.?),
+                .err => return if (on_error) |f| f(self.error_val) else leaf("p", "Error"),
+                else => return on_loading(),
+            }
+        }
+    };
+}
+
+}; // pub const dsl
