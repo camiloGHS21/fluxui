@@ -104,8 +104,49 @@ pub const App = struct {
         _ = try node.mount(r);
     }
 
+    /// Register a route. `view` is a fn() that returns a Node tree for the path.
+    pub fn addRoute(self: App, path: [*:0]const u8, view: dsl.ViewFn) void {
+        _ = self;
+        dsl.routerAddRoute(path, view);
+    }
+
+    /// Register all views collected via dsl.registerView() (file-based routing).
+    pub fn useViews(self: App) void {
+        _ = self;
+        dsl.routerUseViews();
+    }
+
+    /// Set the app shell. `layout` is a fn(content) -> Node embedding the view.
+    pub fn setLayout(self: App, layout: dsl.LayoutFn) void {
+        _ = self;
+        dsl.routerSetLayout(layout);
+    }
+
+    /// Current route path.
+    pub fn route(self: App) [*:0]const u8 {
+        _ = self;
+        return dsl.routerCurrent();
+    }
+
+    /// Switch to a route and rebuild the shell (nav highlights refresh).
+    pub fn navigate(self: App, path: [*:0]const u8) void {
+        dsl.routerSetCurrent(path);
+        self.build(path) catch {};
+    }
+
+    /// Mount the shell + initial route. Uses the first route if path is empty.
+    pub fn build(self: App, initial_route: [*:0]const u8) Error!void {
+        dsl.routerSetApp(self.raw);
+        const r = try self.root();
+        r.clearChildren();
+        dsl.routerBuild(r, initial_route);
+    }
+
     /// Install the reactive pump into the update loop and run the app.
     pub fn runReactive(self: App) void {
+        if (dsl.routerHasRoutes()) {
+            self.build(dsl.routerCurrent()) catch {};
+        }
         self.setUpdateCallback(dsl.reactiveUpdateCallback, null);
         self.run();
     }
@@ -708,6 +749,100 @@ pub fn option(lbl: [*:0]const u8) Node { return leaf("option", lbl); }
 /// Generic escape hatch for any HTML tag.
 pub fn el(tag: [*:0]const u8, children: []const Node) Node {
     return .{ .tag = tag, .children = children };
+}
+
+// ---- Declarative routing (like Next.js) ----
+pub const ViewFn = *const fn () Node;
+pub const LayoutFn = *const fn (content: Node) Node;
+
+const Route = struct { path: [*:0]const u8, view: ViewFn };
+
+var g_routes: [64]Route = undefined;
+var g_route_count: usize = 0;
+var g_layout: ?LayoutFn = null;
+var g_current: [*:0]const u8 = "";
+var g_active_app: ?*c.FluxUIApp = null;
+
+/// Navigate the active app to a route (usable from C-ABI onClick handlers where
+/// you don't hold an App). Pairs with file-based routing.
+pub fn navigate(path: [*:0]const u8) void {
+    if (g_active_app) |raw| {
+        const app = App{ .raw = raw };
+        app.navigate(path);
+    }
+}
+
+// Pending views collected at comptime/startup for file-based routing.
+var g_pending: [64]Route = undefined;
+var g_pending_count: usize = 0;
+
+/// Register a view for file-based routing. Call from each view module's
+/// `pub fn register()` (Zig has no auto-init), then `app.useViews()` wires them.
+pub fn registerView(path: [*:0]const u8, view: ViewFn) void {
+    if (g_pending_count >= g_pending.len) return;
+    g_pending[g_pending_count] = .{ .path = path, .view = view };
+    g_pending_count += 1;
+}
+
+fn routerUseViews() void {
+    var i: usize = 0;
+    while (i < g_pending_count) : (i += 1) {
+        routerAddRoute(g_pending[i].path, g_pending[i].view);
+    }
+}
+
+fn routerSetApp(raw: ?*c.FluxUIApp) void {
+    g_active_app = raw;
+}
+
+fn routerAddRoute(path: [*:0]const u8, view: ViewFn) void {
+    if (g_route_count >= g_routes.len) return;
+    g_routes[g_route_count] = .{ .path = path, .view = view };
+    g_route_count += 1;
+}
+
+fn routerSetLayout(layout: LayoutFn) void {
+    g_layout = layout;
+}
+
+fn routerSetCurrent(path: [*:0]const u8) void {
+    g_current = path;
+}
+
+fn routerCurrent() [*:0]const u8 {
+    return g_current;
+}
+
+fn routerHasRoutes() bool {
+    return g_route_count > 0;
+}
+
+fn findRoute(path: [*:0]const u8) ?ViewFn {
+    var i: usize = 0;
+    while (i < g_route_count) : (i += 1) {
+        if (cstrEql(g_routes[i].path, path)) return g_routes[i].view;
+    }
+    return null;
+}
+
+fn routerBuild(rootWidget: Widget, initial_route: [*:0]const u8) void {
+    if (initial_route[0] != 0) {
+        g_current = initial_route;
+    } else if (g_current[0] == 0 and g_route_count > 0) {
+        g_current = g_routes[0].path;
+    }
+
+    var content: ?Node = null;
+    if (findRoute(g_current)) |view| {
+        content = view();
+    }
+
+    if (g_layout) |layout| {
+        const shell = layout(content orelse Node{ .tag = "div" });
+        _ = shell.mount(rootWidget) catch {};
+    } else if (content) |node| {
+        _ = node.mount(rootWidget) catch {};
+    }
 }
 
 }; // pub const dsl

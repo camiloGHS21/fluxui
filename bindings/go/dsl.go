@@ -275,8 +275,118 @@ func (a *App) SetRoot(root *Element) {
 	root.mount(r)
 }
 
+// ============================================================
+//  Declarative routing (like Next.js). Routing state is kept in a side table
+//  keyed by the app handle, since App is defined in another file.
+// ============================================================
+
+type routerState struct {
+	routes  map[string]func() *Element
+	order   []string
+	layout  func(content *Element) *Element
+	current string
+}
+
+var routers = map[uintptr]*routerState{}
+
+// pendingViews collects views registered by init() in view files (file-based
+// routing like Next.js — each views/foo.go self-registers in its init()).
+var pendingViews []struct {
+	path string
+	fn   func() *Element
+}
+
+// RegisterView is called from a view file's init() to self-register a route.
+// This gives Next.js-style file-based routing with no generated files:
+//
+//	// views/dashboard.go
+//	func init() { fluxui.RegisterView("/dashboard", DashboardView) }
+//
+// Then in main, after creating the app: app.UseViews()
+func RegisterView(path string, fn func() *Element) {
+	pendingViews = append(pendingViews, struct {
+		path string
+		fn   func() *Element
+	}{path, fn})
+}
+
+// UseViews registers every view collected via RegisterView() into this app.
+func (a *App) UseViews() *App {
+	for _, v := range pendingViews {
+		a.AddRoute(v.path, v.fn)
+	}
+	return a
+}
+
+func (a *App) router() *routerState {
+	rs := routers[a.handle]
+	if rs == nil {
+		rs = &routerState{routes: map[string]func() *Element{}}
+		routers[a.handle] = rs
+	}
+	return rs
+}
+
+// AddRoute registers a route. viewFn returns an Element tree for that path.
+func (a *App) AddRoute(path string, viewFn func() *Element) *App {
+	rs := a.router()
+	if _, ok := rs.routes[path]; !ok {
+		rs.order = append(rs.order, path)
+	}
+	rs.routes[path] = viewFn
+	return a
+}
+
+// SetLayout sets the app shell. layoutFn(content) returns the shell tree which
+// must embed the given content element.
+func (a *App) SetLayout(layoutFn func(content *Element) *Element) *App {
+	a.router().layout = layoutFn
+	return a
+}
+
+// Route returns the current route path.
+func (a *App) Route() string { return a.router().current }
+
+// Navigate switches to a route and rebuilds the shell (nav highlights refresh).
+func (a *App) Navigate(path string) {
+	a.router().current = path
+	a.Build(path)
+}
+
+// Build mounts the shell + initial route. Uses the first route if path is empty.
+func (a *App) Build(initialRoute string) {
+	r := a.Root()
+	rs := a.router()
+	if r == nil {
+		return
+	}
+	r.ClearChildren()
+	if initialRoute != "" {
+		rs.current = initialRoute
+	} else if rs.current == "" && len(rs.order) > 0 {
+		rs.current = rs.order[0]
+	}
+
+	var content *Element
+	if fn := rs.routes[rs.current]; fn != nil {
+		content = fn()
+	}
+	if rs.layout != nil {
+		shell := rs.layout(content)
+		if shell != nil {
+			shell.mount(r)
+		}
+	} else if content != nil {
+		content.mount(r)
+	}
+}
+
 // RunReactive installs the reactive pump into the update loop and runs the app.
 func (a *App) RunReactive() {
+	rs := a.router()
+	if len(rs.order) > 0 {
+		a.Build(rs.current)
+	}
 	a.SetUpdateCallback(func(float32) {
 		PumpReactiveBindings()
 	})

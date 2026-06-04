@@ -1491,6 +1491,55 @@ pub mod dsl {
         container(tag, children)
     }
 
+    // ---- Declarative routing (like Next.js) ----
+    struct Router {
+        routes: std::collections::HashMap<String, Box<dyn Fn() -> Node>>,
+        order: Vec<String>,
+        layout: Option<Box<dyn Fn(Option<Node>) -> Node>>,
+        current: String,
+    }
+
+    thread_local! {
+        static ROUTER: RefCell<Router> = RefCell::new(Router {
+            routes: std::collections::HashMap::new(),
+            order: Vec::new(),
+            layout: None,
+            current: String::new(),
+        });
+
+        // Views collected by inventory-style registration before the app exists.
+        static PENDING_VIEWS: RefCell<Vec<(String, Box<dyn Fn() -> Node>)>> =
+            RefCell::new(Vec::new());
+
+        // Raw app pointer so free-standing navigate() works inside layout closures.
+        static ACTIVE_APP: std::cell::Cell<*mut super::sys::FluxUIApp> =
+            std::cell::Cell::new(std::ptr::null_mut());
+    }
+
+    /// Navigate the active app to a route (usable from inside layout/view
+    /// closures where you don't hold an &App). Pairs with file-based routing.
+    pub fn navigate(path: &str) {
+        let raw = ACTIVE_APP.with(|a| a.get());
+        if raw.is_null() {
+            return;
+        }
+        // Reconstruct a borrowed App over the raw pointer (no ownership) to drive
+        // the rebuild; navigate() only reads/writes the thread-local router.
+        let app = std::mem::ManuallyDrop::new(unsafe {
+            App { raw: super::NonNull::new_unchecked(raw) }
+        });
+        app.navigate(path);
+    }
+
+    /// Register a view for file-based routing (call from a view module). The
+    /// route is materialized into the app when `App::use_views()` is called.
+    ///
+    ///     // views/dashboard.rs
+    ///     pub fn register() { fluxui::dsl::register_view("/dashboard", view); }
+    pub fn register_view<F: Fn() -> Node + 'static>(path: &str, view: F) {
+        PENDING_VIEWS.with(|v| v.borrow_mut().push((path.to_string(), Box::new(view))));
+    }
+
     // ---- App convenience methods for the declarative flow. ----
     impl App {
         /// Mount a declarative Node tree as the application root.
@@ -1506,8 +1555,92 @@ pub mod dsl {
             let _ = self.add_stylesheet(css);
         }
 
+        /// Register a route. `view` returns a Node tree for that path.
+        pub fn add_route<F: Fn() -> Node + 'static>(&self, path: &str, view: F) {
+            ROUTER.with(|r| {
+                let mut router = r.borrow_mut();
+                if !router.routes.contains_key(path) {
+                    router.order.push(path.to_string());
+                }
+                router.routes.insert(path.to_string(), Box::new(view));
+            });
+        }
+
+        /// Register all views collected via `register_view()` (file-based routing).
+        pub fn use_views(&self) {
+            PENDING_VIEWS.with(|v| {
+                for (path, view) in v.borrow_mut().drain(..) {
+                    ROUTER.with(|r| {
+                        let mut router = r.borrow_mut();
+                        if !router.routes.contains_key(&path) {
+                            router.order.push(path.clone());
+                        }
+                        router.routes.insert(path, view);
+                    });
+                }
+            });
+        }
+
+        /// Set the app shell. `layout(content)` returns the shell tree embedding content.
+        pub fn set_layout<F: Fn(Option<Node>) -> Node + 'static>(&self, layout: F) {
+            ROUTER.with(|r| r.borrow_mut().layout = Some(Box::new(layout)));
+        }
+
+        /// Current route path.
+        pub fn route(&self) -> String {
+            ROUTER.with(|r| r.borrow().current.clone())
+        }
+
+        /// Switch to a route and rebuild the shell (nav highlights refresh).
+        pub fn navigate(&self, path: &str) {
+            ROUTER.with(|r| r.borrow_mut().current = path.to_string());
+            self.build(path);
+        }
+
+        /// Mount the shell + initial route. Uses the first route if empty.
+        pub fn build(&self, initial_route: &str) {
+            // Remember the active app so free-standing navigate() can drive it.
+            ACTIVE_APP.with(|a| a.set(self.raw.as_ptr()));
+            let root = match self.root() {
+                Some(r) => r,
+                None => return,
+            };
+            root.clear_children();
+
+            let (content, has_layout) = ROUTER.with(|r| {
+                let mut router = r.borrow_mut();
+                if !initial_route.is_empty() {
+                    router.current = initial_route.to_string();
+                } else if router.current.is_empty() && !router.order.is_empty() {
+                    router.current = router.order[0].clone();
+                }
+                let content = router
+                    .routes
+                    .get(&router.current)
+                    .map(|f| f());
+                (content, router.layout.is_some())
+            });
+
+            if has_layout {
+                ROUTER.with(|r| {
+                    let router = r.borrow();
+                    if let Some(layout) = &router.layout {
+                        let shell = layout(content);
+                        shell.mount(root);
+                    }
+                });
+            } else if let Some(c) = content {
+                c.mount(root);
+            }
+        }
+
         /// Install the reactive pump into the update loop and run the app.
         pub fn run_reactive(&self) {
+            let has_routes = ROUTER.with(|r| !r.borrow().order.is_empty());
+            if has_routes {
+                let cur = ROUTER.with(|r| r.borrow().current.clone());
+                self.build(&cur);
+            }
             self.set_update(|_dt| {
                 pump_reactive_bindings();
             });

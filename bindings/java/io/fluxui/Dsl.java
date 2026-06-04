@@ -53,6 +53,23 @@ public final class Dsl {
         bindings.add(new Binding(widget, fn, initial));
     }
 
+    // ---- File-based view registry (self-registration, no codegen) ----
+    private static final java.util.LinkedHashMap<String, Supplier<Node>> pendingViews =
+        new java.util.LinkedHashMap<>();
+
+    /**
+     * Register a view for file-based routing. Call from a static initializer in
+     * each view class, then {@code router.useViews()} wires them all in:
+     *
+     * <pre>{@code
+     *   // Dashboard.java
+     *   static { Dsl.registerView("/dashboard", Dashboard::view); }
+     * }</pre>
+     */
+    public static void registerView(String path, Supplier<Node> view) {
+        pendingViews.put(path, view);
+    }
+
     /**
      * Re-evaluate every reactive textFn binding, pushing changed values into the
      * underlying widgets. Returns true if anything changed. Called each frame.
@@ -156,5 +173,93 @@ public final class Dsl {
     public static void runReactive(App app) {
         app.setUpdateCallback(dt -> pumpReactiveBindings());
         app.run();
+    }
+
+    // ============================================================
+    //  Declarative routing (like Next.js). Create a Router, register views,
+    //  set a layout, then router.build()/navigate()/runReactive().
+    // ============================================================
+    public static final class Router {
+        private final App app;
+        private final java.util.LinkedHashMap<String, java.util.function.Supplier<Node>> routes =
+            new java.util.LinkedHashMap<>();
+        private java.util.function.Function<Node, Node> layout;
+        private String current = "";
+
+        public Router(App app) {
+            this.app = app;
+        }
+
+        /** Register a route. view.get() returns the Node tree for that path. */
+        public Router addRoute(String path, java.util.function.Supplier<Node> view) {
+            routes.put(path, view);
+            return this;
+        }
+
+        /** Register all views collected via Dsl.registerView() (file-based routing). */
+        public Router useViews() {
+            for (java.util.Map.Entry<String, java.util.function.Supplier<Node>> e : pendingViews.entrySet()) {
+                routes.put(e.getKey(), e.getValue());
+            }
+            return this;
+        }
+
+        /** Set the app shell. layout(content) returns the shell embedding content. */
+        public Router setLayout(java.util.function.Function<Node, Node> layout) {
+            this.layout = layout;
+            return this;
+        }
+
+        public String route() {
+            return current;
+        }
+
+        /** Switch to a route and rebuild the shell (nav highlights refresh). */
+        public void navigate(String path) {
+            current = path;
+            build(path);
+        }
+
+        /** Mount the shell + initial route. Uses the first route if path is null/empty. */
+        public void build(String initialRoute) {
+            Widget r = app.root();
+            if (r == null) {
+                return;
+            }
+            r.clearChildren();
+            if (initialRoute != null && !initialRoute.isEmpty()) {
+                current = initialRoute;
+            } else if (current.isEmpty() && !routes.isEmpty()) {
+                current = routes.keySet().iterator().next();
+            }
+
+            Node content = null;
+            java.util.function.Supplier<Node> view = routes.get(current);
+            if (view != null) {
+                content = view.get();
+            }
+            if (layout != null) {
+                Node shell = layout.apply(content);
+                if (shell != null) {
+                    shell.mount(r);
+                }
+            } else if (content != null) {
+                content.mount(r);
+            }
+        }
+
+        /** Install the reactive pump and run the app (auto-builds first route). */
+        public void runReactive() {
+            if (!routes.isEmpty()) {
+                build(current);
+            }
+            app.setUpdateCallback(dt -> pumpReactiveBindings());
+            app.run();
+        }
+    }
+
+    /** Create a router bound to the given app. */
+    public static Router router(App app) {
+        return new Router(app);
     }
 }

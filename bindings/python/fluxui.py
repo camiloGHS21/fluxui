@@ -862,6 +862,23 @@ def _register_reactive(widget, fn, initial):
     _reactive_bindings.append({"widget": widget, "fn": fn, "last": initial})
 
 
+# ---- File-based view registry (self-registration, no codegen) ----
+_pending_views = {}
+
+
+def register_view(path, view_fn):
+    """Register a view for file-based routing (call at module top level):
+
+        # views/dashboard.py
+        import fluxui
+        fluxui.register_view("/dashboard", view)
+
+    Then `app.use_views()` wires them all in. Or use `app.auto_routes(dir)` to
+    scan a folder automatically.
+    """
+    _pending_views[path] = view_fn
+
+
 def pump_reactive_bindings():
     """Re-evaluate every reactive TextFn binding, pushing changed values into the
     underlying widgets. Returns True if anything changed. Called each frame."""
@@ -1242,6 +1259,10 @@ class DslApp(App):
         super().__init__()
         self.init(title, width, height)
         self.load_default_font(16.0)
+        self._routes = {}
+        self._layout = None
+        self._current_route = ""
+        self._content_slot = None
 
     def add_css(self, css):
         self.add_stylesheet(css)
@@ -1256,6 +1277,96 @@ class DslApp(App):
         r.clear_children()
         root_node.mount(r)
 
+    # ---- Declarative routing (like Next.js) ----
+
+    def add_route(self, path, view_fn):
+        """Register a route. view_fn() returns an Element tree."""
+        self._routes[path] = view_fn
+        return self
+
+    def use_views(self):
+        """Register all views collected via fluxui.register_view() (file-based)."""
+        for path, view_fn in _pending_views.items():
+            self._routes[path] = view_fn
+        return self
+
+    def set_layout(self, layout_fn):
+        """Set the app shell. layout_fn(content_element) returns the shell tree.
+        The shell should embed the given content element somewhere."""
+        self._layout = layout_fn
+        return self
+
+    def route(self):
+        return self._current_route
+
+    def navigate(self, path):
+        """Switch to a route; rebuilds the shell so nav highlights refresh."""
+        self._current_route = path
+        self.build(path)
+
+    def build(self, initial_route=None):
+        """Build the shell + initial route. Uses the first route if none given."""
+        r = self.root()
+        if r is None:
+            return
+        r.clear_children()
+        if initial_route:
+            self._current_route = initial_route
+        elif not self._current_route and self._routes:
+            self._current_route = next(iter(self._routes))
+
+        content = None
+        view_fn = self._routes.get(self._current_route)
+        if view_fn:
+            content = view_fn()
+
+        if self._layout:
+            shell = self._layout(content)
+            if shell:
+                shell.mount(r)
+        elif content:
+            content.mount(r)
+        self.requestRedraw() if hasattr(self, "requestRedraw") else None
+
+    def auto_routes(self, views_dir):
+        """File-based routing like Next.js: import every .py module in views_dir
+        and register a route for each exported view function.
+
+        Convention: views/dashboard.py defining `dashboard_view()` (or `view()`)
+        registers route "/dashboard". Underscores in the filename become hyphens.
+        """
+        import importlib.util
+        import glob
+
+        for py_file in sorted(glob.glob(os.path.join(views_dir, "*.py"))):
+            mod_name = os.path.splitext(os.path.basename(py_file))[0]
+            if mod_name.startswith("_"):
+                continue
+            spec = importlib.util.spec_from_file_location("fluxui_view_" + mod_name, py_file)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            # Find the view function: prefer "view", else "<name>_view", else any callable.
+            view_fn = None
+            if hasattr(module, "view") and callable(module.view):
+                view_fn = module.view
+            elif hasattr(module, mod_name + "_view") and callable(getattr(module, mod_name + "_view")):
+                view_fn = getattr(module, mod_name + "_view")
+            else:
+                # PascalCase: dashboard -> DashboardView
+                pascal = "".join(p.capitalize() for p in mod_name.split("_")) + "View"
+                if hasattr(module, pascal) and callable(getattr(module, pascal)):
+                    view_fn = getattr(module, pascal)
+            if view_fn is None:
+                continue
+
+            route = "/" + mod_name.replace("_", "-")
+            self.add_route(route, view_fn)
+        return self
+
     def run_reactive(self):
+        # Auto-build if routing is configured but nothing has been mounted yet.
+        if self._routes:
+            self.build(self._current_route or None)
         self.set_update_callback(lambda dt: pump_reactive_bindings())
         self.run()
