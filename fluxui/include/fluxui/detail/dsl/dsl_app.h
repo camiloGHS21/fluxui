@@ -1,7 +1,7 @@
 #pragma once
 // FluxUI public API - App: owns Application and drives the reactive loop.
 // Auto-split from dsl.h; do not include directly, use <fluxui/dsl.h>.
-#include "fluxui/detail/dsl_core.h"
+#include "fluxui/detail/dsl/dsl_core.h"
 namespace fluxui {
 // ============================================================
 //  App — owns a FluxUI::Application and drives the reactive loop

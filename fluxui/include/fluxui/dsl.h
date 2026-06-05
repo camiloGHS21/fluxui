@@ -36,14 +36,14 @@
 //  split into focused sub-headers under detail/ for navigability; the public
 //  API is unchanged — just include <fluxui/dsl.h>.
 //
-//    detail/dsl_core.h       Reactive State/Ref, Element, HTML tag helpers
-//    detail/dsl_app.h        App — owns Application, drives the reactive loop
-//    detail/dsl_ecosystem.h  Store / Schema / Query / Skeleton helpers
+//    detail/dsl/dsl_core.h       Reactive State/Ref, Element, HTML tag helpers
+//    detail/dsl/dsl_app.h        App — owns Application, drives the reactive loop
+//    detail/dsl/dsl_ecosystem.h  Store / Schema / Query / Skeleton helpers
 // ----------------------------------------------------------------------------
 #pragma once
 #if defined(_WIN32) && !defined(NOMINMAX)
 #define NOMINMAX   // prevent windows.h min/max macros clobbering Rule::min/max etc.
 #endif
-#include "fluxui/detail/dsl_core.h"
-#include "fluxui/detail/dsl_app.h"
-#include "fluxui/detail/dsl_ecosystem.h"
+#include "fluxui/detail/dsl/dsl_core.h"
+#include "fluxui/detail/dsl/dsl_app.h"
+#include "fluxui/detail/dsl/dsl_ecosystem.h"

@@ -10,10 +10,10 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
-#include "fluxui/detail/geometry.h"
-#include "fluxui/detail/css_enums.h"
-#include "fluxui/detail/css_value.h"
-#include "fluxui/detail/transform.h"
+#include "fluxui/detail/core/geometry.h"
+#include "fluxui/detail/core/css_enums.h"
+#include "fluxui/detail/core/css_value.h"
+#include "fluxui/detail/core/transform.h"
 namespace FluxUI {
 struct Style {
     Display display = Display::Block;

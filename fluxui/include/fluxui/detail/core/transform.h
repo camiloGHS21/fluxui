@@ -10,8 +10,8 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
-#include "fluxui/detail/geometry.h"
-#include "fluxui/detail/css_value.h"
+#include "fluxui/detail/core/geometry.h"
+#include "fluxui/detail/core/css_value.h"
 namespace FluxUI {
 struct Transform2D {
     float m00 = 1.0f, m01 = 0.0f, m02 = 0.0f;

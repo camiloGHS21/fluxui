@@ -1,7 +1,7 @@
 #pragma once
 // FluxUI public API - ecosystem: Store, Schema/Rule, Query, Skeleton helpers.
 // Auto-split from dsl.h; do not include directly, use <fluxui/dsl.h>.
-#include "fluxui/detail/dsl_app.h"
+#include "fluxui/detail/dsl/dsl_app.h"
 namespace fluxui {
 
 // ============================================================

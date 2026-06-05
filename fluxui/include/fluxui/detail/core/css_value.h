@@ -10,7 +10,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
-#include "fluxui/detail/geometry.h"
+#include "fluxui/detail/core/geometry.h"
 namespace FluxUI {
 struct TimingFunction {
     enum Kind {

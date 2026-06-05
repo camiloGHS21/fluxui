@@ -1,7 +1,7 @@
 #pragma once
 // FluxUI public API - UI events, ResizeObserver, ViewTransition, Application.
 // Auto-split from widgets.h; do not include directly, use <fluxui/widgets.h>.
-#include "fluxui/detail/widget_elements.h"
+#include "fluxui/detail/widgets/widget_factory.h"
 namespace FluxUI {
 enum class UIEventType {
     Any,
