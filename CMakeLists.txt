@@ -230,6 +230,7 @@ set(FLUXUI_SOURCES
     fluxui/src/layout/layout_object.cpp
     # render: GPU/software renderer + image resources
     fluxui/src/render/renderer.cpp
+    fluxui/src/render/renderer_vulkan.cpp
     fluxui/src/render/renderer_svg.cpp
     fluxui/src/render/software_raster.cpp
     fluxui/src/render/image_resource.cpp
