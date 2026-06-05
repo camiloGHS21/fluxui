@@ -208,6 +208,8 @@ enable_release_lto(glad)
 set(FLUXUI_SOURCES
     # core: application loop, widgets, GC, a11y, compositor
     fluxui/src/core/application.cpp
+    fluxui/src/core/widget_style.cpp
+    fluxui/src/core/widget_cascade.cpp
     fluxui/src/core/widgets/video.cpp
     fluxui/src/core/widgets/svg.cpp
     fluxui/src/core/widgets/controls.cpp

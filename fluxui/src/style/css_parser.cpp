@@ -1051,7 +1051,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         else if (c == ':' && depth == 0) colon = i;
     }
     if (colon == std::string::npos) return false;
-    // Detect double-colon (::) — cut position should be at the first colon.
+    // Detect double-colon (::) ï¿½ cut position should be at the first colon.
     size_t cutPos = colon;
     if (colon > 0 && selector[colon - 1] == ':') {
         cutPos = colon - 1;
@@ -1061,7 +1061,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         nameStart++;
     }
     std::string name = lowerAscii(trimLocal(selector.substr(nameStart)));
-    // Strip trailing (…) for functional pseudo-elements like ::part(foo), ::slotted(div)
+    // Strip trailing (ï¿½) for functional pseudo-elements like ::part(foo), ::slotted(div)
     auto parenPos = name.find('(');
     std::string baseName = (parenPos != std::string::npos) ? name.substr(0, parenPos) : name;
 
@@ -1813,7 +1813,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         std::string nestedBody = nestedStr.substr(brace + 1, rbrace - brace - 1);
 
         // Handle nested at-rules: @media, @supports, @layer within a style rule
-        // (CSS Nesting Level 1 §3 — nested group rules)
+        // (CSS Nesting Level 1 ï¿½3 ï¿½ nested group rules)
         std::string nestedLower = lowerAscii(nestedSelector);
         if (!nestedSelector.empty() && nestedSelector[0] == '@') {
             if (nestedLower.rfind("@media", 0) == 0) {
@@ -1851,7 +1851,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
                     }
                     resolvedSelector += resolved;
                 } else {
-                    // Implicit descendant nesting (CSS Nesting §2.1)
+                    // Implicit descendant nesting (CSS Nesting ï¿½2.1)
                     resolvedSelector += parentPart + " " + nestedPart;
                 }
             }
@@ -1935,7 +1935,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
                                              bool* valid,
                                              int recursionDepth) const {
     // Blink CSSVariableResolver parity: maximum recursion depth guard.
-    // CSS Variables Level 1 §3: "if a custom property has a cycle, all values
+    // CSS Variables Level 1 ï¿½3: "if a custom property has a cycle, all values
     // in that cycle are treated as if they had their initial value."
     if (recursionDepth > 32) {
         if (valid) *valid = false;
@@ -1957,7 +1957,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         }
         out += value.substr(pos, varStart - pos);
 
-        // Find matching ')' for this var() — depth-aware
+        // Find matching ')' for this var() ï¿½ depth-aware
         size_t cursor = varStart + 4;
         int parenDepth = 1;
         while (cursor < value.size() && parenDepth > 0) {
@@ -1993,7 +1993,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
             if (v == name) { isCycle = true; break; }
         }
         if (isCycle) {
-            // CSS Variables §3: cycle detected ? use fallback if available, else invalid.
+            // CSS Variables ï¿½3: cycle detected ? use fallback if available, else invalid.
             if (!fallback.empty()) {
                 out += resolveValueInternal(fallback, customProperties, valid, recursionDepth + 1);
             } else {
@@ -4104,7 +4104,7 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.hasMaxBlockSize = true;
         style.orderMaxBlockSize = ++style.propertyOrder;
     } else {
-        return false; // not matched in Part1 — caller proceeds to Part2/Part3
+        return false; // not matched in Part1 ï¿½ caller proceeds to Part2/Part3
     }
     return true;
 }
@@ -4630,7 +4630,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (v == "dense")         style.gridAutoFlow = GridAutoFlow::RowDense;
         else                           style.gridAutoFlow = GridAutoFlow::Row;
     } else if (name == "grid") {
-        // grid shorthand: <template> | <auto-flow> rows / cols — parse basic / form
+        // grid shorthand: <template> | <auto-flow> rows / cols ï¿½ parse basic / form
         auto slashPos = value.find('/');
         if (slashPos != std::string::npos) {
             std::string rows = trim(value.substr(0, slashPos));
@@ -4686,7 +4686,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             style.gridRowEnd      = parseGridPlacement(parts[2]);
             style.gridColumnEnd   = parseGridPlacement(parts[3]);
         } else if (parts.size() == 1 && !parts[0].empty()) {
-            // Named area — stored as named-line references
+            // Named area ï¿½ stored as named-line references
             style.gridRowStart.type = GridPlacement::PlacementType::NamedLine;
             style.gridRowStart.name = parts[0];
             style.gridColumnStart.type = GridPlacement::PlacementType::NamedLine;
@@ -6952,7 +6952,7 @@ std::vector<TransformOperation> StyleSheet::parseTransformList(const std::string
 }
 
 // ============================================================
-//  parseGridTrackList — Blink NGGridLayoutAlgorithm parity
+//  parseGridTrackList ï¿½ Blink NGGridLayoutAlgorithm parity
 //
 //  Parses a CSS <track-list> such as:
 //    100px 1fr auto
@@ -7118,7 +7118,7 @@ std::vector<GridTrackSize> StyleSheet::parseGridTrackList(const std::string& val
 }
 
 // ============================================================
-//  parseGridPlacement — Blink GridPosition parity
+//  parseGridPlacement ï¿½ Blink GridPosition parity
 //
 //  Parses one side of grid-column / grid-row:
 //    auto | <integer> | span <integer> | <integer> span | [name]
@@ -7139,7 +7139,7 @@ GridPlacement StyleSheet::parseGridPlacement(const std::string& value) {
         return p;
     }
 
-    // [name] — named line
+    // [name] ï¿½ named line
     if (!v.empty() && v.front() == '[' && v.back() == ']') {
         p.type = GridPlacement::PlacementType::NamedLine;
         p.name = trim(value.substr(1, value.size() - 2));
@@ -7160,7 +7160,7 @@ GridPlacement StyleSheet::parseGridPlacement(const std::string& value) {
 }
 
 // ============================================================
-//  parseGridTemplateAreas — Blink GridTemplateAreas parity
+//  parseGridTemplateAreas ï¿½ Blink GridTemplateAreas parity
 //
 //  Parses grid-template-areas: "header header" "nav main" "footer footer"
 //  Returns a GridTemplateAreas struct with flat row-major area names.
@@ -7198,22 +7198,22 @@ GridTemplateAreas StyleSheet::parseGridTemplateAreas(const std::string& value) {
 }
 
 // ============================================================
-//  parseFilterOperations — Blink FilterOperationResolver parity
+//  parseFilterOperations ï¿½ Blink FilterOperationResolver parity
 //
 //  Parses the CSS <filter-value-list> grammar including:
-//    blur(<length>)                     — calc() resolved to px, clamped =0
-//    brightness(<number-or-percent>)    — calc() resolved, clamped =0 (may exceed 1)
-//    contrast(<number-or-percent>)      — calc() resolved, clamped =0
-//    drop-shadow(<shadow>)              — offset-x offset-y [blur] [color]
-//    grayscale(<number-or-percent>)     — calc() resolved, clamped [0,1]
-//    hue-rotate(<angle>)                — deg/rad/grad/turn + calc(), unclamped
-//    invert(<number-or-percent>)        — calc() resolved, clamped [0,1]
-//    opacity(<number-or-percent>)       — calc() resolved, clamped [0,1]
-//    saturate(<number-or-percent>)      — calc() resolved, clamped =0
-//    sepia(<number-or-percent>)         — calc() resolved, clamped [0,1]
-//    url(<string>)                      — SVG reference filter
-//    luminance-to-alpha()               — Blink kLuminanceToAlpha
-//    color-matrix(<20 numbers>)         — Blink kColorMatrix (feColorMatrix matrix)
+//    blur(<length>)                     ï¿½ calc() resolved to px, clamped =0
+//    brightness(<number-or-percent>)    ï¿½ calc() resolved, clamped =0 (may exceed 1)
+//    contrast(<number-or-percent>)      ï¿½ calc() resolved, clamped =0
+//    drop-shadow(<shadow>)              ï¿½ offset-x offset-y [blur] [color]
+//    grayscale(<number-or-percent>)     ï¿½ calc() resolved, clamped [0,1]
+//    hue-rotate(<angle>)                ï¿½ deg/rad/grad/turn + calc(), unclamped
+//    invert(<number-or-percent>)        ï¿½ calc() resolved, clamped [0,1]
+//    opacity(<number-or-percent>)       ï¿½ calc() resolved, clamped [0,1]
+//    saturate(<number-or-percent>)      ï¿½ calc() resolved, clamped =0
+//    sepia(<number-or-percent>)         ï¿½ calc() resolved, clamped [0,1]
+//    url(<string>)                      ï¿½ SVG reference filter
+//    luminance-to-alpha()               ï¿½ Blink kLuminanceToAlpha
+//    color-matrix(<20 numbers>)         ï¿½ Blink kColorMatrix (feColorMatrix matrix)
 //
 //  calc() / min() / max() / clamp() is supported in all numeric
 //  arguments via parseCSSValue() ? CSSValue::resolve(), matching
@@ -7442,7 +7442,7 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             }
             countUse(FilterFeature::DropShadow);
 
-        // -- url(<string>) — SVG reference filter ------------
+        // -- url(<string>) ï¿½ SVG reference filter ------------
         } else if (funcName == "url") {
             op.type = FilterOperationType::Reference;
             std::string u = args;
@@ -7451,16 +7451,16 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             op.url = u;
             countUse(FilterFeature::Reference);
 
-        // -- luminance-to-alpha() — Blink kLuminanceToAlpha --
+        // -- luminance-to-alpha() ï¿½ Blink kLuminanceToAlpha --
         //    SVG feColorMatrix type="luminanceToAlpha". No arguments.
         } else if (funcName == "luminance-to-alpha") {
             op.type   = FilterOperationType::LuminanceToAlpha;
             op.amount = 0.0f;
             countUse(FilterFeature::LuminanceToAlpha);
 
-        // -- color-matrix(<20 values>) — Blink kColorMatrix --
+        // -- color-matrix(<20 values>) ï¿½ Blink kColorMatrix --
         //    SVG feColorMatrix type="matrix". Expects 20 space/comma-
-        //    separated numbers (4 rows × 5 columns). Each value supports
+        //    separated numbers (4 rows ï¿½ 5 columns). Each value supports
         //    calc() via parseCSSValue. Padded/trimmed to exactly 20.
         } else if (funcName == "color-matrix") {
             op.type = FilterOperationType::ColorMatrix;
@@ -7485,7 +7485,7 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             countUse(FilterFeature::ColorMatrix);
 
         } else {
-            // Unknown function — skip (Blink silently ignores unknown filter functions)
+            // Unknown function ï¿½ skip (Blink silently ignores unknown filter functions)
             continue;
         }
 
