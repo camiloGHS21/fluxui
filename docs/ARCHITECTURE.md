@@ -23,7 +23,11 @@ fluxui/
       dsl/                   dsl_core.h dsl_app.h dsl_ecosystem.h
   src/                   ← engine implementation, organized by subsystem:
     core/                  application loop, widget tree, GC, a11y, compositor
-      application.cpp        Application + Widget base class only
+      application.cpp        Application class + Widget layout/input/animation
+      widget_style.cpp       Widget style invalidation (dirty-flag propagation)
+      widget_cascade.cpp     Widget style resolution (CSS cascade application)
+      widget_prepaint.cpp    Widget pre-paint: transform/clip/effect property tree
+      widget_paint.cpp       Widget painting: list markers, background, children
       widgets/               one TU per widget group (all concrete widgets)
         video.cpp              HTMLVideoElement (Win32 audio + controls)
         svg.cpp                SVG element tree + rasterization hook
@@ -102,9 +106,13 @@ transform/decoration, and the layout-signature hash — everything the widget
 TUs and the `Widget` base class share. `application.cpp` and every widget TU do
 `using namespace FluxUI::detail;` so the original call sites compile unchanged.
 
-ALL concrete widget implementations now live under `core/widgets/`; only the
-`Widget` base class and `Application` remain in `application.cpp` (which dropped
-from ~8200 to ~4800 lines). Each widget TU stays well under 1000 lines.
+ALL concrete widget implementations now live under `core/widgets/`; the
+`Widget` base class itself is split by pipeline stage across `core/`:
+`widget_style.cpp` (style invalidation), `widget_cascade.cpp` (cascade
+resolution), `widget_prepaint.cpp` (property-tree build), and `widget_paint.cpp`
+(rasterization). What remains in `application.cpp` is the `Application` class
+plus the Widget layout / input / animation methods (~3160 lines, down from the
+original ~8200). Every TU stays well under 1000 lines.
 
 ## Frame pipeline (per redraw)
 

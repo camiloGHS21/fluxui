@@ -210,6 +210,8 @@ set(FLUXUI_SOURCES
     fluxui/src/core/application.cpp
     fluxui/src/core/widget_style.cpp
     fluxui/src/core/widget_cascade.cpp
+    fluxui/src/core/widget_prepaint.cpp
+    fluxui/src/core/widget_paint.cpp
     fluxui/src/core/widgets/video.cpp
     fluxui/src/core/widgets/svg.cpp
     fluxui/src/core/widgets/controls.cpp
