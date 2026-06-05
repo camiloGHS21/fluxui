@@ -9,15 +9,26 @@ solver, a paint/compositor stage, and a GPU (or CPU-software) renderer.
 ```
 fluxui/
   include/fluxui/        ← PUBLIC API (installed). Users #include <fluxui/...>.
-    dsl.h                  modern declarative DSL (the public API)
+    dsl.h                  modern declarative DSL (the public API) — umbrella
     FluxUI.h               internal umbrella header (engine + bindings only)
-    core.h widgets.h ...   engine types used by the DSL and bindings
+    core.h widgets.h ...   engine types — umbrella headers (see detail/ below)
+    detail/                sub-headers, split so no file exceeds ~1000 lines.
+                           Grouped by subsystem, mirroring src/. The top-level
+                           umbrella headers just #include these, so the public
+                           API (#include <fluxui/core.h> etc.) never changes.
+      core/                  geometry.h css_enums.h css_value.h transform.h
+                             style.h events.h   (the CSS / paint data model)
+      widgets/               widget_base.h widget_elements.h widget_factory.h
+                             application.h
+      dsl/                   dsl_core.h dsl_app.h dsl_ecosystem.h
   src/                   ← engine implementation, organized by subsystem:
     core/                  application loop, widget tree, GC, a11y, compositor
       application.cpp        Application + Widget + base widget subclasses
-      widgets/               one TU per heavy widget subclass
+      widgets/               one TU per widget group
         video.cpp              HTMLVideoElement (Win32 audio + controls)
         svg.cpp                SVG element tree + rasterization hook
+        controls.cpp           form controls: Checkbox/Radio/RangeInput/
+                               ProgressBar/Meter/Progress
       widget_internal.h      shared inline detail:: helpers for the widget TUs
       compositor.cpp         animation/scroll compositor thread
       accessibility.cpp      AX object cache
@@ -63,7 +74,10 @@ platform  →  render  →  layout  →  style  →  core  →  ffi  →  bindin
 ## Public vs internal headers
 
 - `fluxui/include/fluxui/*.h` is the **public, stable API**. The only header a
-  user app includes is `<fluxui/dsl.h>`. These never move.
+  user app includes is `<fluxui/dsl.h>`. The top-level headers (`core.h`,
+  `widgets.h`, `dsl.h`) are **umbrella headers**: they only `#include` the
+  focused sub-headers under `include/fluxui/detail/{core,widgets,dsl}/`. This
+  keeps every file under ~1000 lines without changing a single user include.
 - `fluxui/src/**/**.h` (e.g. `core/widget_internal.h`, `render/vulkan_*.h`) are
   **private** to the engine and are not installed.
 
@@ -77,8 +91,14 @@ are being split incrementally into cohesive TUs. The rule that keeps this safe:
 > first be promoted to an `inline` function in a private internal header (in a
 > `FluxUI::detail` namespace), so every TU sees one definition.
 
-`core/widget_internal.h` is the first such header (paint/hit-test gates). New
-widget subclasses are extracted into `core/widgets/<name>.cpp`.
+`core/widget_internal.h` holds these shared helpers (paint/hit-test gates,
+`normalizeTextEditingKey`, radio-group reset). Widget implementations are
+extracted from `application.cpp` into `core/widgets/<group>.cpp`:
+`video.cpp`, `svg.cpp`, and `controls.cpp` (Checkbox/Radio/RangeInput/
+ProgressBar/Meter/Progress). The remaining text/layout-heavy widgets
+(Text/Button/TextInput/TextArea/Select/Image/VirtualList) still live in
+`application.cpp` because they depend on a large cluster of text-shaping
+statics; they are the next candidates to move once those statics are promoted.
 
 ## Frame pipeline (per redraw)
 
