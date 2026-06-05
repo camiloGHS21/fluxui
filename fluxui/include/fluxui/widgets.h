@@ -2016,6 +2016,39 @@ public:
     std::function<void()> onRender;
     void requestRedraw() { needsRedraw_ = true; }
     bool needsRedraw() const { return needsRedraw_; }
+
+    // ── Adaptive power-aware frame pacing ──────────────────────────────────
+    // When enabled (default), FluxUI lowers the frame rate automatically to
+    // save CPU/GPU and battery: full rate on AC power with the window focused,
+    // a reduced rate on battery, and a low idle rate when the window is in the
+    // background or minimized. The CPU/software backend is always capped. This
+    // makes the app light on laptops on battery and on machines without a GPU.
+    enum class PowerProfile {
+        Auto,            // pick the cap from power source + focus (default)
+        HighPerformance, // always target the max FPS (ignore battery)
+        Balanced,        // moderate caps even on AC
+        PowerSaver       // aggressive low caps (great for battery / no-GPU)
+    };
+    void setPowerProfile(PowerProfile profile) { powerProfile_ = profile; }
+    PowerProfile powerProfile() const { return powerProfile_; }
+    // Override the FPS used for each pacing tier. 0 keeps the built-in default.
+    void setFrameRateLimits(int activeFps, int batteryFps, int backgroundFps);
+
+    // Inputs that drive the pacing decision (kept small + POD so the policy is
+    // unit-testable in isolation, without a window).
+    struct PacingInputs {
+        PowerProfile profile = PowerProfile::Auto;
+        bool onBattery = false;
+        bool batterySaver = false;
+        bool windowActive = true;
+        bool softwareBackend = false;
+        bool hasAnimations = false;
+        int activeFps = 120;
+        int batteryFps = 60;
+        int backgroundFps = 10;
+    };
+    // Pure policy: returns the target FPS for the given conditions (0 = uncapped).
+    static int computeTargetFps(const PacingInputs& in);
     void updateStyleAndLayout();
     bool running = true;
     DocumentLifecycle documentLifecycle = DocumentLifecycle::Uninitialized;
@@ -2049,6 +2082,15 @@ private:
     float hotReloadInterval_ = 0.25f;
     float hotReloadAccum_ = 0.0f;
     static int64_t fileWriteTimeNs(const std::string& path);
+
+    // ── Adaptive frame pacing state ──
+    PowerProfile powerProfile_ = PowerProfile::Auto;
+    int activeFps_ = 0;        // 0 => use FLUXUI_TARGET_FPS build default
+    int batteryFps_ = 60;      // cap while running on battery
+    int backgroundFps_ = 10;   // cap while window is unfocused/minimized
+    float powerPollAccum_ = 0.0f;       // seconds since last power-status poll
+    bool cachedOnBattery_ = false;      // last polled power source
+    bool cachedBatterySaver_ = false;   // last polled battery-saver flag
     InputState input_;
     std::shared_ptr<Widget> root_;
     std::unique_ptr<AXObjectCache> axObjectCache_;

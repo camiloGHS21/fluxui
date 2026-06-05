@@ -99,6 +99,12 @@ _lib.fluxui_app_watch_stylesheet.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 _lib.fluxui_app_reload_styles.restype = ctypes.c_int
 _lib.fluxui_app_reload_styles.argtypes = [ctypes.c_void_p]
 
+_lib.fluxui_app_set_power_profile.restype = None
+_lib.fluxui_app_set_power_profile.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+_lib.fluxui_app_set_frame_rate_limits.restype = None
+_lib.fluxui_app_set_frame_rate_limits.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+
 _lib.fluxui_app_load_font.restype = ctypes.c_int
 _lib.fluxui_app_load_font.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float]
 
@@ -790,6 +796,21 @@ class App:
     def reload_styles(self):
         """Force an immediate reload of all CSS sources from disk."""
         return _lib.fluxui_app_reload_styles(self.handle) != 0
+
+    # Power-profile constants for set_power_profile().
+    POWER_AUTO = 0
+    POWER_HIGH_PERFORMANCE = 1
+    POWER_BALANCED = 2
+    POWER_SAVER = 3
+
+    def set_power_profile(self, profile):
+        """Bias adaptive frame pacing: AUTO adapts to AC/battery + focus; SAVER
+        is lightest on battery / weak hardware; HIGH_PERFORMANCE = max FPS."""
+        _lib.fluxui_app_set_power_profile(self.handle, int(profile))
+
+    def set_frame_rate_limits(self, active_fps=0, battery_fps=0, background_fps=0):
+        """Tune the FPS tiers (active / on-battery / background). 0 keeps defaults."""
+        _lib.fluxui_app_set_frame_rate_limits(self.handle, int(active_fps), int(battery_fps), int(background_fps))
 
     def load_font(self, path, size):
         return _lib.fluxui_app_load_font(self.handle, path.encode('utf-8'), float(size)) != 0
@@ -1511,6 +1532,21 @@ class DslApp(App):
     def reload_css(self):
         """Force an immediate reload of all CSS sources from disk."""
         self.reload_styles()
+
+    def power_saver(self):
+        """Bias frame pacing for best battery life / weak hardware."""
+        self.set_power_profile(App.POWER_SAVER)
+        return self
+
+    def high_performance(self):
+        """Always target the max frame rate."""
+        self.set_power_profile(App.POWER_HIGH_PERFORMANCE)
+        return self
+
+    def balanced(self):
+        """Apply moderate frame-rate caps even on AC power."""
+        self.set_power_profile(App.POWER_BALANCED)
+        return self
 
     def set_root(self, root_node):
         r = self.root()

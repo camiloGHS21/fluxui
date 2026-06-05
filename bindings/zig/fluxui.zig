@@ -109,6 +109,25 @@ pub const App = struct {
         return c.fluxui_app_reload_styles(self.raw) != 0;
     }
 
+    /// Adaptive frame-pacing profile (battery / CPU saver).
+    pub const PowerProfile = enum(c_int) {
+        auto = 0,
+        high_performance = 1,
+        balanced = 2,
+        power_saver = 3,
+    };
+
+    /// Bias the automatic power-aware frame pacing. `.auto` runs full-speed on
+    /// AC with a GPU and throttles on battery / in the background.
+    pub fn setPowerProfile(self: App, profile: PowerProfile) void {
+        c.fluxui_app_set_power_profile(self.raw, @intFromEnum(profile));
+    }
+
+    /// Tune the FPS tiers (active / on-battery / background). 0 keeps defaults.
+    pub fn setFrameRateLimits(self: App, active_fps: i32, battery_fps: i32, background_fps: i32) void {
+        c.fluxui_app_set_frame_rate_limits(self.raw, active_fps, battery_fps, background_fps);
+    }
+
     pub fn setUpdateCallback(self: App, callback: c.FluxUIUpdateCallback, user_data: ?*anyopaque) void {
         c.fluxui_app_set_update_callback(self.raw, callback, user_data);
     }

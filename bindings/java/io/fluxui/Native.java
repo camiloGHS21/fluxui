@@ -21,6 +21,8 @@ final class Native {
     static native void appEnableHotReload(long app, boolean enable, float pollIntervalSeconds);
     static native void appWatchStylesheet(long app, String path);
     static native boolean appReloadStyles(long app);
+    static native void appSetPowerProfile(long app, int profile);
+    static native void appSetFrameRateLimits(long app, int activeFps, int batteryFps, int backgroundFps);
     static native boolean appLoadFont(long app, String path, float size);
     static native boolean appLoadDefaultFont(long app, float size);
     static native void appWarmFontCache(long app, float[] sizes, String name);

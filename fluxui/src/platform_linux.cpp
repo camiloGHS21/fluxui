@@ -10,6 +10,8 @@
 #include <vulkan/vulkan_xlib.h>
 #include <dlfcn.h>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -446,6 +448,42 @@ void Platform::getWindowSize(NativeWindowHandle window, int& w, int& h) {
         w = width;
         h = height;
     }
+}
+
+bool Platform::isWindowActive(NativeWindowHandle window) {
+    // Best-effort: treat as active when we can't cheaply determine focus.
+    if (!g_display || !window) return true;
+    Window focused = 0;
+    int revert = 0;
+    XGetInputFocus(g_display, &focused, &revert);
+    if (focused == 0 || focused == PointerRoot) return true;
+    return focused == (Window)window;
+}
+
+PowerStatus Platform::getPowerStatus() {
+    PowerStatus status;
+    // Read /sys/class/power_supply: AC "online" + battery capacity. No external
+    // deps; if the files don't exist (desktop), source stays Unknown (=> AC).
+    auto readFirstLine = [](const char* path, std::string& out) -> bool {
+        FILE* f = std::fopen(path, "r");
+        if (!f) return false;
+        char buf[64] = {0};
+        bool ok = std::fgets(buf, sizeof(buf), f) != nullptr;
+        std::fclose(f);
+        if (ok) { out = buf; while (!out.empty() && (out.back()=='\n'||out.back()=='\r')) out.pop_back(); }
+        return ok;
+    };
+    std::string val;
+    if (readFirstLine("/sys/class/power_supply/AC/online", val) ||
+        readFirstLine("/sys/class/power_supply/AC0/online", val) ||
+        readFirstLine("/sys/class/power_supply/ADP1/online", val)) {
+        status.source = (val == "1") ? PowerSource::AC : PowerSource::Battery;
+    }
+    if (readFirstLine("/sys/class/power_supply/BAT0/capacity", val) ||
+        readFirstLine("/sys/class/power_supply/BAT1/capacity", val)) {
+        status.batteryPercent = std::atoi(val.c_str());
+    }
+    return status;
 }
 
 void* Platform::loadVulkanLibrary() {

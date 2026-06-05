@@ -27,6 +27,8 @@ var (
 	fluxui_app_enable_hot_reload      = fluxui_dll.NewProc("fluxui_app_enable_hot_reload")
 	fluxui_app_watch_stylesheet       = fluxui_dll.NewProc("fluxui_app_watch_stylesheet")
 	fluxui_app_reload_styles          = fluxui_dll.NewProc("fluxui_app_reload_styles")
+	fluxui_app_set_power_profile      = fluxui_dll.NewProc("fluxui_app_set_power_profile")
+	fluxui_app_set_frame_rate_limits  = fluxui_dll.NewProc("fluxui_app_set_frame_rate_limits")
 	fluxui_app_load_default_font      = fluxui_dll.NewProc("fluxui_app_load_default_font")
 
 	fluxui_widget_add_panel           = fluxui_dll.NewProc("fluxui_widget_add_panel")
@@ -282,6 +284,27 @@ func (a *App) WatchStylesheet(path string) {
 func (a *App) ReloadStyles() bool {
 	r1, _, _ := fluxui_app_reload_styles.Call(a.handle)
 	return r1 != 0
+}
+
+// PowerProfile selects the adaptive frame-pacing behavior.
+type PowerProfile int
+
+const (
+	PowerAuto            PowerProfile = 0 // adaptive: AC=full, battery=throttled
+	PowerHighPerformance PowerProfile = 1 // always max FPS
+	PowerBalanced        PowerProfile = 2 // moderate caps
+	PowerSaver           PowerProfile = 3 // aggressive low caps (best battery)
+)
+
+// SetPowerProfile biases the automatic battery/CPU-saving frame pacing.
+func (a *App) SetPowerProfile(profile PowerProfile) {
+	fluxui_app_set_power_profile.Call(a.handle, uintptr(profile))
+}
+
+// SetFrameRateLimits tunes the FPS tiers (active / on-battery / background).
+// Pass 0 for any tier to keep its built-in default.
+func (a *App) SetFrameRateLimits(activeFps, batteryFps, backgroundFps int) {
+	fluxui_app_set_frame_rate_limits.Call(a.handle, uintptr(activeFps), uintptr(batteryFps), uintptr(backgroundFps))
 }
 
 func (a *App) LoadDefaultFont(size float32) bool {

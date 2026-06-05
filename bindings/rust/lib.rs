@@ -88,6 +88,8 @@ pub mod sys {
         pub fn fluxui_app_enable_hot_reload(app: *mut FluxUIApp, enable: i32, poll_interval_seconds: f32);
         pub fn fluxui_app_watch_stylesheet(app: *mut FluxUIApp, path: *const c_char);
         pub fn fluxui_app_reload_styles(app: *mut FluxUIApp) -> i32;
+        pub fn fluxui_app_set_power_profile(app: *mut FluxUIApp, profile: i32);
+        pub fn fluxui_app_set_frame_rate_limits(app: *mut FluxUIApp, active_fps: i32, battery_fps: i32, background_fps: i32);
         pub fn fluxui_app_load_font(app: *mut FluxUIApp, path: *const c_char, size: f32) -> i32;
         pub fn fluxui_app_load_font_named(
             app: *mut FluxUIApp,
@@ -463,6 +465,17 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Adaptive frame-pacing profile (battery / CPU saver). `Auto` runs full-speed
+/// on AC power with a GPU and throttles on battery or in the background.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum PowerProfile {
+    Auto = 0,
+    HighPerformance = 1,
+    Balanced = 2,
+    PowerSaver = 3,
+}
+
 pub struct App {
     raw: NonNull<sys::FluxUIApp>,
 }
@@ -569,6 +582,18 @@ impl App {
     /// Force an immediate reload of all CSS sources from disk.
     pub fn reload_styles(&self) -> bool {
         unsafe { sys::fluxui_app_reload_styles(self.raw.as_ptr()) != 0 }
+    }
+
+    /// Bias the automatic, power-aware frame pacing.
+    pub fn set_power_profile(&self, profile: PowerProfile) {
+        unsafe { sys::fluxui_app_set_power_profile(self.raw.as_ptr(), profile as i32) };
+    }
+
+    /// Tune the FPS tiers (active / on-battery / background). 0 keeps defaults.
+    pub fn set_frame_rate_limits(&self, active_fps: i32, battery_fps: i32, background_fps: i32) {
+        unsafe {
+            sys::fluxui_app_set_frame_rate_limits(self.raw.as_ptr(), active_fps, battery_fps, background_fps)
+        };
     }
 
     pub fn root(&self) -> Option<Widget> {
@@ -1635,6 +1660,21 @@ pub mod dsl {
         /// Force an immediate reload of all CSS sources (matches `reloadCSS`).
         pub fn reload_css(&self) {
             self.reload_styles();
+        }
+
+        /// Bias frame pacing for best battery life / weak hardware.
+        pub fn power_saver(&self) {
+            self.set_power_profile(super::PowerProfile::PowerSaver);
+        }
+
+        /// Always target the max frame rate.
+        pub fn high_performance(&self) {
+            self.set_power_profile(super::PowerProfile::HighPerformance);
+        }
+
+        /// Apply moderate frame-rate caps even on AC power.
+        pub fn balanced(&self) {
+            self.set_power_profile(super::PowerProfile::Balanced);
         }
 
         /// Register a route. `view` returns a Node tree for that path.

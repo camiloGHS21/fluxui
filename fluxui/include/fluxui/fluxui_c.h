@@ -119,6 +119,11 @@ FLUXUI_API void fluxui_app_add_stylesheet(FluxUIApp* app, const char* css);
 FLUXUI_API void fluxui_app_enable_hot_reload(FluxUIApp* app, int enable, float poll_interval_seconds);
 FLUXUI_API void fluxui_app_watch_stylesheet(FluxUIApp* app, const char* path);
 FLUXUI_API int fluxui_app_reload_styles(FluxUIApp* app);
+
+// Adaptive power-aware frame pacing. profile: 0=Auto, 1=HighPerformance,
+// 2=Balanced, 3=PowerSaver. Pass 0 for an fps tier to keep its built-in default.
+FLUXUI_API void fluxui_app_set_power_profile(FluxUIApp* app, int profile);
+FLUXUI_API void fluxui_app_set_frame_rate_limits(FluxUIApp* app, int active_fps, int battery_fps, int background_fps);
 FLUXUI_API int fluxui_app_load_font(FluxUIApp* app, const char* path, float size);
 FLUXUI_API int fluxui_app_load_font_named(FluxUIApp* app, const char* path, float size, const char* name);
 FLUXUI_API int fluxui_app_load_default_font(FluxUIApp* app, float size);

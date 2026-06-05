@@ -324,6 +324,75 @@ int test_hot_reload_source_replay() {
     std::cout << "  PASS" << std::endl; return 0;
 }
 
+int test_power_pacing_policy() {
+    std::cout << "[17] adaptive power-aware frame pacing policy" << std::endl;
+    using App = FluxUI::Application;
+    using P = FluxUI::Application::PowerProfile;
+
+    auto base = []{
+        App::PacingInputs in;
+        in.profile = P::Auto;
+        in.activeFps = 120; in.batteryFps = 60; in.backgroundFps = 10;
+        return in;
+    };
+
+    // AC + GPU + focused => full speed.
+    {
+        auto in = base();
+        in.onBattery = false; in.windowActive = true; in.softwareBackend = false;
+        CHECK(App::computeTargetFps(in) == 120);
+    }
+    // On battery => throttled to the battery tier.
+    {
+        auto in = base();
+        in.onBattery = true;
+        CHECK(App::computeTargetFps(in) == 60);
+    }
+    // Software (no-GPU) backend => capped to battery tier even on AC.
+    {
+        auto in = base();
+        in.onBattery = false; in.softwareBackend = true;
+        CHECK(App::computeTargetFps(in) == 60);
+    }
+    // Backgrounded / minimized => idle background rate (biggest battery win).
+    {
+        auto in = base();
+        in.windowActive = false;
+        CHECK(App::computeTargetFps(in) == 10);
+    }
+    // Battery-saver mode => half the battery tier (min 15).
+    {
+        auto in = base();
+        in.batterySaver = true;
+        CHECK(App::computeTargetFps(in) == 30);
+    }
+    // HighPerformance ignores battery for the GPU path...
+    {
+        auto in = base();
+        in.profile = P::HighPerformance; in.onBattery = true;
+        CHECK(App::computeTargetFps(in) == 120);
+        // ...but still caps the software backend.
+        in.softwareBackend = true;
+        CHECK(App::computeTargetFps(in) == 60);
+    }
+    // PowerSaver: battery tier with animations, halved when idle.
+    {
+        auto in = base();
+        in.profile = P::PowerSaver;
+        in.hasAnimations = true;
+        CHECK(App::computeTargetFps(in) == 60);
+        in.hasAnimations = false;
+        CHECK(App::computeTargetFps(in) == 30);
+    }
+    // Background always wins regardless of profile.
+    {
+        auto in = base();
+        in.profile = P::HighPerformance; in.windowActive = false;
+        CHECK(App::computeTargetFps(in) == 10);
+    }
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
 int main() {
     std::cout << "=== FluxUI DSL Test (HTML/Blink-named) ===" << std::endl;
     int rc = 0;
@@ -343,6 +412,7 @@ int main() {
     rc |= test_route_param_match();
     rc |= test_stylesheet_reset();
     rc |= test_hot_reload_source_replay();
+    rc |= test_power_pacing_policy();
     if (rc == 0) std::cout << "All DSL tests passed!" << std::endl;
     return rc;
 }

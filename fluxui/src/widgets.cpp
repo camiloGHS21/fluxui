@@ -6676,6 +6676,45 @@ int64_t Application::fileWriteTimeNs(const std::string& path) {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(
                t.time_since_epoch()).count();
 }
+void Application::setFrameRateLimits(int activeFps, int batteryFps, int backgroundFps) {
+    if (activeFps > 0) activeFps_ = activeFps;
+    if (batteryFps > 0) batteryFps_ = batteryFps;
+    if (backgroundFps > 0) backgroundFps_ = backgroundFps;
+}
+// Pure, unit-testable pacing policy. Returns the target FPS for the given
+// conditions; 0 means "uncapped" (let the caller run as fast as it draws).
+int Application::computeTargetFps(const PacingInputs& in) {
+    // A backgrounded / minimized window only needs a trickle to stay responsive
+    // to OS events; this is the single biggest battery win.
+    if (!in.windowActive) {
+        return in.backgroundFps > 0 ? in.backgroundFps : 10;
+    }
+
+    // The CPU/software rasterizer is expensive per pixel — never let it run
+    // above the battery tier, even on AC, regardless of profile.
+    int activeCap = in.activeFps > 0 ? in.activeFps : 120;
+    int batteryCap = in.batteryFps > 0 ? in.batteryFps : 60;
+
+    switch (in.profile) {
+        case PowerProfile::HighPerformance:
+            return in.softwareBackend ? std::min(activeCap, batteryCap) : activeCap;
+        case PowerProfile::PowerSaver:
+            // Aggressive: battery tier when idle, halve it further with no anim.
+            return in.hasAnimations ? batteryCap : std::max(15, batteryCap / 2);
+        case PowerProfile::Balanced: {
+            int cap = batteryCap;
+            if (in.softwareBackend) cap = std::min(cap, batteryCap);
+            return cap;
+        }
+        case PowerProfile::Auto:
+        default: {
+            if (in.softwareBackend) return batteryCap;
+            if (in.batterySaver) return std::max(15, batteryCap / 2);
+            if (in.onBattery) return batteryCap;
+            return activeCap;  // AC + GPU + focused => full speed
+        }
+    }
+}
 void Application::enableHotReload(bool enable, float pollIntervalSeconds) {
     hotReloadEnabled_ = enable;
     hotReloadInterval_ = pollIntervalSeconds > 0.0f ? pollIntervalSeconds : 0.25f;
@@ -7614,6 +7653,12 @@ void Application::run() {
     }
 #endif
     lastTime_ = std::chrono::high_resolution_clock::now();
+    // Seed the power-source cache so the first frame already paces correctly.
+    {
+        PowerStatus ps = Platform::getPowerStatus();
+        cachedOnBattery_ = (ps.source == PowerSource::Battery);
+        cachedBatterySaver_ = ps.batterySaver;
+    }
     while (running) {
         processEvents();
         if (!running) {
@@ -7630,6 +7675,7 @@ void Application::run() {
                 pollStyleHotReload();  // sets needsRedraw_ if a file changed
             }
         }
+        bool windowActive = Platform::isWindowActive(window_);
         bool hasAnimations = false;
         if (!needsRedraw_ && !firstFrame && root_) {
             hasAnimations = root_->hasActiveAnimations();
@@ -7655,6 +7701,16 @@ void Application::run() {
         input_.deltaTime = std::clamp(elapsed.count(), 0.001f, 1.0f / 30.0f);
         lastTime_ = now;
 
+        // Refresh the power source on a slow cadence (~2s); GetSystemPowerStatus
+        // and friends are cheap but there's no need to hit them every frame.
+        powerPollAccum_ += input_.deltaTime;
+        if (powerPollAccum_ >= 2.0f) {
+            powerPollAccum_ = 0.0f;
+            PowerStatus ps = Platform::getPowerStatus();
+            cachedOnBattery_ = (ps.source == PowerSource::Battery);
+            cachedBatterySaver_ = ps.batterySaver;
+        }
+
         renderFrame();
 
 #if FLUXUI_REVEAL_WINDOW_ON_FIRST_FRAME
@@ -7666,12 +7722,29 @@ void Application::run() {
         if (firstFrame) {
             firstFrame = false;
         }
+
+        // ── Adaptive, power-aware frame pacing ──
+        // Choose the target FPS from the power source, window focus, backend and
+        // animation state. Sleeping the leftover time keeps the CPU/GPU cool and
+        // the battery happy — and keeps software (no-GPU) rendering responsive
+        // without spinning a core at 100%.
+        PacingInputs pacing;
+        pacing.profile = powerProfile_;
+        pacing.onBattery = cachedOnBattery_;
+        pacing.batterySaver = cachedBatterySaver_;
+        pacing.windowActive = windowActive;
+        pacing.softwareBackend = (renderer_.activeBackend() == RenderBackendType::Compatibility);
+        pacing.hasAnimations = hasAnimations || (root_ && root_->hasActiveAnimations());
 #if FLUXUI_TARGET_FPS > 0
-        float targetFPS = static_cast<float>(FLUXUI_TARGET_FPS);
-        if (renderer_.activeBackend() == RenderBackendType::Compatibility) {
-            targetFPS = 60.0f; // Limit to 60 FPS on CPU to save CPU usage and battery
-        }
-        float targetFrameSeconds = targetFPS > 0.0f ? 1.0f / targetFPS : 0.0f;
+        pacing.activeFps = activeFps_ > 0 ? activeFps_ : FLUXUI_TARGET_FPS;
+#else
+        pacing.activeFps = activeFps_;  // 0 => uncapped on AC + GPU
+#endif
+        pacing.batteryFps = batteryFps_;
+        pacing.backgroundFps = backgroundFps_;
+
+        int targetFPS = computeTargetFps(pacing);
+        float targetFrameSeconds = targetFPS > 0 ? 1.0f / (float)targetFPS : 0.0f;
         auto frameElapsed = std::chrono::duration<float>(
             std::chrono::high_resolution_clock::now() - now).count();
         if (targetFrameSeconds > 0.0f && frameElapsed < targetFrameSeconds) {
@@ -7680,9 +7753,6 @@ void Application::run() {
         } else {
             std::this_thread::yield();
         }
-#else
-        std::this_thread::yield();
-#endif
     }
 }
 void Application::lazyLoad(std::function<void()> loader, std::function<void()> onComplete) {

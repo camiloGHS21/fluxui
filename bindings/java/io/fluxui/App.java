@@ -80,6 +80,33 @@ public final class App implements AutoCloseable {
         return Native.appReloadStyles(handle());
     }
 
+    /** Adaptive frame-pacing profile (battery / CPU saver). */
+    public enum PowerProfile {
+        AUTO(0), HIGH_PERFORMANCE(1), BALANCED(2), POWER_SAVER(3);
+        final int value;
+        PowerProfile(int v) { this.value = v; }
+    }
+
+    /**
+     * Bias the automatic, power-aware frame pacing. AUTO runs full-speed on AC
+     * with a GPU and throttles on battery / in the background; POWER_SAVER is
+     * lightest on battery and weak hardware.
+     */
+    public App powerProfile(PowerProfile profile) {
+        Native.appSetPowerProfile(handle(), profile.value);
+        return this;
+    }
+
+    public App powerSaver() { return powerProfile(PowerProfile.POWER_SAVER); }
+    public App highPerformance() { return powerProfile(PowerProfile.HIGH_PERFORMANCE); }
+    public App balanced() { return powerProfile(PowerProfile.BALANCED); }
+
+    /** Tune FPS tiers (active / on-battery / background). 0 keeps defaults. */
+    public App frameRateLimits(int activeFps, int batteryFps, int backgroundFps) {
+        Native.appSetFrameRateLimits(handle(), activeFps, batteryFps, backgroundFps);
+        return this;
+    }
+
     public boolean loadFont(String path, float size) {
         return Native.appLoadFont(handle(), path, size);
     }

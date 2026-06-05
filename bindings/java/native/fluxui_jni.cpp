@@ -267,6 +267,24 @@ extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appReloadStyles(
     return fluxui_app_reload_styles(as_app(app)) ? JNI_TRUE : JNI_FALSE;
 }
 
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appSetPowerProfile(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jint profile) {
+    fluxui_app_set_power_profile(as_app(app), profile);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appSetFrameRateLimits(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jint activeFps,
+    jint batteryFps,
+    jint backgroundFps) {
+    fluxui_app_set_frame_rate_limits(as_app(app), activeFps, batteryFps, backgroundFps);
+}
+
 extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appLoadFont(
     JNIEnv* env,
     jclass,

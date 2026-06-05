@@ -283,6 +283,15 @@ func (a *App) WatchCSS(path string) *App {
 // ReloadCSS forces an immediate reload of all CSS sources (matches reloadCSS).
 func (a *App) ReloadCSS() { a.ReloadStyles() }
 
+// PowerSaver biases frame pacing for best battery life / weak hardware.
+func (a *App) PowerSaver() *App { a.SetPowerProfile(PowerSaver); return a }
+
+// HighPerformance always targets the max frame rate.
+func (a *App) HighPerformance() *App { a.SetPowerProfile(PowerHighPerformance); return a }
+
+// Balanced applies moderate frame-rate caps even on AC power.
+func (a *App) Balanced() *App { a.SetPowerProfile(PowerBalanced); return a }
+
 // SetRoot mounts a declarative Element tree as the application root.
 func (a *App) SetRoot(root *Element) {
 	r := a.Root()

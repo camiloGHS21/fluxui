@@ -206,6 +206,24 @@ int fluxui_app_reload_styles(FluxUIApp* app) {
     return app->app.reloadStyles() ? 1 : 0;
 }
 
+void fluxui_app_set_power_profile(FluxUIApp* app, int profile) {
+    if (!app) return;
+    // 0=Auto, 1=HighPerformance, 2=Balanced, 3=PowerSaver
+    FluxUI::Application::PowerProfile p = FluxUI::Application::PowerProfile::Auto;
+    switch (profile) {
+        case 1: p = FluxUI::Application::PowerProfile::HighPerformance; break;
+        case 2: p = FluxUI::Application::PowerProfile::Balanced; break;
+        case 3: p = FluxUI::Application::PowerProfile::PowerSaver; break;
+        default: p = FluxUI::Application::PowerProfile::Auto; break;
+    }
+    app->app.setPowerProfile(p);
+}
+
+void fluxui_app_set_frame_rate_limits(FluxUIApp* app, int active_fps, int battery_fps, int background_fps) {
+    if (!app) return;
+    app->app.setFrameRateLimits(active_fps, battery_fps, background_fps);
+}
+
 int fluxui_app_load_font(FluxUIApp* app, const char* path, float size) {
     return fluxui_app_load_font_named(app, path, size, "default");
 }

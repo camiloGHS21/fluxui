@@ -271,6 +271,18 @@ void Platform::getWindowSize(NativeWindowHandle window, int& w, int& h) {
     }
 }
 
+bool Platform::isWindowActive(NativeWindowHandle window) {
+    // Android visibility is driven by the activity lifecycle; assume active here.
+    (void)window;
+    return true;
+}
+
+PowerStatus Platform::getPowerStatus() {
+    // Battery/charging state on Android comes through the Java BatteryManager,
+    // which isn't wired into this native layer; report Unknown (treated as AC).
+    return PowerStatus{};
+}
+
 void* Platform::loadVulkanLibrary() {
     return dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
 }

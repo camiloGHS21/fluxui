@@ -673,6 +673,30 @@ public:
     // Force an immediate reload of all CSS sources from disk.
     void reloadCSS() { app_.reloadStyles(); }
 
+    // ── Power / performance profile ────────────────────────────────────────
+    // FluxUI adapts its frame rate to save battery and CPU automatically. By
+    // default (Auto) it runs full-speed on AC power with a GPU, throttles on
+    // battery, caps the software (no-GPU) renderer, and idles in the background.
+    // Pick a profile to bias that behavior:
+    //
+    //   app.powerSaver();        // best battery life / lightest on weak HW
+    //   app.highPerformance();   // always max FPS
+    //   app.balanced();          // moderate caps
+    //   app.powerProfile(App::Profile::Auto);  // default adaptive behavior
+    enum class Profile { Auto, HighPerformance, Balanced, PowerSaver };
+    App& powerProfile(Profile p) {
+        app_.setPowerProfile(static_cast<FluxUI::Application::PowerProfile>(p));
+        return *this;
+    }
+    App& powerSaver()       { return powerProfile(Profile::PowerSaver); }
+    App& highPerformance()  { return powerProfile(Profile::HighPerformance); }
+    App& balanced()         { return powerProfile(Profile::Balanced); }
+    // Tune the FPS tiers (active / on-battery / background). 0 keeps defaults.
+    App& frameRateLimits(int activeFps, int batteryFps, int backgroundFps) {
+        app_.setFrameRateLimits(activeFps, batteryFps, backgroundFps);
+        return *this;
+    }
+
     // --- Simple single-page mode (no routing) ---
     void setRoot(const Element& root) {
         auto rootWidget = app_.root();

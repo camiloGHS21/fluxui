@@ -2,6 +2,8 @@
 #include "fluxui/platform.h"
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <IOKit/ps/IOPowerSources.h>
+#import <IOKit/ps/IOPSKeys.h>
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_metal.h>
 #include <dlfcn.h>
@@ -351,6 +353,45 @@ void Platform::getWindowSize(NativeWindowHandle window, int& w, int& h) {
         w = (int)backing.size.width;
         h = (int)backing.size.height;
     }
+}
+
+bool Platform::isWindowActive(NativeWindowHandle window) {
+    if (!window) return true;
+    NSWindow* nsWindow = (NSWindow*)window;
+    if (nsWindow.miniaturized) return false;
+    return nsWindow.isKeyWindow || nsWindow.isMainWindow;
+}
+
+PowerStatus Platform::getPowerStatus() {
+    PowerStatus status;
+    // IOKit power-source query. Returns Unknown on desktops without a battery.
+    CFTypeRef info = IOPSCopyPowerSourcesInfo();
+    if (info) {
+        CFArrayRef list = IOPSCopyPowerSourcesList(info);
+        if (list) {
+            CFIndex count = CFArrayGetCount(list);
+            for (CFIndex i = 0; i < count; ++i) {
+                CFDictionaryRef desc = IOPSGetPowerSourceDescription(info, CFArrayGetValueAtIndex(list, i));
+                if (!desc) continue;
+                CFStringRef state = (CFStringRef)CFDictionaryGetValue(desc, CFSTR(kIOPSPowerSourceStateKey));
+                if (state) {
+                    if (CFStringCompare(state, CFSTR(kIOPSACPowerValue), 0) == kCFCompareEqualTo)
+                        status.source = PowerSource::AC;
+                    else if (CFStringCompare(state, CFSTR(kIOPSBatteryPowerValue), 0) == kCFCompareEqualTo)
+                        status.source = PowerSource::Battery;
+                }
+                CFNumberRef cap = (CFNumberRef)CFDictionaryGetValue(desc, CFSTR(kIOPSCurrentCapacityKey));
+                if (cap) {
+                    int pct = -1;
+                    CFNumberGetValue(cap, kCFNumberIntType, &pct);
+                    status.batteryPercent = pct;
+                }
+            }
+            CFRelease(list);
+        }
+        CFRelease(info);
+    }
+    return status;
 }
 
 void* Platform::loadVulkanLibrary() {

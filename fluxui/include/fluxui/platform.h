@@ -52,6 +52,21 @@ struct PlatformInputEvent {
 
 using PlatformEventCallback = void(*)(void* context, const PlatformInputEvent& event);
 
+// ============================================================
+//  Power / energy status (for adaptive, battery-friendly pacing)
+// ============================================================
+enum class PowerSource : int {
+    Unknown = 0,  // could not be determined (treated as AC for pacing)
+    AC,           // plugged into wall power
+    Battery       // running on battery
+};
+
+struct PowerStatus {
+    PowerSource source = PowerSource::Unknown;
+    bool batterySaver = false;   // OS battery-saver / low-power mode is active
+    int batteryPercent = -1;     // 0..100, or -1 if unknown
+};
+
 class Platform {
 public:
     static bool init();
@@ -71,6 +86,14 @@ public:
     static void setCursor(NativeCursorHandle cursor);
     
     static void getWindowSize(NativeWindowHandle window, int& w, int& h);
+
+    // True when the given window is focused/active and not minimized. Used to
+    // drop the frame rate when the app is in the background (battery friendly).
+    static bool isWindowActive(NativeWindowHandle window);
+
+    // Query the system power source / battery state. Cheap; safe to poll on an
+    // interval. Returns Unknown fields on platforms/hardware without batteries.
+    static PowerStatus getPowerStatus();
 
     // Cross-platform input event callback
     static void setEventCallback(void* context, PlatformEventCallback callback);

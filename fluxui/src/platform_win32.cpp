@@ -224,6 +224,36 @@ void Platform::getWindowSize(NativeWindowHandle window, int& w, int& h) {
     }
 }
 
+bool Platform::isWindowActive(NativeWindowHandle window) {
+    if (!window) return true;
+    HWND hwnd = (HWND)window;
+    // Minimized windows don't need to draw at full rate.
+    if (IsIconic(hwnd)) return false;
+    // Active if this window (or one of its owned popups) is the foreground one.
+    HWND fg = GetForegroundWindow();
+    if (!fg) return false;
+    if (fg == hwnd) return true;
+    return GetAncestor(fg, GA_ROOTOWNER) == hwnd;
+}
+
+PowerStatus Platform::getPowerStatus() {
+    PowerStatus status;
+    SYSTEM_POWER_STATUS sps;
+    if (GetSystemPowerStatus(&sps)) {
+        // ACLineStatus: 0 = offline (battery), 1 = online (AC), 255 = unknown.
+        if (sps.ACLineStatus == 0) status.source = PowerSource::Battery;
+        else if (sps.ACLineStatus == 1) status.source = PowerSource::AC;
+        else status.source = PowerSource::Unknown;
+
+        if (sps.BatteryLifePercent != 255) {
+            status.batteryPercent = (int)sps.BatteryLifePercent;
+        }
+        // SystemStatusFlag bit 0 = battery saver is on (Windows 10+).
+        status.batterySaver = (sps.SystemStatusFlag & 0x01) != 0;
+    }
+    return status;
+}
+
 void* Platform::loadVulkanLibrary() {
     HMODULE module = LoadLibraryExA("vulkan-1.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!module) {
