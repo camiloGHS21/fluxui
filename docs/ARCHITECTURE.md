@@ -24,12 +24,16 @@ fluxui/
       gc.cpp                 mark/sweep helpers
     style/                 CSS parsing + cascade
       css_parser.cpp         StyleSheet: tokenize, parse, selector match, cascade
+      css_color.cpp          color + gradient parsing (parseColor/parseGradient)
+      css_internal.h         shared inline detail:: string + color-channel helpers
     layout/                Blink-style layout
       layout.cpp             flex/block/inline solver
       layout_object.cpp      layout object tree
       grid_engine.inl        grid algorithm (included by layout.cpp)
     render/                rendering backends
-      renderer.cpp           Vulkan + CPU-software rasterizer, fonts, text
+      renderer.cpp           Vulkan backend, fonts, text shaping, draw API
+      software_raster.cpp    CPU software rasterizer (no-GPU fallback)
+      software_internal.h    shared inline detail:: pixel helpers
       image_resource.cpp     image decode/cache
       vulkan_shaders.h        embedded GLSL (included by renderer.cpp)
       vulkan_pipeline_cache.h pipeline cache (included by renderer.cpp)
