@@ -1,11 +1,31 @@
-﻿#include "fluxui/css_parser.h"
+#include "fluxui/css_parser.h"
 #include "fluxui/widgets.h"
+#include "css_internal.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <utility>
 namespace FluxUI {
+// Bring the shared CSS helpers (now in css_internal.h / FluxUI::detail) into
+// this TU's scope so the existing call sites compile unchanged. Color parsing
+// lives in css_color.cpp; selector matching + cascade stay here.
+using detail::trimLocal;
+using detail::lowerAscii;
+using detail::functionInner;
+using detail::splitColorTokens;
+using detail::parseNumberToken;
+using detail::parseRgbChannel;
+using detail::parseAlphaChannel;
+using detail::parseHue;
+using detail::parseHslPercent;
+using detail::parseOklabLightness;
+using detail::parseLabLightness;
+using detail::parseOklchChroma;
+using detail::parseLchChroma;
+using detail::parseOklabAxis;
+using detail::parseLabAxis;
+using detail::parseColorFnComponent;
 static bool supportsConditionMatches(std::string_view cond);
 StyleSheet::StyleSheet() {
 #if FLUXUI_FAST_STARTUP
@@ -421,29 +441,6 @@ static bool equalIgnoreCase(std::string_view a, std::string_view b) {
     }
     return true;
 }
-static std::string trimLocal(const std::string& s) {
-    size_t start = s.find_first_not_of(" \t\n\r");
-    size_t end = s.find_last_not_of(" \t\n\r");
-    return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
-}
-static std::string_view trimLocal(std::string_view s) {
-    size_t start = s.find_first_not_of(" \t\n\r");
-    size_t end = s.find_last_not_of(" \t\n\r");
-    return (start == std::string_view::npos) ? std::string_view{} : s.substr(start, end - start + 1);
-}
-static std::string lowerAscii(std::string s) {
-    for (char& c : s) {
-        c = (char)std::tolower((unsigned char)c);
-    }
-    return s;
-}
-static std::string lowerAscii(std::string_view s) {
-    std::string res(s);
-    for (char& c : res) {
-        c = (char)std::tolower((unsigned char)c);
-    }
-    return res;
-}
 static void splitWhitespace(std::string_view val, std::string_view tokens[], int maxTokens, int& count) {
     count = 0;
     size_t i = 0;
@@ -487,12 +484,6 @@ static std::vector<std::string> splitWhitespaceTopLevel(std::string_view val) {
         tokens.push_back(current);
     }
     return tokens;
-}
-static std::string functionInner(const std::string& value) {
-    auto start = value.find('(');
-    auto end = value.rfind(')');
-    if (start == std::string::npos || end == std::string::npos || end <= start) return "";
-    return value.substr(start + 1, end - start - 1);
 }
 static void splitSelectorChain(const std::string& selector,
                                std::vector<std::string>& parts,
@@ -1060,7 +1051,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         else if (c == ':' && depth == 0) colon = i;
     }
     if (colon == std::string::npos) return false;
-    // Detect double-colon (::) — cut position should be at the first colon.
+    // Detect double-colon (::) � cut position should be at the first colon.
     size_t cutPos = colon;
     if (colon > 0 && selector[colon - 1] == ':') {
         cutPos = colon - 1;
@@ -1070,7 +1061,7 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
         nameStart++;
     }
     std::string name = lowerAscii(trimLocal(selector.substr(nameStart)));
-    // Strip trailing (…) for functional pseudo-elements like ::part(foo), ::slotted(div)
+    // Strip trailing (�) for functional pseudo-elements like ::part(foo), ::slotted(div)
     auto parenPos = name.find('(');
     std::string baseName = (parenPos != std::string::npos) ? name.substr(0, parenPos) : name;
 
@@ -1099,125 +1090,9 @@ static bool extractTrailingStatePseudo(std::string& selector, std::string* pseud
     }
     return false;
 }
-static std::vector<std::string> splitColorTokens(const std::string& inner) {
-    std::vector<std::string> tokens;
-    std::string current;
-    int depth = 0;
-    for (char c : inner) {
-        if (c == '(') depth++;
-        if (c == ')' && depth > 0) depth--;
-        bool separator = depth == 0 && (c == ',' || c == '/' || std::isspace((unsigned char)c));
-        if (separator) {
-            if (!current.empty()) {
-                tokens.push_back(trimLocal(current));
-                current.clear();
-            }
-        } else {
-            current += c;
-        }
-    }
-    if (!current.empty()) tokens.push_back(trimLocal(current));
-    return tokens;
-}
-static float parseNumberToken(std::string token, bool* isPercent = nullptr) {
-    token = trimLocal(lowerAscii(token));
-    bool percent = false;
-    if (!token.empty() && token.back() == '%') {
-        percent = true;
-        token.pop_back();
-    }
-    for (const auto& suffix : {"px", "rem", "em", "deg", "turn", "rad", "ms", "s"}) {
-        auto pos = token.find(suffix);
-        if (pos != std::string::npos) {
-            token = token.substr(0, pos);
-            break;
-        }
-    }
-    if (isPercent) *isPercent = percent;
-    try {
-        return std::stof(token);
-    } catch (...) {
-        return 0.0f;
-    }
-}
-static float parseRgbChannel(const std::string& token) {
-    bool percent = false;
-    float value = parseNumberToken(token, &percent);
-    if (percent) return std::clamp(value / 100.0f, 0.0f, 1.0f);
-    if (value > 1.0f) value /= 255.0f;
-    return std::clamp(value, 0.0f, 1.0f);
-}
-static float parseAlphaChannel(const std::string& token) {
-    bool percent = false;
-    float value = parseNumberToken(token, &percent);
-    if (percent) value /= 100.0f;
-    return std::clamp(value, 0.0f, 1.0f);
-}
-static float parseHue(const std::string& token) {
-    std::string v = trimLocal(lowerAscii(token));
-    float hue = parseNumberToken(v);
-    if (v.find("turn") != std::string::npos) hue *= 360.0f;
-    else if (v.find("rad") != std::string::npos) hue = hue * 180.0f / 3.1415926535f;
-    hue = std::fmod(hue, 360.0f);
-    if (hue < 0.0f) hue += 360.0f;
-    return hue;
-}
-static float parseHslPercent(const std::string& token) {
-    bool percent = false;
-    float value = parseNumberToken(token, &percent);
-    if (percent || value > 1.0f) value /= 100.0f;
-    return std::clamp(value, 0.0f, 1.0f);
-}
-// ── CSS Color 4 channel parsers ─────────────────────────────
-// Lightness for oklab/oklch: 0%..100% maps to 0..1; bare number used as-is.
-static float parseOklabLightness(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return std::clamp(v / 100.0f, 0.0f, 1.0f);
-    return std::clamp(v, 0.0f, 1.0f);
-}
-// Lightness for lab/lch: 0%..100% maps to 0..100; bare number used as-is.
-static float parseLabLightness(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return std::clamp(v, 0.0f, 100.0f); // % already 0..100 scale
-    return std::clamp(v, 0.0f, 100.0f);
-}
-// Chroma for oklch: percentage 100% == 0.4; number used directly.
-static float parseOklchChroma(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return (v / 100.0f) * 0.4f;
-    return std::max(0.0f, v);
-}
-// Chroma for lch: percentage 100% == 150; number used directly.
-static float parseLchChroma(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return (v / 100.0f) * 150.0f;
-    return std::max(0.0f, v);
-}
-// oklab a/b axis: percentage 100% == 0.4; number used directly.
-static float parseOklabAxis(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return (v / 100.0f) * 0.4f;
-    return v;
-}
-// lab a/b axis: percentage 100% == 125; number used directly.
-static float parseLabAxis(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return (v / 100.0f) * 125.0f;
-    return v;
-}
-// color() component: percentage maps to 0..1; number used directly.
-static float parseColorFnComponent(const std::string& token) {
-    bool percent = false;
-    float v = parseNumberToken(token, &percent);
-    if (percent) return v / 100.0f;
-    return v;
-}
+// CSS color channel parsers moved to css_internal.h (detail::); parseColor /
+// parseGradient implementations live in css_color.cpp.
+
 StyleCacheKey StyleSheet::buildCacheKey(std::string_view className,
                                          std::string_view id,
                                          std::string_view type,
@@ -1938,7 +1813,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         std::string nestedBody = nestedStr.substr(brace + 1, rbrace - brace - 1);
 
         // Handle nested at-rules: @media, @supports, @layer within a style rule
-        // (CSS Nesting Level 1 §3 — nested group rules)
+        // (CSS Nesting Level 1 �3 � nested group rules)
         std::string nestedLower = lowerAscii(nestedSelector);
         if (!nestedSelector.empty() && nestedSelector[0] == '@') {
             if (nestedLower.rfind("@media", 0) == 0) {
@@ -1976,7 +1851,7 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
                     }
                     resolvedSelector += resolved;
                 } else {
-                    // Implicit descendant nesting (CSS Nesting §2.1)
+                    // Implicit descendant nesting (CSS Nesting �2.1)
                     resolvedSelector += parentPart + " " + nestedPart;
                 }
             }
@@ -2060,7 +1935,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
                                              bool* valid,
                                              int recursionDepth) const {
     // Blink CSSVariableResolver parity: maximum recursion depth guard.
-    // CSS Variables Level 1 §3: "if a custom property has a cycle, all values
+    // CSS Variables Level 1 �3: "if a custom property has a cycle, all values
     // in that cycle are treated as if they had their initial value."
     if (recursionDepth > 32) {
         if (valid) *valid = false;
@@ -2069,7 +1944,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
 
     // Thread-local cycle detection set (Blink's ResolutionState / visiting_ set).
     // Tracks which variable names are currently being resolved on this call stack.
-    // If we encounter a var(--x) while --x is already in the set → cycle → invalid.
+    // If we encounter a var(--x) while --x is already in the set ? cycle ? invalid.
     thread_local std::vector<std::string> resolving_;
 
     std::string out;
@@ -2082,7 +1957,7 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
         }
         out += value.substr(pos, varStart - pos);
 
-        // Find matching ')' for this var() — depth-aware
+        // Find matching ')' for this var() � depth-aware
         size_t cursor = varStart + 4;
         int parenDepth = 1;
         while (cursor < value.size() && parenDepth > 0) {
@@ -2111,14 +1986,14 @@ std::string StyleSheet::resolveValueInternal(const std::string& value,
             }
         }
 
-        // ── Cycle detection (Blink CSSVariableResolver::ResolvePendingSubstitutions parity) ──
+        // -- Cycle detection (Blink CSSVariableResolver::ResolvePendingSubstitutions parity) --
         // Check if this variable is already being resolved on this call stack.
         bool isCycle = false;
         for (const auto& v : resolving_) {
             if (v == name) { isCycle = true; break; }
         }
         if (isCycle) {
-            // CSS Variables §3: cycle detected → use fallback if available, else invalid.
+            // CSS Variables �3: cycle detected ? use fallback if available, else invalid.
             if (!fallback.empty()) {
                 out += resolveValueInternal(fallback, customProperties, valid, recursionDepth + 1);
             } else {
@@ -2903,7 +2778,7 @@ static bool applyCSSWideProperty(Style& target,
     }
 
     // Determine the source style for this keyword.
-    // revert: roll back to the previous cascade origin (author → user → UA).
+    // revert: roll back to the previous cascade origin (author ? user ? UA).
     //   In practice, since we don't track per-origin resolved styles separately,
     //   we approximate by using the UA default (initialStyle) for author revert,
     //   or parentStyle for inherited properties. This matches Blink's behavior
@@ -2922,7 +2797,7 @@ static bool applyCSSWideProperty(Style& target,
             return initialStyle;
         }
         if (keyword == "revert" || keyword == "revert-layer") {
-            // Blink: revert in author origin → use user/UA value.
+            // Blink: revert in author origin ? use user/UA value.
             // For inherited properties, use parent (inheriting from parent
             // effectively gives the "previous origin" value for inherited props).
             // For non-inherited, use the initial value.
@@ -4229,7 +4104,7 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         style.hasMaxBlockSize = true;
         style.orderMaxBlockSize = ++style.propertyOrder;
     } else {
-        return false; // not matched in Part1 — caller proceeds to Part2/Part3
+        return false; // not matched in Part1 � caller proceeds to Part2/Part3
     }
     return true;
 }
@@ -4755,7 +4630,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (v == "dense")         style.gridAutoFlow = GridAutoFlow::RowDense;
         else                           style.gridAutoFlow = GridAutoFlow::Row;
     } else if (name == "grid") {
-        // grid shorthand: <template> | <auto-flow> rows / cols — parse basic / form
+        // grid shorthand: <template> | <auto-flow> rows / cols � parse basic / form
         auto slashPos = value.find('/');
         if (slashPos != std::string::npos) {
             std::string rows = trim(value.substr(0, slashPos));
@@ -4811,7 +4686,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             style.gridRowEnd      = parseGridPlacement(parts[2]);
             style.gridColumnEnd   = parseGridPlacement(parts[3]);
         } else if (parts.size() == 1 && !parts[0].empty()) {
-            // Named area — stored as named-line references
+            // Named area � stored as named-line references
             style.gridRowStart.type = GridPlacement::PlacementType::NamedLine;
             style.gridRowStart.name = parts[0];
             style.gridColumnStart.type = GridPlacement::PlacementType::NamedLine;
@@ -5035,7 +4910,7 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         style.hoverScale = parseFloat(value);
     }
 }
-// ── mergePropertyPart3: scroll-driven animations + timeline properties ──
+// -- mergePropertyPart3: scroll-driven animations + timeline properties --
 void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "animation-timeline") {
         style.animationTimeline.clear();
@@ -5126,7 +5001,7 @@ void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const
     } else if (name == "font-variant-alternates") {
         style.fontVariantAlternates = trim(value);
     } else if (name == "font-variant") {
-        // font-variant shorthand → distribute to sub-properties
+        // font-variant shorthand ? distribute to sub-properties
         std::string v = lowerAscii(trim(value));
         if (v == "normal" || v == "none") {
             style.fontVariantCaps = "normal";
@@ -5823,240 +5698,7 @@ std::string StyleSheet::interpolateTypedValue(const std::string& from,
     }
     return t < 0.5f ? from : to;
 }
-Color StyleSheet::parseColor(const std::string& val) {
-    std::string v = trim(val);
-    if (v.empty()) return Color();
-    std::string lower = lowerAscii(v);
-    if (v[0] == '#') return Color::fromHex(v);
-    static const std::unordered_map<std::string, uint32_t> namedColors = {
-        {"transparent",0x00000000},{"aliceblue",0xFFF0F8FF},{"antiquewhite",0xFFFAEBD7},
-        {"aqua",0xFF00FFFF},{"aquamarine",0xFF7FFFD4},{"azure",0xFFF0FFFF},
-        {"beige",0xFFF5F5DC},{"bisque",0xFFFFE4C4},{"black",0xFF000000},
-        {"blanchedalmond",0xFFFFEBCD},{"blue",0xFF0000FF},{"blueviolet",0xFF8A2BE2},
-        {"brown",0xFFA52A2A},{"burlywood",0xFFDEB887},{"cadetblue",0xFF5F9EA0},
-        {"chartreuse",0xFF7FFF00},{"chocolate",0xFFD2691E},{"coral",0xFFFF7F50},
-        {"cornflowerblue",0xFF6495ED},{"cornsilk",0xFFFFF8DC},{"crimson",0xFFDC143C},
-        {"cyan",0xFF00FFFF},{"darkblue",0xFF00008B},{"darkcyan",0xFF008B8B},
-        {"darkgoldenrod",0xFFB8860B},{"darkgray",0xFFA9A9A9},{"darkgrey",0xFFA9A9A9},
-        {"darkgreen",0xFF006400},{"darkkhaki",0xFFBDB76B},{"darkmagenta",0xFF8B008B},
-        {"darkolivegreen",0xFF556B2F},{"darkorange",0xFFFF8C00},{"darkorchid",0xFF9932CC},
-        {"darkred",0xFF8B0000},{"darksalmon",0xFFE9967A},{"darkseagreen",0xFF8FBC8F},
-        {"darkslateblue",0xFF483D8B},{"darkslategray",0xFF2F4F4F},{"darkslategrey",0xFF2F4F4F},
-        {"darkturquoise",0xFF00CED1},{"darkviolet",0xFF9400D3},{"deeppink",0xFFFF1493},
-        {"deepskyblue",0xFF00BFFF},{"dimgray",0xFF696969},{"dimgrey",0xFF696969},
-        {"dodgerblue",0xFF1E90FF},{"firebrick",0xFFB22222},{"floralwhite",0xFFFFFAF0},
-        {"forestgreen",0xFF228B22},{"fuchsia",0xFFFF00FF},{"gainsboro",0xFFDCDCDC},
-        {"ghostwhite",0xFFF8F8FF},{"gold",0xFFFFD700},{"goldenrod",0xFFDAA520},
-        {"gray",0xFF808080},{"grey",0xFF808080},{"green",0xFF008000},
-        {"greenyellow",0xFFADFF2F},{"honeydew",0xFFF0FFF0},{"hotpink",0xFFFF69B4},
-        {"indianred",0xFFCD5C5C},{"indigo",0xFF4B0082},{"ivory",0xFFFFFFF0},
-        {"khaki",0xFFF0E68C},{"lavender",0xFFE6E6FA},{"lavenderblush",0xFFFFF0F5},
-        {"lawngreen",0xFF7CFC00},{"lemonchiffon",0xFFFFFACD},{"lightblue",0xFFADD8E6},
-        {"lightcoral",0xFFF08080},{"lightcyan",0xFFE0FFFF},{"lightgoldenrodyellow",0xFFFAFAD2},
-        {"lightgray",0xFFD3D3D3},{"lightgrey",0xFFD3D3D3},{"lightgreen",0xFF90EE90},
-        {"lightpink",0xFFFFB6C1},{"lightsalmon",0xFFFFA07A},{"lightseagreen",0xFF20B2AA},
-        {"lightskyblue",0xFF87CEFA},{"lightslategray",0xFF778899},{"lightslategrey",0xFF778899},
-        {"lightsteelblue",0xFFB0C4DE},{"lightyellow",0xFFFFFFE0},{"lime",0xFF00FF00},
-        {"limegreen",0xFF32CD32},{"linen",0xFFFAF0E6},{"magenta",0xFFFF00FF},
-        {"maroon",0xFF800000},{"mediumaquamarine",0xFF66CDAA},{"mediumblue",0xFF0000CD},
-        {"mediumorchid",0xFFBA55D3},{"mediumpurple",0xFF9370DB},{"mediumseagreen",0xFF3CB371},
-        {"mediumslateblue",0xFF7B68EE},{"mediumspringgreen",0xFF00FA9A},
-        {"mediumturquoise",0xFF48D1CC},{"mediumvioletred",0xFFC71585},
-        {"midnightblue",0xFF191970},{"mintcream",0xFFF5FFFA},{"mistyrose",0xFFFFE4E1},
-        {"moccasin",0xFFFFE4B5},{"navajowhite",0xFFFFDEAD},{"navy",0xFF000080},
-        {"oldlace",0xFFFDF5E6},{"olive",0xFF808000},{"olivedrab",0xFF6B8E23},
-        {"orange",0xFFFFA500},{"orangered",0xFFFF4500},{"orchid",0xFFDA70D6},
-        {"palegoldenrod",0xFFEEE8AA},{"palegreen",0xFF98FB98},{"paleturquoise",0xFFAFEEEE},
-        {"palevioletred",0xFFDB7093},{"papayawhip",0xFFFFEFD5},{"peachpuff",0xFFFFDAB9},
-        {"peru",0xFFCD853F},{"pink",0xFFFFC0CB},{"plum",0xFFDDA0DD},
-        {"powderblue",0xFFB0E0E6},{"purple",0xFF800080},{"rebeccapurple",0xFF663399},
-        {"red",0xFFFF0000},{"rosybrown",0xFFBC8F8F},{"royalblue",0xFF4169E1},
-        {"saddlebrown",0xFF8B4513},{"salmon",0xFFFA8072},{"sandybrown",0xFFF4A460},
-        {"seagreen",0xFF2E8B57},{"seashell",0xFFFFF5EE},{"sienna",0xFFA0522D},
-        {"silver",0xFFC0C0C0},{"skyblue",0xFF87CEEB},{"slateblue",0xFF6A5ACD},
-        {"slategray",0xFF708090},{"slategrey",0xFF708090},{"snow",0xFFFFFAFA},
-        {"springgreen",0xFF00FF7F},{"steelblue",0xFF4682B4},{"tan",0xFFD2B48C},
-        {"teal",0xFF008080},{"thistle",0xFFD8BFD8},{"tomato",0xFFFF6347},
-        {"turquoise",0xFF40E0D0},{"violet",0xFFEE82EE},{"wheat",0xFFF5DEB3},
-        {"white",0xFFFFFFFF},{"whitesmoke",0xFFF5F5F5},{"yellow",0xFFFFFF00},
-        {"yellowgreen",0xFF9ACD32}
-    };
-    auto it = namedColors.find(lower);
-    if (it != namedColors.end()) {
-        uint32_t c = it->second;
-        float a = ((c >> 24) & 0xFF) / 255.0f;
-        float r = ((c >> 16) & 0xFF) / 255.0f;
-        float g = ((c >> 8) & 0xFF) / 255.0f;
-        float b = ((c) & 0xFF) / 255.0f;
-        return Color(r, g, b, a);
-    }
-    if (lower == "currentcolor") return Color(1, 1, 1, 1);
-    // ── system-ui / system color keywords (CSS Color 4 system colors) ──
-    if (lower == "canvas" || lower == "window")        return Color(1, 1, 1, 1);
-    if (lower == "canvastext" || lower == "windowtext")return Color(0, 0, 0, 1);
-    if (lower == "buttonface")                          return Color(0.94f, 0.94f, 0.94f, 1);
-    if (lower == "buttontext")                          return Color(0, 0, 0, 1);
-    if (lower == "field")                               return Color(1, 1, 1, 1);
-    if (lower == "fieldtext")                           return Color(0, 0, 0, 1);
-    if (lower == "highlight")                           return Color(0.0f, 0.46f, 1.0f, 1);
-    if (lower == "highlighttext")                       return Color(1, 1, 1, 1);
-    if (lower == "graytext")                            return Color(0.5f, 0.5f, 0.5f, 1);
-    if (lower == "linktext")                            return Color(0.0f, 0.0f, 0.93f, 1);
-
-    // ── light-dark(<light>, <dark>) — CSS Color Adjust 1 ──
-    if (lower.rfind("light-dark(", 0) == 0) {
-        std::string inner = functionInner(v);
-        // Split on top-level comma
-        int depth = 0; size_t comma = std::string::npos;
-        for (size_t i = 0; i < inner.size(); i++) {
-            if (inner[i] == '(') ++depth;
-            else if (inner[i] == ')') --depth;
-            else if (inner[i] == ',' && depth == 0) { comma = i; break; }
-        }
-        if (comma != std::string::npos) {
-            std::string lightC = trim(inner.substr(0, comma));
-            std::string darkC  = trim(inner.substr(comma + 1));
-            bool dark = false;
-            if (auto* app = Application::instance())
-                dark = app->stylesheet().prefersDark();
-            return parseColor(dark ? darkC : lightC);
-        }
-        return Color();
-    }
-
-    // ── color-mix(in <space>, <c1> [p1%], <c2> [p2%]) — CSS Color 5 ──
-    if (lower.rfind("color-mix(", 0) == 0) {
-        std::string inner = functionInner(v);
-        // Split on top-level commas
-        std::vector<std::string> parts;
-        { int depth = 0; std::string cur;
-          for (char c : inner) {
-            if (c == '(') { ++depth; cur += c; }
-            else if (c == ')') { --depth; cur += c; }
-            else if (c == ',' && depth == 0) { parts.push_back(trim(cur)); cur.clear(); }
-            else cur += c;
-          }
-          if (!cur.empty()) parts.push_back(trim(cur));
-        }
-        if (parts.size() >= 3) {
-            // parts[0] = "in <space>" (ignored beyond mixing in sRGB), parts[1], parts[2] = colors
-            auto splitColorPct = [](const std::string& s, float& pct) -> std::string {
-                std::string t = trim(s);
-                size_t sp = t.rfind(' ');
-                if (sp != std::string::npos && !t.empty() && t.back() == '%') {
-                    std::string pctStr = trim(t.substr(sp + 1));
-                    if (!pctStr.empty() && pctStr.back() == '%') {
-                        try { pct = std::stof(pctStr.substr(0, pctStr.size() - 1)) / 100.0f; } catch (...) {}
-                        return trim(t.substr(0, sp));
-                    }
-                }
-                return t;
-            };
-            float p1 = -1.0f, p2 = -1.0f;
-            std::string c1s = splitColorPct(parts[1], p1);
-            std::string c2s = splitColorPct(parts[2], p2);
-            Color c1 = parseColor(c1s);
-            Color c2 = parseColor(c2s);
-            // Normalize percentages (CSS Color 5 rules)
-            if (p1 < 0 && p2 < 0) { p1 = 0.5f; p2 = 0.5f; }
-            else if (p1 < 0)      { p1 = 1.0f - p2; }
-            else if (p2 < 0)      { p2 = 1.0f - p1; }
-            float sum = p1 + p2;
-            if (sum <= 0.0f) return Color();
-            p1 /= sum; p2 /= sum;
-            // Mix in sRGB (component-wise) — approximation of in oklab/srgb
-            return Color(c1.r * p1 + c2.r * p2,
-                         c1.g * p1 + c2.g * p2,
-                         c1.b * p1 + c2.b * p2,
-                         c1.a * p1 + c2.a * p2);
-        }
-        return Color();
-    }
-
-    // ── oklch(L C H [/ A]) ──────────────────────────────────
-    if (lower.rfind("oklch(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 3) {
-            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
-            return Color::fromOklch(parseOklabLightness(t[0]),
-                                    parseOklchChroma(t[1]),
-                                    parseHue(t[2]), a);
-        }
-    }
-    // ── oklab(L a b [/ A]) ──────────────────────────────────
-    if (lower.rfind("oklab(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 3) {
-            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
-            return Color::fromOklab(parseOklabLightness(t[0]),
-                                    parseOklabAxis(t[1]),
-                                    parseOklabAxis(t[2]), a);
-        }
-    }
-    // ── lch(L C H [/ A]) ────────────────────────────────────
-    if (lower.rfind("lch(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 3) {
-            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
-            return Color::fromLch(parseLabLightness(t[0]),
-                                  parseLchChroma(t[1]),
-                                  parseHue(t[2]), a);
-        }
-    }
-    // ── lab(L a b [/ A]) ────────────────────────────────────
-    if (lower.rfind("lab(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 3) {
-            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
-            return Color::fromLab(parseLabLightness(t[0]),
-                                  parseLabAxis(t[1]),
-                                  parseLabAxis(t[2]), a);
-        }
-    }
-    // ── hwb(H W B [/ A]) ────────────────────────────────────
-    if (lower.rfind("hwb(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 3) {
-            float a = t.size() >= 4 ? parseAlphaChannel(t[3]) : 1.0f;
-            return Color::fromHWB(parseHue(t[0]),
-                                  parseHslPercent(t[1]),
-                                  parseHslPercent(t[2]), a);
-        }
-    }
-    // ── color(<space> c1 c2 c3 [/ A]) ───────────────────────
-    if (lower.rfind("color(", 0) == 0) {
-        auto t = splitColorTokens(functionInner(v));
-        if (t.size() >= 4) {
-            std::string space = lowerAscii(t[0]);
-            float a = t.size() >= 5 ? parseAlphaChannel(t[4]) : 1.0f;
-            return Color::fromColorFunction(space,
-                                            parseColorFnComponent(t[1]),
-                                            parseColorFnComponent(t[2]),
-                                            parseColorFnComponent(t[3]), a);
-        }
-    }
-    if (lower.rfind("rgb", 0) == 0) {
-        auto tokens = splitColorTokens(functionInner(v));
-        if (tokens.size() >= 3) {
-            float a = tokens.size() >= 4 ? parseAlphaChannel(tokens[3]) : 1.0f;
-            return Color(parseRgbChannel(tokens[0]),
-                         parseRgbChannel(tokens[1]),
-                         parseRgbChannel(tokens[2]),
-                         a);
-        }
-    }
-    if (lower.rfind("hsl", 0) == 0) {
-        auto tokens = splitColorTokens(functionInner(v));
-        if (tokens.size() >= 3) {
-            float a = tokens.size() >= 4 ? parseAlphaChannel(tokens[3]) : 1.0f;
-            return Color::fromHSL(parseHue(tokens[0]),
-                                  parseHslPercent(tokens[1]),
-                                  parseHslPercent(tokens[2]),
-                                  a);
-        }
-    }
-    return Color();
-}
+// StyleSheet::parseColor moved to css_color.cpp.
 CSSValue StyleSheet::parseCSSValue(const std::string& val) {
     std::string v = trim(val);
     std::string lower = lowerAscii(v);
@@ -6282,67 +5924,7 @@ BoxShadow StyleSheet::parseBoxShadow(const std::string& val, float emBase) {
     if (!colorStr.empty()) shadow.color = parseColor(colorStr);
     return shadow;
 }
-Gradient StyleSheet::parseGradient(const std::string& val) {
-    Gradient grad;
-    if (val.find("linear-gradient") == std::string::npos) return grad;
-    grad.type = Gradient::Linear;
-    auto start = val.find('(');
-    auto end = val.rfind(')');
-    if (start == std::string::npos || end == std::string::npos) return grad;
-    std::string inner = val.substr(start + 1, end - start - 1);
-    std::vector<std::string> parts;
-    std::string current;
-    int depth = 0;
-    for (char c : inner) {
-        if (c == '(') depth++;
-        if (c == ')') depth--;
-        if (c == ',' && depth == 0) {
-            parts.push_back(trim(current));
-            current.clear();
-        } else {
-            current += c;
-        }
-    }
-    if (!current.empty()) parts.push_back(trim(current));
-    size_t colorStart = 0;
-    if (!parts.empty()) {
-        std::string first = parts[0];
-        if (first.find("deg") != std::string::npos) {
-            grad.angle = parseFloat(first);
-            colorStart = 1;
-        } else if (first == "to right") {
-            grad.angle = 90;
-            colorStart = 1;
-        } else if (first == "to left") {
-            grad.angle = 270;
-            colorStart = 1;
-        } else if (first == "to bottom") {
-            grad.angle = 180;
-            colorStart = 1;
-        } else if (first == "to top") {
-            grad.angle = 0;
-            colorStart = 1;
-        }
-    }
-    float autoPos = 0;
-    float autoStep = (parts.size() > colorStart + 1) ?
-        1.0f / (float)(parts.size() - colorStart - 1) : 1.0f;
-    for (size_t i = colorStart; i < parts.size(); i++) {
-        std::string part = trim(parts[i]);
-        float pos = autoPos;
-        auto pctPos = part.rfind('%');
-        if (pctPos != std::string::npos) {
-            auto numStart = part.rfind(' ', pctPos);
-            if (numStart != std::string::npos) {
-                pos = std::stof(part.substr(numStart + 1, pctPos - numStart - 1)) / 100.0f;
-                part = trim(part.substr(0, numStart));
-            }
-        }
-        grad.stops.push_back({parseColor(part), pos});
-        autoPos += autoStep;
-    }
-    return grad;
-}
+// StyleSheet::parseGradient moved to css_color.cpp.
 float StyleSheet::parseFloat(const std::string& val) {
     std::string v = trim(val);
     for (auto& suffix : {"px", "rem", "em", "deg", "ms", "s", "%"}) {
@@ -7370,7 +6952,7 @@ std::vector<TransformOperation> StyleSheet::parseTransformList(const std::string
 }
 
 // ============================================================
-//  parseGridTrackList — Blink NGGridLayoutAlgorithm parity
+//  parseGridTrackList � Blink NGGridLayoutAlgorithm parity
 //
 //  Parses a CSS <track-list> such as:
 //    100px 1fr auto
@@ -7536,7 +7118,7 @@ std::vector<GridTrackSize> StyleSheet::parseGridTrackList(const std::string& val
 }
 
 // ============================================================
-//  parseGridPlacement — Blink GridPosition parity
+//  parseGridPlacement � Blink GridPosition parity
 //
 //  Parses one side of grid-column / grid-row:
 //    auto | <integer> | span <integer> | <integer> span | [name]
@@ -7557,7 +7139,7 @@ GridPlacement StyleSheet::parseGridPlacement(const std::string& value) {
         return p;
     }
 
-    // [name] — named line
+    // [name] � named line
     if (!v.empty() && v.front() == '[' && v.back() == ']') {
         p.type = GridPlacement::PlacementType::NamedLine;
         p.name = trim(value.substr(1, value.size() - 2));
@@ -7578,7 +7160,7 @@ GridPlacement StyleSheet::parseGridPlacement(const std::string& value) {
 }
 
 // ============================================================
-//  parseGridTemplateAreas — Blink GridTemplateAreas parity
+//  parseGridTemplateAreas � Blink GridTemplateAreas parity
 //
 //  Parses grid-template-areas: "header header" "nav main" "footer footer"
 //  Returns a GridTemplateAreas struct with flat row-major area names.
@@ -7616,31 +7198,31 @@ GridTemplateAreas StyleSheet::parseGridTemplateAreas(const std::string& value) {
 }
 
 // ============================================================
-//  parseFilterOperations — Blink FilterOperationResolver parity
+//  parseFilterOperations � Blink FilterOperationResolver parity
 //
 //  Parses the CSS <filter-value-list> grammar including:
-//    blur(<length>)                     — calc() resolved to px, clamped ≥0
-//    brightness(<number-or-percent>)    — calc() resolved, clamped ≥0 (may exceed 1)
-//    contrast(<number-or-percent>)      — calc() resolved, clamped ≥0
-//    drop-shadow(<shadow>)              — offset-x offset-y [blur] [color]
-//    grayscale(<number-or-percent>)     — calc() resolved, clamped [0,1]
-//    hue-rotate(<angle>)                — deg/rad/grad/turn + calc(), unclamped
-//    invert(<number-or-percent>)        — calc() resolved, clamped [0,1]
-//    opacity(<number-or-percent>)       — calc() resolved, clamped [0,1]
-//    saturate(<number-or-percent>)      — calc() resolved, clamped ≥0
-//    sepia(<number-or-percent>)         — calc() resolved, clamped [0,1]
-//    url(<string>)                      — SVG reference filter
-//    luminance-to-alpha()               — Blink kLuminanceToAlpha
-//    color-matrix(<20 numbers>)         — Blink kColorMatrix (feColorMatrix matrix)
+//    blur(<length>)                     � calc() resolved to px, clamped =0
+//    brightness(<number-or-percent>)    � calc() resolved, clamped =0 (may exceed 1)
+//    contrast(<number-or-percent>)      � calc() resolved, clamped =0
+//    drop-shadow(<shadow>)              � offset-x offset-y [blur] [color]
+//    grayscale(<number-or-percent>)     � calc() resolved, clamped [0,1]
+//    hue-rotate(<angle>)                � deg/rad/grad/turn + calc(), unclamped
+//    invert(<number-or-percent>)        � calc() resolved, clamped [0,1]
+//    opacity(<number-or-percent>)       � calc() resolved, clamped [0,1]
+//    saturate(<number-or-percent>)      � calc() resolved, clamped =0
+//    sepia(<number-or-percent>)         � calc() resolved, clamped [0,1]
+//    url(<string>)                      � SVG reference filter
+//    luminance-to-alpha()               � Blink kLuminanceToAlpha
+//    color-matrix(<20 numbers>)         � Blink kColorMatrix (feColorMatrix matrix)
 //
 //  calc() / min() / max() / clamp() is supported in all numeric
-//  arguments via parseCSSValue() → CSSValue::resolve(), matching
+//  arguments via parseCSSValue() ? CSSValue::resolve(), matching
 //  Blink's FilterOperationResolver::ResolveNumericArgumentForFunction.
 //
 //  Clamping mirrors Blink exactly (filter_operation_resolver.cc):
 //    [0,1]  : grayscale, sepia, invert, opacity
-//    [0,∞)  : brightness, contrast, saturate (>1 is valid)
-//    blur   : clamped ≥ 0
+//    [0,8)  : brightness, contrast, saturate (>1 is valid)
+//    blur   : clamped = 0
 //    hue-rotate : no clamp
 //
 //  UseCounter: FilterUseCounter::instance().count(FilterFeature::*)
@@ -7651,26 +7233,26 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
     std::vector<FilterOperation> ops;
     if (value.empty() || value == "none") return ops;
 
-    // ── Resolve a numeric/percentage argument with calc() support.
+    // -- Resolve a numeric/percentage argument with calc() support.
     //    Mirrors Blink ResolveNumericArgumentForFunction:
-    //      IsPercentage() → computePercentage/100
-    //      else           → computeNumber
+    //      IsPercentage() ? computePercentage/100
+    //      else           ? computeNumber
     auto resolveAmount = [&](const std::string& s) -> float {
-        if (s.empty()) return 1.0f; // omitted arg → default 1 (CSS spec)
+        if (s.empty()) return 1.0f; // omitted arg ? default 1 (CSS spec)
         std::string v = trim(s);
         // Percentage in a filter function maps directly to a [0,n] ratio
-        // (e.g. 180% → 1.8), NOT a percentage of em (Blink ResolveNumericArgument).
+        // (e.g. 180% ? 1.8), NOT a percentage of em (Blink ResolveNumericArgument).
         if (!v.empty() && v.back() == '%') {
             char* end = nullptr;
             float pct = parseLocaleIndependentFloat(v.substr(0, v.size() - 1).c_str(), &end);
             return pct / 100.0f;
         }
-        // calc()/min()/max()/clamp() or bare number → resolve numerically.
+        // calc()/min()/max()/clamp() or bare number ? resolve numerically.
         CSSValue cv = parseCSSValue(v);
         return cv.resolve(emBase, 1920.0f, 1080.0f, emBase);
     };
 
-    // ── Resolve an angle with calc() support (deg/rad/grad/turn).
+    // -- Resolve an angle with calc() support (deg/rad/grad/turn).
     auto resolveAngle = [&](const std::string& s) -> float {
         if (s.empty()) return 0.0f;
         std::string v = trim(s);
@@ -7686,12 +7268,12 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
         return parseAngleDegrees(v);
     };
 
-    // ── CountFilterUse (Blink CountFilterUse parity) ──────
+    // -- CountFilterUse (Blink CountFilterUse parity) ------
     auto countUse = [](FilterFeature f) {
         FilterUseCounter::instance().count(f);
     };
 
-    // ── Walk the value string extracting function calls ────
+    // -- Walk the value string extracting function calls ----
     size_t pos = 0;
     const size_t len = value.size();
 
@@ -7721,67 +7303,67 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
 
         FilterOperation op;
 
-        // ── blur(<length>) ──────────────────────────────────
+        // -- blur(<length>) ----------------------------------
         if (funcName == "blur") {
             op.type   = FilterOperationType::Blur;
             op.amount = std::max(0.0f, parseLengthPixels(args, emBase));
             countUse(FilterFeature::Blur);
 
-        // ── brightness(<number-or-percent>) ────────────────
+        // -- brightness(<number-or-percent>) ----------------
         } else if (funcName == "brightness") {
             op.type   = FilterOperationType::Brightness;
             op.amount = std::max(0.0f, resolveAmount(args));
             countUse(FilterFeature::Brightness);
 
-        // ── contrast(<number-or-percent>) ──────────────────
+        // -- contrast(<number-or-percent>) ------------------
         } else if (funcName == "contrast") {
             op.type   = FilterOperationType::Contrast;
             op.amount = std::max(0.0f, resolveAmount(args));
             countUse(FilterFeature::Contrast);
 
-        // ── grayscale(<number-or-percent>) ─────────────────
+        // -- grayscale(<number-or-percent>) -----------------
         } else if (funcName == "grayscale") {
             op.type   = FilterOperationType::Grayscale;
             op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
             countUse(FilterFeature::Grayscale);
 
-        // ── hue-rotate(<angle>) ─────────────────────────────
+        // -- hue-rotate(<angle>) -----------------------------
         } else if (funcName == "hue-rotate") {
             op.type   = FilterOperationType::HueRotate;
             op.amount = resolveAngle(args); // unclamped (Blink parity)
             countUse(FilterFeature::HueRotate);
 
-        // ── invert(<number-or-percent>) ─────────────────────
+        // -- invert(<number-or-percent>) ---------------------
         } else if (funcName == "invert") {
             op.type   = FilterOperationType::Invert;
             op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
             countUse(FilterFeature::Invert);
 
-        // ── opacity(<number-or-percent>) ────────────────────
+        // -- opacity(<number-or-percent>) --------------------
         } else if (funcName == "opacity") {
             op.type   = FilterOperationType::Opacity;
             op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
             countUse(FilterFeature::Opacity);
 
-        // ── saturate(<number-or-percent>) ───────────────────
+        // -- saturate(<number-or-percent>) -------------------
         } else if (funcName == "saturate") {
             op.type   = FilterOperationType::Saturate;
             op.amount = std::max(0.0f, resolveAmount(args));
             countUse(FilterFeature::Saturate);
 
-        // ── sepia(<number-or-percent>) ──────────────────────
+        // -- sepia(<number-or-percent>) ----------------------
         } else if (funcName == "sepia") {
             op.type   = FilterOperationType::Sepia;
             op.amount = std::clamp(resolveAmount(args), 0.0f, 1.0f); // Blink [0,1]
             countUse(FilterFeature::Sepia);
 
-        // ── drop-shadow(<shadow>) ────────────────────────────
+        // -- drop-shadow(<shadow>) ----------------------------
         //    offset-x and offset-y required, blur-radius and color optional.
         //    Color can appear before or after the length values.
         //    Each length supports calc() via parseLengthPixels.
         } else if (funcName == "drop-shadow") {
             op.type        = FilterOperationType::DropShadow;
-            op.shadowColor = Color(0, 0, 0, 1.0f); // default black (currentColor → black)
+            op.shadowColor = Color(0, 0, 0, 1.0f); // default black (currentColor ? black)
 
             std::string remaining = args;
 
@@ -7860,7 +7442,7 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             }
             countUse(FilterFeature::DropShadow);
 
-        // ── url(<string>) — SVG reference filter ────────────
+        // -- url(<string>) � SVG reference filter ------------
         } else if (funcName == "url") {
             op.type = FilterOperationType::Reference;
             std::string u = args;
@@ -7869,16 +7451,16 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             op.url = u;
             countUse(FilterFeature::Reference);
 
-        // ── luminance-to-alpha() — Blink kLuminanceToAlpha ──
+        // -- luminance-to-alpha() � Blink kLuminanceToAlpha --
         //    SVG feColorMatrix type="luminanceToAlpha". No arguments.
         } else if (funcName == "luminance-to-alpha") {
             op.type   = FilterOperationType::LuminanceToAlpha;
             op.amount = 0.0f;
             countUse(FilterFeature::LuminanceToAlpha);
 
-        // ── color-matrix(<20 values>) — Blink kColorMatrix ──
+        // -- color-matrix(<20 values>) � Blink kColorMatrix --
         //    SVG feColorMatrix type="matrix". Expects 20 space/comma-
-        //    separated numbers (4 rows × 5 columns). Each value supports
+        //    separated numbers (4 rows � 5 columns). Each value supports
         //    calc() via parseCSSValue. Padded/trimmed to exactly 20.
         } else if (funcName == "color-matrix") {
             op.type = FilterOperationType::ColorMatrix;
@@ -7903,7 +7485,7 @@ std::vector<FilterOperation> StyleSheet::parseFilterOperations(const std::string
             countUse(FilterFeature::ColorMatrix);
 
         } else {
-            // Unknown function — skip (Blink silently ignores unknown filter functions)
+            // Unknown function � skip (Blink silently ignores unknown filter functions)
             continue;
         }
 

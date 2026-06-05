@@ -215,6 +215,7 @@ set(FLUXUI_SOURCES
     fluxui/src/core/compositor.cpp
     # style: CSS parsing + cascade
     fluxui/src/style/css_parser.cpp
+    fluxui/src/style/css_color.cpp
     # layout: Blink-style layout solver + objects
     fluxui/src/layout/layout.cpp
     fluxui/src/layout/layout_object.cpp
