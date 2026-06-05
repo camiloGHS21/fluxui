@@ -107,6 +107,32 @@ public final class App implements AutoCloseable {
         return this;
     }
 
+    /** Which physical GPU drives the UI. */
+    public enum Gpu {
+        AUTO(0), INTEGRATED(1), DISCRETE(2);
+        final int value;
+        Gpu(int v) { this.value = v; }
+    }
+
+    /**
+     * Pick the GPU. Call BEFORE init(). On laptops with both an integrated GPU
+     * and a discrete card, AUTO/INTEGRATED keep the UI on the integrated GPU so
+     * a discrete RTX stays free for games. Falls back to CPU software rendering
+     * if no usable GPU is found.
+     */
+    public App gpu(Gpu preference) {
+        Native.appSetGpuPreference(handle(), preference.value);
+        return this;
+    }
+
+    public App useIntegratedGpu() { return gpu(Gpu.INTEGRATED); }
+    public App useDiscreteGpu() { return gpu(Gpu.DISCRETE); }
+
+    /** Name of the GPU actually in use (valid after init). */
+    public String activeGpuName() {
+        return Native.appActiveGpuName(handle());
+    }
+
     public boolean loadFont(String path, float size) {
         return Native.appLoadFont(handle(), path, size);
     }

@@ -224,6 +224,20 @@ void fluxui_app_set_frame_rate_limits(FluxUIApp* app, int active_fps, int batter
     app->app.setFrameRateLimits(active_fps, battery_fps, background_fps);
 }
 
+void fluxui_app_set_gpu_preference(FluxUIApp* app, int preference) {
+    if (!app) return;
+    // 0=Auto, 1=Integrated/PowerSaving, 2=Discrete/Performance
+    FluxUI::GpuPreference p = FluxUI::GpuPreference::Auto;
+    if (preference == 1) p = FluxUI::GpuPreference::PowerSaving;
+    else if (preference == 2) p = FluxUI::GpuPreference::Performance;
+    app->app.setGpuPreference(p);
+}
+
+const char* fluxui_app_active_gpu_name(FluxUIApp* app) {
+    if (!app) return "";
+    return app->app.activeDeviceName().c_str();
+}
+
 int fluxui_app_load_font(FluxUIApp* app, const char* path, float size) {
     return fluxui_app_load_font_named(app, path, size, "default");
 }

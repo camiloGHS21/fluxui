@@ -285,6 +285,22 @@ extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appSetFrameRateLimits(
     fluxui_app_set_frame_rate_limits(as_app(app), activeFps, batteryFps, backgroundFps);
 }
 
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appSetGpuPreference(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jint preference) {
+    fluxui_app_set_gpu_preference(as_app(app), preference);
+}
+
+extern "C" JNIEXPORT jstring JNICALL Java_io_fluxui_Native_appActiveGpuName(
+    JNIEnv* env,
+    jclass,
+    jlong app) {
+    const char* name = fluxui_app_active_gpu_name(as_app(app));
+    return env->NewStringUTF(name ? name : "");
+}
+
 extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appLoadFont(
     JNIEnv* env,
     jclass,

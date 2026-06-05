@@ -29,6 +29,8 @@ var (
 	fluxui_app_reload_styles          = fluxui_dll.NewProc("fluxui_app_reload_styles")
 	fluxui_app_set_power_profile      = fluxui_dll.NewProc("fluxui_app_set_power_profile")
 	fluxui_app_set_frame_rate_limits  = fluxui_dll.NewProc("fluxui_app_set_frame_rate_limits")
+	fluxui_app_set_gpu_preference     = fluxui_dll.NewProc("fluxui_app_set_gpu_preference")
+	fluxui_app_active_gpu_name        = fluxui_dll.NewProc("fluxui_app_active_gpu_name")
 	fluxui_app_load_default_font      = fluxui_dll.NewProc("fluxui_app_load_default_font")
 
 	fluxui_widget_add_panel           = fluxui_dll.NewProc("fluxui_widget_add_panel")
@@ -305,6 +307,29 @@ func (a *App) SetPowerProfile(profile PowerProfile) {
 // Pass 0 for any tier to keep its built-in default.
 func (a *App) SetFrameRateLimits(activeFps, batteryFps, backgroundFps int) {
 	fluxui_app_set_frame_rate_limits.Call(a.handle, uintptr(activeFps), uintptr(batteryFps), uintptr(backgroundFps))
+}
+
+// GpuPreference selects which physical GPU drives the UI.
+type GpuPreference int
+
+const (
+	GpuAuto       GpuPreference = 0 // power-saving / integrated (default)
+	GpuIntegrated GpuPreference = 1 // force integrated GPU (leaves dGPU free)
+	GpuDiscrete   GpuPreference = 2 // force discrete GPU
+)
+
+// SetGpuPreference picks the GPU. Call BEFORE Init. On laptops with both an
+// integrated GPU and a discrete card, the default keeps the UI on the
+// integrated GPU so a discrete RTX stays free for games. Falls back to CPU
+// software rendering if no usable GPU is found.
+func (a *App) SetGpuPreference(pref GpuPreference) {
+	fluxui_app_set_gpu_preference.Call(a.handle, uintptr(pref))
+}
+
+// ActiveGpuName returns the name of the GPU actually in use (valid after Init).
+func (a *App) ActiveGpuName() string {
+	r1, _, _ := fluxui_app_active_gpu_name.Call(a.handle)
+	return getString(r1)
 }
 
 func (a *App) LoadDefaultFont(size float32) bool {

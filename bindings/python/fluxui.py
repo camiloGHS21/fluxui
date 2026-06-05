@@ -105,6 +105,12 @@ _lib.fluxui_app_set_power_profile.argtypes = [ctypes.c_void_p, ctypes.c_int]
 _lib.fluxui_app_set_frame_rate_limits.restype = None
 _lib.fluxui_app_set_frame_rate_limits.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_int]
 
+_lib.fluxui_app_set_gpu_preference.restype = None
+_lib.fluxui_app_set_gpu_preference.argtypes = [ctypes.c_void_p, ctypes.c_int]
+
+_lib.fluxui_app_active_gpu_name.restype = ctypes.c_char_p
+_lib.fluxui_app_active_gpu_name.argtypes = [ctypes.c_void_p]
+
 _lib.fluxui_app_load_font.restype = ctypes.c_int
 _lib.fluxui_app_load_font.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float]
 
@@ -812,6 +818,22 @@ class App:
         """Tune the FPS tiers (active / on-battery / background). 0 keeps defaults."""
         _lib.fluxui_app_set_frame_rate_limits(self.handle, int(active_fps), int(battery_fps), int(background_fps))
 
+    # GPU preference constants for set_gpu_preference().
+    GPU_AUTO = 0
+    GPU_INTEGRATED = 1
+    GPU_DISCRETE = 2
+
+    def set_gpu_preference(self, preference):
+        """Pick the GPU (call BEFORE init). On laptops with both an integrated
+        GPU and a discrete card, AUTO/INTEGRATED keep the UI on the integrated
+        GPU so a discrete RTX stays free for games. Falls back to CPU software."""
+        _lib.fluxui_app_set_gpu_preference(self.handle, int(preference))
+
+    def active_gpu_name(self):
+        """Name of the GPU actually in use (valid after init)."""
+        res = _lib.fluxui_app_active_gpu_name(self.handle)
+        return res.decode('utf-8') if res else ""
+
     def load_font(self, path, size):
         return _lib.fluxui_app_load_font(self.handle, path.encode('utf-8'), float(size)) != 0
 
@@ -1501,8 +1523,12 @@ def SkeletonBox(w="100%", h="120px"):
 class DslApp(App):
     """App subclass adding declarative set_root + reactive run loop."""
 
-    def __init__(self, width=1200, height=800, title="FluxUI App"):
+    def __init__(self, width=1200, height=800, title="FluxUI App", gpu=None):
         super().__init__()
+        # Pick the GPU before init() so the choice takes effect. `gpu` may be
+        # App.GPU_AUTO / GPU_INTEGRATED / GPU_DISCRETE (default: power-saving).
+        if gpu is not None:
+            self.set_gpu_preference(gpu)
         self.init(title, width, height)
         self.load_default_font(16.0)
         self._routes = {}

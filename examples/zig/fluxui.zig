@@ -128,6 +128,25 @@ pub const App = struct {
         c.fluxui_app_set_frame_rate_limits(self.raw, active_fps, battery_fps, background_fps);
     }
 
+    /// Which physical GPU drives the UI.
+    pub const GpuPreference = enum(c_int) {
+        auto = 0,        // power-saving / integrated (default)
+        integrated = 1,  // force integrated GPU (leaves a discrete card free)
+        discrete = 2,    // force discrete GPU
+    };
+
+    /// Pick the GPU. Call BEFORE init(). On laptops with both an integrated and
+    /// a discrete GPU, .auto/.integrated keep the UI on the integrated GPU so a
+    /// discrete RTX stays free for games. Falls back to CPU software rendering.
+    pub fn setGpuPreference(self: App, pref: GpuPreference) void {
+        c.fluxui_app_set_gpu_preference(self.raw, @intFromEnum(pref));
+    }
+
+    /// Name of the GPU actually in use (valid after init()).
+    pub fn activeGpuName(self: App) [*:0]const u8 {
+        return c.fluxui_app_active_gpu_name(self.raw);
+    }
+
     pub fn setUpdateCallback(self: App, callback: c.FluxUIUpdateCallback, user_data: ?*anyopaque) void {
         c.fluxui_app_set_update_callback(self.raw, callback, user_data);
     }

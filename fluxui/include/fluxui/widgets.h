@@ -1944,6 +1944,14 @@ public:
     RenderBackendType backendPreference() const { return backendPreference_; }
     RenderBackendType activeBackend() const { return renderer_.activeBackend(); }
     const char* activeBackendName() const { return renderer_.activeBackendName(); }
+
+    // GPU device selection. Call before init(). Defaults to PowerSaving so the
+    // UI runs on the integrated GPU (leaving a discrete RTX free for games);
+    // FLUXUI_GPU env var overrides. Falls back to CPU/software if no GPU works.
+    void setGpuPreference(GpuPreference pref) { renderer_.setGpuPreference(pref); }
+    GpuPreference gpuPreference() const { return renderer_.gpuPreference(); }
+    const std::string& activeDeviceName() const { return renderer_.activeDeviceName(); }
+
     bool loadStylesheet(const std::string& path);
     void addStylesheet(const std::string& css);
 

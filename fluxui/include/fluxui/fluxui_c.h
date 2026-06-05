@@ -124,6 +124,13 @@ FLUXUI_API int fluxui_app_reload_styles(FluxUIApp* app);
 // 2=Balanced, 3=PowerSaver. Pass 0 for an fps tier to keep its built-in default.
 FLUXUI_API void fluxui_app_set_power_profile(FluxUIApp* app, int profile);
 FLUXUI_API void fluxui_app_set_frame_rate_limits(FluxUIApp* app, int active_fps, int battery_fps, int background_fps);
+
+// GPU device selection (call BEFORE fluxui_app_init). preference: 0=Auto
+// (power-saving/integrated), 1=Integrated/PowerSaving, 2=Discrete/Performance.
+// Falls back to CPU software rendering if no usable GPU is found.
+FLUXUI_API void fluxui_app_set_gpu_preference(FluxUIApp* app, int preference);
+// Name of the GPU actually selected (valid after fluxui_app_init).
+FLUXUI_API const char* fluxui_app_active_gpu_name(FluxUIApp* app);
 FLUXUI_API int fluxui_app_load_font(FluxUIApp* app, const char* path, float size);
 FLUXUI_API int fluxui_app_load_font_named(FluxUIApp* app, const char* path, float size, const char* name);
 FLUXUI_API int fluxui_app_load_default_font(FluxUIApp* app, float size);

@@ -3012,7 +3012,26 @@ bool physicalDeviceUsableForVulkan(VkPhysicalDevice device, VkSurfaceKHR surface
     return !support.formats.empty() && !support.presentModes.empty();
 }
 
-int physicalDeviceScore(VkPhysicalDevice device, VkSurfaceKHR surface) {
+// Resolve the effective GPU preference: an explicit FLUXUI_GPU env var wins,
+// otherwise fall back to the app-provided preference (Auto => PowerSaving).
+GpuPreference resolveGpuPreference(GpuPreference requested) {
+    if (const char* env = std::getenv("FLUXUI_GPU")) {
+        std::string v(env);
+        for (char& c : v) c = (char)std::tolower((unsigned char)c);
+        if (v == "integrated" || v == "igpu" || v == "powersaving" ||
+            v == "power-saving" || v == "low-power" || v == "battery") {
+            return GpuPreference::PowerSaving;
+        }
+        if (v == "discrete" || v == "dgpu" || v == "performance" ||
+            v == "gpu" || v == "high-performance") {
+            return GpuPreference::Performance;
+        }
+    }
+    if (requested == GpuPreference::Auto) return GpuPreference::PowerSaving;
+    return requested;
+}
+
+int physicalDeviceScore(VkPhysicalDevice device, VkSurfaceKHR surface, GpuPreference pref) {
     if (!physicalDeviceUsableForVulkan(device, surface)) {
         return -1;
     }
@@ -3024,11 +3043,21 @@ int physicalDeviceScore(VkPhysicalDevice device, VkSurfaceKHR surface) {
         return -1;
     }
 
+    // Base score per device class, then bias by the requested preference.
+    // PowerSaving (the UI default) ranks the integrated GPU highest so the app
+    // doesn't wake / load a discrete RTX just to draw a window; Performance
+    // ranks the discrete GPU highest.
     int score = 100;
-    if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-        score += 1000;
-    } else if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) {
-        score += 500;
+    const bool discrete = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+    const bool integrated = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+
+    if (pref == GpuPreference::Performance) {
+        if (discrete) score += 1000;
+        else if (integrated) score += 500;
+    } else {
+        // Auto + PowerSaving both favor the integrated GPU for UI work.
+        if (integrated) score += 1000;
+        else if (discrete) score += 500;
     }
     score += static_cast<int>(properties.limits.maxImageDimension2D / 1024);
     return score;
@@ -4797,9 +4826,10 @@ bool Renderer::initVulkan(void* windowHandle) {
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(state.instance, &deviceCount, devices.data());
 
+    GpuPreference effectivePref = resolveGpuPreference(gpuPreference_);
     int bestScore = -1;
     for (auto device : devices) {
-        int score = physicalDeviceScore(device, state.surface);
+        int score = physicalDeviceScore(device, state.surface, effectivePref);
         if (score > bestScore) {
             bestScore = score;
             state.physicalDevice = device;
@@ -4810,6 +4840,19 @@ bool Renderer::initVulkan(void* windowHandle) {
         std::cerr << "FluxUI: no Vulkan device supports graphics, present, and swapchain." << std::endl;
         shutdownVulkan();
         return false;
+    }
+
+    // Record the selected device name (used by activeDeviceName()/diagnostics).
+    {
+        VkPhysicalDeviceProperties chosenProps = {};
+        vkGetPhysicalDeviceProperties(state.physicalDevice, &chosenProps);
+        activeDeviceName_ = chosenProps.deviceName;
+#if !FLUXUI_SILENT_STARTUP
+        std::cout << "FluxUI: GPU '" << chosenProps.deviceName << "' ("
+                  << physicalDeviceTypeName(static_cast<VkPhysicalDeviceType>(chosenProps.deviceType))
+                  << ", pref=" << (effectivePref == GpuPreference::Performance ? "performance" : "power-saving")
+                  << ")" << std::endl;
+#endif
     }
 
     auto queues = findVulkanQueues(state.physicalDevice, state.surface);
@@ -8090,12 +8133,6 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
                                FontStyle style,
                                Direction direction,
                                UnicodeBidi unicodeBidi) {
-    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
-        std::cout << "[DEBUG drawTextInRect] text=\"" << text 
-                  << "\" rect=[" << rect.x << ", " << rect.y << ", " << rect.w << ", " << rect.h 
-                  << "] align=" << (int)align << " weight=" << (int)weight 
-                  << " fontName=\"" << fontName << "\"" << std::endl;
-    }
     if (isRecording()) {
         RenderCommand cmd;
         cmd.type = RenderCommandType::Text;
@@ -8143,13 +8180,6 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
         textH = asc + desc;
     }
     float y = rect.y + (rect.h - textH) / 2;
-    if (text.find("$291.68") != std::string::npos || text.find("291") != std::string::npos) {
-        std::cout << "[DEBUG drawTextInRect] resolvedFontName=\"" << resolvedFontName 
-                  << "\" fontForRect=" << (fontForRect != nullptr)
-                  << " font=" << (font != nullptr) 
-                  << " measuredW=" << measuredW 
-                  << " calculated x=" << x << " y=" << y << std::endl;
-    }
     drawText(text, {x, y}, color, fontSize, weight, fontName, style, direction, unicodeBidi);
 }
 

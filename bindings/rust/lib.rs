@@ -90,6 +90,8 @@ pub mod sys {
         pub fn fluxui_app_reload_styles(app: *mut FluxUIApp) -> i32;
         pub fn fluxui_app_set_power_profile(app: *mut FluxUIApp, profile: i32);
         pub fn fluxui_app_set_frame_rate_limits(app: *mut FluxUIApp, active_fps: i32, battery_fps: i32, background_fps: i32);
+        pub fn fluxui_app_set_gpu_preference(app: *mut FluxUIApp, preference: i32);
+        pub fn fluxui_app_active_gpu_name(app: *mut FluxUIApp) -> *const c_char;
         pub fn fluxui_app_load_font(app: *mut FluxUIApp, path: *const c_char, size: f32) -> i32;
         pub fn fluxui_app_load_font_named(
             app: *mut FluxUIApp,
@@ -476,6 +478,17 @@ pub enum PowerProfile {
     PowerSaver = 3,
 }
 
+/// Which physical GPU drives the UI. On laptops with both an integrated GPU and
+/// a discrete card, `Auto`/`Integrated` keep the UI on the integrated GPU so a
+/// discrete RTX stays free for games. Falls back to CPU software rendering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum GpuPreference {
+    Auto = 0,
+    Integrated = 1,
+    Discrete = 2,
+}
+
 pub struct App {
     raw: NonNull<sys::FluxUIApp>,
 }
@@ -594,6 +607,25 @@ impl App {
         unsafe {
             sys::fluxui_app_set_frame_rate_limits(self.raw.as_ptr(), active_fps, battery_fps, background_fps)
         };
+    }
+
+    /// Pick the GPU. Call BEFORE init(). On laptops with both an integrated and
+    /// a discrete GPU, Auto/Integrated keep the UI on the integrated GPU so a
+    /// discrete RTX stays free for games. Falls back to CPU software rendering.
+    pub fn set_gpu_preference(&self, pref: GpuPreference) {
+        unsafe { sys::fluxui_app_set_gpu_preference(self.raw.as_ptr(), pref as i32) };
+    }
+
+    /// Name of the GPU actually in use (valid after init()).
+    pub fn active_gpu_name(&self) -> String {
+        unsafe {
+            let p = sys::fluxui_app_active_gpu_name(self.raw.as_ptr());
+            if p.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+            }
+        }
     }
 
     pub fn root(&self) -> Option<Widget> {

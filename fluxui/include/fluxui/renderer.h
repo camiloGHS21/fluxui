@@ -31,6 +31,17 @@ enum class RenderBackendType {
     Compatibility
 };
 
+// Which physical GPU to prefer when several are present (e.g. a laptop with an
+// integrated iGPU + a discrete RTX). For a UI/desktop app the smart default is
+// PowerSaving: drive the UI on the integrated GPU and leave the power-hungry
+// discrete card free (and cool) for games / compute. Performance forces the
+// discrete card; Auto follows the build/runtime policy.
+enum class GpuPreference {
+    Auto,         // follow runtime/env/build policy (defaults to PowerSaving)
+    PowerSaving,  // prefer integrated GPU (UI-friendly, battery-friendly)
+    Performance   // prefer discrete GPU
+};
+
 struct RenderBackendInfo {
     RenderBackendType type = RenderBackendType::Auto;
     const char* name = "Auto";
@@ -233,6 +244,15 @@ public:
     const char* activeBackendName() const;
     uint32_t windowFlags() const;
 
+    // GPU device selection. Call before init(). Defaults to PowerSaving so the
+    // UI runs on the integrated GPU when one exists, leaving a discrete card
+    // free for games. The FLUXUI_GPU env var (integrated|igpu|powersaving |
+    // discrete|performance|gpu) overrides this at runtime.
+    void setGpuPreference(GpuPreference pref) { gpuPreference_ = pref; }
+    GpuPreference gpuPreference() const { return gpuPreference_; }
+    // Name of the physical GPU actually selected (valid after init()).
+    const std::string& activeDeviceName() const { return activeDeviceName_; }
+
     static RenderBackendInfo getBackendInfo(RenderBackendType backend);
     static const char* backendName(RenderBackendType backend);
     static RenderBackendType defaultBackend();
@@ -369,6 +389,8 @@ private:
     void* glContext_ = nullptr;
     RenderBackendType backendPreference_ = defaultBackend();
     RenderBackendType activeBackend_ = defaultBackend();
+    GpuPreference gpuPreference_ = GpuPreference::Auto;
+    std::string activeDeviceName_;
     bool backendResolved_ = false;
     bool backendInitialized_ = false;
     int windowWidth_ = 0, windowHeight_ = 0;
