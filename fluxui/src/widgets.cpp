@@ -3521,15 +3521,36 @@ void Widget::update(const InputState& input) {
         child->update(childInput);
     }
 
-    bool stateChanged = (hovered != snapshotHovered ||
-                         pressed != snapshotPressed ||
-                         focused != snapshotFocused ||
-                         hoverAnim != snapshotHoverAnim ||
-                         renderScale != snapshotRenderScale ||
-                         scrollbarHovered != snapshotScrollbarHovered ||
-                         scrollbarDragging != snapshotScrollbarDragging ||
-                         scrollY != snapshotScrollY);
-    if (stateChanged && layoutObject) {
+    // A hover/press state flip only needs a repaint if this widget's appearance
+    // actually depends on that state (a :hover / :active color, background,
+    // border, gradient, scale, or opacity). Plain layout containers (the bulk of
+    // a UI tree) have no hover styling, so their transient hover flag toggling —
+    // which can happen every frame from sub-pixel hit-test noise — must NOT pin
+    // the app awake. This is the difference between idling and burning a core.
+    const Style& cs = *computedStyle;
+    bool hasInteractiveStyling =
+        cs.hasHoverColor || cs.hasHoverBg || cs.hasHoverBorder || cs.hasHoverGradient ||
+        cs.hoverScale >= 0 || cs.hoverOpacity >= 0 ||
+        cs.focusScale >= 0 || cs.activeScale >= 0 ||
+        type == "button" || type == "input" || type == "textarea" ||
+        type == "checkbox" || type == "radio" || type == "select" || type == "a";
+
+    bool interactiveChanged =
+        hasInteractiveStyling &&
+        (hovered != snapshotHovered || pressed != snapshotPressed || focused != snapshotFocused);
+    bool structuralChanged =
+        renderScale != snapshotRenderScale ||
+        scrollbarHovered != snapshotScrollbarHovered ||
+        scrollbarDragging != snapshotScrollbarDragging ||
+        scrollY != snapshotScrollY;
+    // A changing hoverAnim only warrants a redraw while its spring is genuinely
+    // in flight. Once the compositor GCs the settled tween, getAnimatedFloat()
+    // returns false and hoverAnim snaps to its exact target, so we must NOT keep
+    // requesting redraws off tiny residual float deltas.
+    bool hoverAnimLive = hasInteractiveStyling && (hoverAnim != snapshotHoverAnim) &&
+        CompositorEngine::instance().hasAnimations(reinterpret_cast<uintptr_t>(this));
+    (void)snapshotHovered;
+    if ((interactiveChanged || structuralChanged || hoverAnimLive) && layoutObject) {
         layoutObject->markPaintDirty();
         if (auto* app = Application::instance()) {
             app->requestRedraw();
@@ -6563,6 +6584,10 @@ bool Application::init(const std::string& title, int width, int height) {
     config.height = height;
     window_ = Platform::createWindow(config);
     if (!window_) return false;
+    // Give the (still-hidden/cloaked) window its final geometry now, so the very
+    // first rendered frame is produced at the correct size and the reveal is
+    // flicker-free — no black flash before the UI appears.
+    Platform::prepareWindow(window_);
 #ifdef _WIN32
     SetWindowLongPtr((HWND)window_, GWLP_USERDATA, (LONG_PTR)this);
 #else

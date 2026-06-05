@@ -218,6 +218,11 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     return (NativeWindowHandle)g_app->window;
 }
 
+void Platform::prepareWindow(NativeWindowHandle window) {
+    (void)window;
+    // Android surface geometry is driven by the Activity; nothing to do here.
+}
+
 void Platform::showWindow(NativeWindowHandle window) {
     (void)window;
     // Android shows the surface as part of the Activity lifecycle.

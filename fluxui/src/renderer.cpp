@@ -2629,9 +2629,16 @@ inline void softwareBlendPixelFast(uint32_t& dst,
     uint32_t dstG = (dstVal >> 8) & 0xffu;
     uint32_t dstB = dstVal & 0xffu;
 
-    uint32_t outR = (srcR * a_int + dstR * (255u - a_int)) / 255u;
-    uint32_t outG = (srcG * a_int + dstG * (255u - a_int)) / 255u;
-    uint32_t outB = (srcB * a_int + dstB * (255u - a_int)) / 255u;
+    // Division-free /255 approximation: (v * 257 + 257) >> 16 == round(v/255).
+    // This is the per-pixel hot path of the CPU rasterizer; replacing three
+    // integer divisions with multiply+shift is a measurable software-mode win.
+    uint32_t invA = 255u - a_int;
+    uint32_t sumR = srcR * a_int + dstR * invA;
+    uint32_t sumG = srcG * a_int + dstG * invA;
+    uint32_t sumB = srcB * a_int + dstB * invA;
+    uint32_t outR = (sumR + (sumR >> 8) + 1u) >> 8;
+    uint32_t outG = (sumG + (sumG >> 8) + 1u) >> 8;
+    uint32_t outB = (sumB + (sumB >> 8) + 1u) >> 8;
 
     dst = 0xff000000u | (outR << 16) | (outG << 8) | outB;
 }
@@ -5192,19 +5199,18 @@ void Renderer::presentSoftwareFrame() {
     bitmapInfo.bmiHeader.biBitCount = 32;
     bitmapInfo.bmiHeader.biCompression = BI_RGB;
 
-    StretchDIBits(dc,
-                  0,
-                  0,
-                  softwareWidth_,
-                  softwareHeight_,
-                  0,
-                  0,
-                  softwareWidth_,
-                  softwareHeight_,
-                  softwarePixels_.data(),
-                  &bitmapInfo,
-                  DIB_RGB_COLORS,
-                  SRCCOPY);
+    // The software buffer is always exactly the client size, so present with a
+    // straight 1:1 DIB copy (SetDIBitsToDevice) instead of StretchDIBits. The
+    // stretch path forces GDI through a scaling blitter even at 100% — the 1:1
+    // copy is markedly cheaper and is the common case every frame.
+    SetDIBitsToDevice(dc,
+                      0, 0,
+                      softwareWidth_, softwareHeight_,
+                      0, 0,
+                      0, softwareHeight_,
+                      softwarePixels_.data(),
+                      &bitmapInfo,
+                      DIB_RGB_COLORS);
     ReleaseDC(hwnd, dc);
 #elif defined(__ANDROID__)
     ANativeWindow* nativeWindow = static_cast<ANativeWindow*>(window_);

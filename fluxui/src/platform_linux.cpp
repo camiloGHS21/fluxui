@@ -167,6 +167,12 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     return (NativeWindowHandle)window;
 }
 
+void Platform::prepareWindow(NativeWindowHandle window) {
+    // X11/Wayland windows take their size from createWindow(); no pre-show
+    // geometry step is needed here.
+    (void)window;
+}
+
 void Platform::showWindow(NativeWindowHandle window) {
     if (g_display && window) {
         XMapRaised(g_display, (Window)window);

@@ -135,15 +135,35 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     return (NativeWindowHandle)hwnd;
 }
 
+void Platform::prepareWindow(NativeWindowHandle window) {
+    if (!window) return;
+    HWND hwnd = (HWND)window;
+    // Maximize while still cloaked so the renderer's first frame is produced at
+    // the final (maximized) client size — no black flash, no resize-on-reveal.
+    // SW_SHOWMINNOACTIVE-style flags would steal focus; use the window placement
+    // API to set the maximized state without presenting the (cloaked) window.
+    WINDOWPLACEMENT wp = { sizeof(WINDOWPLACEMENT) };
+    GetWindowPlacement(hwnd, &wp);
+    wp.showCmd = SW_SHOWMAXIMIZED;
+    SetWindowPlacement(hwnd, &wp);
+}
+
 void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     HWND hwnd = (HWND)window;
-    ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    // The window was already sized/maximized by prepareWindow() while cloaked;
+    // here we only reveal it and bring it forward. If prepareWindow() was not
+    // called (custom flows), fall back to maximizing now.
+    if (!IsWindowVisible(hwnd) && !IsZoomed(hwnd)) {
+        ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+    } else {
+        ShowWindow(hwnd, SW_SHOW);
+    }
     SetForegroundWindow(hwnd);
     SetActiveWindow(hwnd);
     UpdateWindow(hwnd);
-    
-    // Uncloak window after first show and layout update
+
+    // Uncloak window after it has been sized and the first frame is ready.
     BOOL cloak = FALSE;
     DwmSetWindowAttribute(hwnd, DWMWA_CLOAK, &cloak, sizeof(cloak));
 }

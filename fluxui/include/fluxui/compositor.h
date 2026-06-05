@@ -99,7 +99,9 @@ private:
     ~CompositorEngine();
 
     void threadLoop();
-    void tick(float dt);
+    // Advance all animations/scrolls by dt. Returns true if any are still
+    // in motion (used to throttle the background thread when idle).
+    bool tick(float dt);
 
     std::thread thread_;
     std::atomic<bool> running_{false};

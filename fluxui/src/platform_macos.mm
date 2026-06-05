@@ -162,6 +162,12 @@ NativeWindowHandle Platform::createWindow(const PlatformWindowConfig& config) {
     return (NativeWindowHandle)window;
 }
 
+void Platform::prepareWindow(NativeWindowHandle window) {
+    (void)window;
+    // The Cocoa window already has its content size from createWindow(); no
+    // pre-show geometry pass is required.
+}
+
 void Platform::showWindow(NativeWindowHandle window) {
     if (!window) return;
     NSWindow* nsWindow = (NSWindow*)window;

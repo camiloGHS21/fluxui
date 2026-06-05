@@ -249,23 +249,27 @@ void CompositorEngine::threadLoop() {
         float dt = std::chrono::duration<float>(now - lastTime).count();
         lastTime = now;
 
-        // Cap dt to avoid massive leaps on frame drops
         dt = std::clamp(dt, 0.001f, 0.05f);
 
-        tick(dt);
+        bool busy = tick(dt);
 
-        // Target ~120 FPS ticking loop
-        std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        // Tick at ~120 FPS while there's live work (animations / in-flight
+        // scrolls), but back off to a slow ~20 Hz poll when fully idle so the
+        // compositor thread doesn't spin a core in the background. A new
+        // animate/scroll request is still picked up within 50ms.
+        std::this_thread::sleep_for(std::chrono::milliseconds(busy ? 8 : 50));
     }
 }
 
-void CompositorEngine::tick(float dt) {
+bool CompositorEngine::tick(float dt) {
     std::lock_guard<std::mutex> lock(mutex_);
     bool needsRepaint = false;
+    bool busy = false;
 
     for (auto& [key, anim] : animations_) {
         if (!anim.active) continue;
         needsRepaint = true;
+        busy = true;
 
         anim.elapsed += dt;
         float progress = std::clamp(anim.elapsed / anim.duration, 0.0f, 1.0f);
@@ -280,8 +284,13 @@ void CompositorEngine::tick(float dt) {
             anim.floatVelocity += force * dt;
             anim.currentFloat += anim.floatVelocity * dt;
 
-            // Spring progress completion threshold check
-            if (std::abs(anim.currentFloat - anim.toFloat) < 0.0001f && std::abs(anim.floatVelocity) < 0.0001f) {
+            // Spring completion. Use a perceptually exact-enough epsilon (~1/255
+            // of a unit) so the spring settles promptly instead of nudging
+            // asymptotically forever — otherwise the main loop sees a "changed"
+            // value every frame and never goes idle (100% CPU on a static UI).
+            if ((std::abs(anim.currentFloat - anim.toFloat) < 0.004f &&
+                 std::abs(anim.floatVelocity) < 0.01f) ||
+                progress >= 1.0f) {
                 anim.currentFloat = anim.toFloat;
                 anim.active = false;
             }
@@ -309,6 +318,15 @@ void CompositorEngine::tick(float dt) {
         }
     }
 
+    // Garbage-collect finished tweens. Leaving inactive entries in the map makes
+    // getAnimatedFloat()/hasAnimations() keep reporting an "animation" forever,
+    // which pins the widget state as perpetually changing and prevents the app
+    // from ever going idle (100% CPU on a static screen, especially in software).
+    for (auto it = animations_.begin(); it != animations_.end(); ) {
+        if (!it->second.active) it = animations_.erase(it);
+        else ++it;
+    }
+
     for (auto& [id, scroll] : scrolls_) {
         if (!scroll.isScrollable) continue;
         if (scroll.scrollY != scroll.targetScrollY) {
@@ -319,6 +337,7 @@ void CompositorEngine::tick(float dt) {
                 scroll.scrollY = scroll.targetScrollY;
             }
             needsRepaint = true;
+            busy = true;
         }
     }
 
@@ -327,6 +346,7 @@ void CompositorEngine::tick(float dt) {
             app->requestRedraw();
         }
     }
+    return busy;
 }
 
 void CompositorEngine::registerScrollableWidget(uintptr_t widgetId, const Rect& bounds, float contentHeight,

@@ -316,6 +316,11 @@ struct Rect {
     Rect() = default;
     Rect(float x, float y, float w, float h) : x(x), y(y), w(w), h(h) {}
     bool contains(Vec2 p) const {
+        // An empty (zero/negative area) rect contains no points. This matters
+        // because un-laid-out widgets default to {0,0,0,0}; without this guard a
+        // mouse resting at the origin (0,0) would be reported as "inside" every
+        // such widget, flickering their hover state and pinning the app awake.
+        if (w <= 0.0f || h <= 0.0f) return false;
         return p.x >= x && p.x <= x + w && p.y >= y && p.y <= y + h;
     }
     Vec2 center() const { return {x + w / 2, y + h / 2}; }

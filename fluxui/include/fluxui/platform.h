@@ -74,6 +74,10 @@ public:
 
     static NativeWindowHandle createWindow(const PlatformWindowConfig& config);
     static void showWindow(NativeWindowHandle window);
+    // Give the window its final on-screen geometry (e.g. maximized) while it is
+    // still hidden/cloaked, so the first rendered frame is produced at the
+    // correct size. Pairs with showWindow() which then reveals it flicker-free.
+    static void prepareWindow(NativeWindowHandle window);
     static void destroyWindow(NativeWindowHandle window);
     
     static void processEvents(bool& running);
