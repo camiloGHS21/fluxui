@@ -3023,7 +3023,7 @@ GpuPreference resolveGpuPreference(GpuPreference requested) {
             return GpuPreference::PowerSaving;
         }
         if (v == "discrete" || v == "dgpu" || v == "performance" ||
-            v == "gpu" || v == "high-performance") {
+            v == "gpu" || v == "high-performance" || v == "game" || v == "gaming") {
             return GpuPreference::Performance;
         }
     }

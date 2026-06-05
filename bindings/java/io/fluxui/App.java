@@ -128,6 +128,18 @@ public final class App implements AutoCloseable {
     public App useIntegratedGpu() { return gpu(Gpu.INTEGRATED); }
     public App useDiscreteGpu() { return gpu(Gpu.DISCRETE); }
 
+    /**
+     * Game / high-performance mode: target the discrete GPU AND run the frame
+     * loop at maximum FPS (no battery/idle throttling). Call the GPU part BEFORE
+     * init(). By default FluxUI uses the integrated GPU so a discrete RTX stays
+     * free for games.
+     */
+    public App gameMode() {
+        gpu(Gpu.DISCRETE);
+        Native.appSetPowerProfile(handle(), PowerProfile.HIGH_PERFORMANCE.value);
+        return this;
+    }
+
     /** Name of the GPU actually in use (valid after init). */
     public String activeGpuName() {
         return Native.appActiveGpuName(handle());

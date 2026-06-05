@@ -829,6 +829,13 @@ class App:
         GPU so a discrete RTX stays free for games. Falls back to CPU software."""
         _lib.fluxui_app_set_gpu_preference(self.handle, int(preference))
 
+    def game_mode(self):
+        """Target the discrete GPU AND run the frame loop at max FPS (no
+        throttling) — for games / high-performance apps. Set the GPU part BEFORE
+        init (use DslApp(gpu='game') to pick it at construction)."""
+        self.set_gpu_preference(App.GPU_DISCRETE)
+        self.set_power_profile(App.POWER_HIGH_PERFORMANCE)
+
     def active_gpu_name(self):
         """Name of the GPU actually in use (valid after init)."""
         res = _lib.fluxui_app_active_gpu_name(self.handle)
@@ -1526,10 +1533,16 @@ class DslApp(App):
     def __init__(self, width=1200, height=800, title="FluxUI App", gpu=None):
         super().__init__()
         # Pick the GPU before init() so the choice takes effect. `gpu` may be
-        # App.GPU_AUTO / GPU_INTEGRATED / GPU_DISCRETE (default: power-saving).
-        if gpu is not None:
+        # App.GPU_AUTO / GPU_INTEGRATED / GPU_DISCRETE, or the string "game"
+        # (discrete GPU + max-FPS pacing for games / high-performance apps).
+        game_mode = (gpu == "game" or gpu == "Game" or gpu == "GAME")
+        if game_mode:
+            self.set_gpu_preference(App.GPU_DISCRETE)
+        elif gpu is not None:
             self.set_gpu_preference(gpu)
         self.init(title, width, height)
+        if game_mode:
+            self.set_power_profile(App.POWER_HIGH_PERFORMANCE)
         self.load_default_font(16.0)
         self._routes = {}
         self._layout = None

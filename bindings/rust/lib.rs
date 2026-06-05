@@ -616,6 +616,15 @@ impl App {
         unsafe { sys::fluxui_app_set_gpu_preference(self.raw.as_ptr(), pref as i32) };
     }
 
+    /// Game / high-performance mode: target the discrete GPU AND run the frame
+    /// loop at max FPS (no throttling). Call the GPU part BEFORE init().
+    pub fn game_mode(&self) {
+        unsafe {
+            sys::fluxui_app_set_gpu_preference(self.raw.as_ptr(), GpuPreference::Discrete as i32);
+            sys::fluxui_app_set_power_profile(self.raw.as_ptr(), PowerProfile::HighPerformance as i32);
+        }
+    }
+
     /// Name of the GPU actually in use (valid after init()).
     pub fn active_gpu_name(&self) -> String {
         unsafe {

@@ -142,6 +142,13 @@ pub const App = struct {
         c.fluxui_app_set_gpu_preference(self.raw, @intFromEnum(pref));
     }
 
+    /// Game / high-performance mode: target the discrete GPU AND run the frame
+    /// loop at max FPS (no throttling). Call the GPU part BEFORE init().
+    pub fn gameMode(self: App) void {
+        c.fluxui_app_set_gpu_preference(self.raw, @intFromEnum(GpuPreference.discrete));
+        c.fluxui_app_set_power_profile(self.raw, 1); // 1 = HighPerformance
+    }
+
     /// Name of the GPU actually in use (valid after init()).
     pub fn activeGpuName(self: App) [*:0]const u8 {
         return c.fluxui_app_active_gpu_name(self.raw);

@@ -719,6 +719,17 @@ target_include_directories(benchmark_frame PRIVATE
 )
 enable_release_lto(benchmark_frame)
 
+add_executable(demo_gpu_modes
+    examples/cpp/demo_gpu_modes.cpp
+)
+target_link_libraries(demo_gpu_modes PRIVATE
+    fluxui
+)
+target_include_directories(demo_gpu_modes PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(demo_gpu_modes)
+
 add_executable(demo_dsl
     examples/cpp/demo_dsl.cpp
 )

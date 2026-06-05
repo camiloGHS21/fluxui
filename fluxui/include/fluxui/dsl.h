@@ -519,12 +519,18 @@ class App {
     // static App::preferGpu() before constructing the App (the constructor inits
     // the renderer immediately, so a fluent setter would otherwise be too late).
     static inline FluxUI::GpuPreference s_pendingGpu = FluxUI::GpuPreference::Auto;
+    // When set (via App::gameMode()), also run the frame loop uncapped.
+    static inline bool s_pendingGameMode = false;
 
     void ensureWindow(int width, int height, const std::string& title) {
         if (windowReady_) return;
         app_.setGpuPreference(s_pendingGpu);   // apply pre-init GPU choice
         if (app_.init(title, width, height)) {
             windowReady_ = true;
+            // Game mode: max-FPS pacing to pair with the discrete GPU.
+            if (s_pendingGameMode) {
+                app_.setPowerProfile(FluxUI::Application::PowerProfile::HighPerformance);
+            }
             if (!app_.renderer().loadDefaultFont(16.0f)) {
 #ifdef _WIN32
                 app_.renderer().loadFont("C:/Windows/Fonts/segoeui.ttf", 16.0f);
@@ -705,31 +711,48 @@ public:
 
     // ── GPU device selection ───────────────────────────────────────────────
     // On machines with both an integrated GPU and a discrete card (e.g. an
-    // RTX laptop), FluxUI drives the UI on the integrated GPU by default so the
-    // discrete card stays free and cool for games/compute. If no GPU is usable
-    // the renderer falls back to the CPU software rasterizer.
-    // (The FLUXUI_GPU env var overrides this at runtime.)
+    // RTX laptop), FluxUI drives the UI on the INTEGRATED GPU by default so the
+    // discrete card stays free and cool — exactly what a desktop app/UI wants.
+    // If no GPU is usable the renderer falls back to the CPU software rasterizer.
+    //
+    //   default                 -> integrated GPU (or CPU if none)
+    //   App::useDiscreteGpu()    -> force the discrete GPU (e.g. RTX)
+    //   App::gameMode()          -> discrete GPU + uncapped HighPerformance pacing
+    //                               (for games / high-performance apps)
+    //
+    // (The FLUXUI_GPU env var — integrated | discrete | game — overrides this.)
     //
     // IMPORTANT: the renderer initializes when the App is constructed, so to
     // pick a GPU you must set it BEFORE creating the App:
     //
-    //     App::preferGpu(App::Gpu::Discrete);   // before constructing App
-    //     App app(1200, 800, "MyGame UI");
+    //     App::gameMode();                       // before constructing App
+    //     App app(1920, 1080, "My Game");
     //
-    // The instance methods below also work but only take effect if called
-    // before the window is created (e.g. for the no-arg App()).
-    enum class Gpu { Auto, Integrated, Discrete };
+    // The instance methods also work but only take effect before the window is
+    // created (e.g. for the no-arg App()).
+    enum class Gpu { Auto, Integrated, Discrete, Game };
     static FluxUI::GpuPreference toPref(Gpu pref) {
         return pref == Gpu::Integrated ? FluxUI::GpuPreference::PowerSaving :
-               pref == Gpu::Discrete   ? FluxUI::GpuPreference::Performance :
+               (pref == Gpu::Discrete || pref == Gpu::Game) ? FluxUI::GpuPreference::Performance :
                                          FluxUI::GpuPreference::Auto;
     }
     // Set the GPU preference to apply at the next App construction.
-    static void preferGpu(Gpu pref) { s_pendingGpu = toPref(pref); }
+    static void preferGpu(Gpu pref) {
+        s_pendingGpu = toPref(pref);
+        // Game mode also asks the run loop for uncapped, full-speed pacing.
+        s_pendingGameMode = (pref == Gpu::Game);
+    }
     static void useIntegratedGpu()  { preferGpu(Gpu::Integrated); }
     static void useDiscreteGpu()    { preferGpu(Gpu::Discrete); }
+    // Game / high-performance mode: pick the discrete GPU AND run the frame loop
+    // at maximum FPS (no battery/idle throttling). Call before constructing App.
+    static void gameMode()          { preferGpu(Gpu::Game); }
     // Instance setter (effective only before the window is created).
-    App& gpu(Gpu pref) { app_.setGpuPreference(toPref(pref)); return *this; }
+    App& gpu(Gpu pref) {
+        app_.setGpuPreference(toPref(pref));
+        if (pref == Gpu::Game) app_.setPowerProfile(FluxUI::Application::PowerProfile::HighPerformance);
+        return *this;
+    }
     // Name of the GPU actually in use (valid after the window is created).
     std::string gpuName() const { return app_.activeDeviceName(); }
 

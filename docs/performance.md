@@ -18,34 +18,51 @@ Selection order:
 3. The **discrete** GPU, else
 4. The **CPU software** rasterizer (no GPU required).
 
+### Three modes
+
+| Mode | GPU | Frame pacing | Use for |
+|---|---|---|---|
+| **default** | integrated (iGPU) | adaptive (battery-aware) | normal desktop apps / tools |
+| **discrete** | discrete (e.g. RTX) | adaptive | GPU-heavy UIs |
+| **game** | discrete (e.g. RTX) | uncapped / max FPS | games & high-performance apps |
+
+By default FluxUI runs the UI on the **integrated** GPU so the discrete card
+stays free and cool. **Game mode** is the opposite: it forces the discrete GPU
+*and* removes the frame-rate cap, which is what a game or a high-performance
+real-time app wants.
+
 ### Choosing the GPU
 
 C++ (set before constructing the `App`):
 
 ```cpp
-fluxui::App::useDiscreteGpu();        // GPU-heavy UI -> use the RTX
-// fluxui::App::useIntegratedGpu();   // force the iGPU (default)
-fluxui::App app(1200, 800, "MyApp");
+fluxui::App::gameMode();              // game / high-perf: discrete GPU + max FPS
+// fluxui::App::useDiscreteGpu();     // discrete GPU, normal pacing
+// fluxui::App::useIntegratedGpu();   // force the iGPU (this is the default)
+fluxui::App app(1920, 1080, "My Game");
 ```
 
 Per language:
 
-| Language | API |
-|---|---|
-| C++    | `App::useIntegratedGpu()` / `App::useDiscreteGpu()` / `App::preferGpu(...)` |
-| Go     | `app.SetGpuPreference(fluxui.GpuDiscrete)` (after `CreateApp`, before `Init`) |
-| Python | `fluxui.DslApp(gpu=fluxui.App.GPU_DISCRETE)` |
-| Java   | `app.useDiscreteGpu()` / `app.useIntegratedGpu()` (before `init`) |
-| Zig    | `app.setGpuPreference(.discrete)` (before `init`) |
-| Rust   | `app.set_gpu_preference(fluxui::GpuPreference::Discrete)` (before `init`) |
+| Language | Game mode | Force discrete | Force integrated |
+|---|---|---|---|
+| C++    | `App::gameMode()` | `App::useDiscreteGpu()` | `App::useIntegratedGpu()` |
+| Go     | `app.GameMode()` | `app.SetGpuPreference(fluxui.GpuDiscrete)` | `...GpuIntegrated` |
+| Python | `fluxui.DslApp(gpu="game")` or `app.game_mode()` | `gpu=App.GPU_DISCRETE` | `gpu=App.GPU_INTEGRATED` |
+| Java   | `app.gameMode()` | `app.useDiscreteGpu()` | `app.useIntegratedGpu()` |
+| Zig    | `app.gameMode()` | `app.setGpuPreference(.discrete)` | `.integrated` |
+| Rust   | `app.game_mode()` | `app.set_gpu_preference(GpuPreference::Discrete)` | `::Integrated` |
+
+(GPU choice must be made before the window/renderer is created.)
 
 ### Runtime override
 
 The `FLUXUI_GPU` environment variable overrides the app's choice:
 
 ```bash
-FLUXUI_GPU=integrated   # iGPU / power saving
-FLUXUI_GPU=discrete     # dGPU / performance
+FLUXUI_GPU=integrated   # iGPU / power saving (default)
+FLUXUI_GPU=discrete     # dGPU
+FLUXUI_GPU=game         # dGPU (same device as discrete; for games)
 FLUXUI_BACKEND=cpu      # force the CPU software rasterizer (no GPU)
 ```
 

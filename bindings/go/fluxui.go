@@ -326,6 +326,15 @@ func (a *App) SetGpuPreference(pref GpuPreference) {
 	fluxui_app_set_gpu_preference.Call(a.handle, uintptr(pref))
 }
 
+// GameMode targets the discrete GPU AND runs the frame loop at maximum FPS
+// (no battery/idle throttling) — for games / high-performance apps. Call the
+// GPU part BEFORE Init. By default (without this) FluxUI uses the integrated
+// GPU so the discrete card stays free.
+func (a *App) GameMode() {
+	a.SetGpuPreference(GpuDiscrete)
+	a.SetPowerProfile(PowerHighPerformance)
+}
+
 // ActiveGpuName returns the name of the GPU actually in use (valid after Init).
 func (a *App) ActiveGpuName() string {
 	r1, _, _ := fluxui_app_active_gpu_name.Call(a.handle)
