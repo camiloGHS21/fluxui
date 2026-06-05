@@ -231,6 +231,8 @@ set(FLUXUI_SOURCES
     # render: GPU/software renderer + image resources
     fluxui/src/render/renderer.cpp
     fluxui/src/render/renderer_vulkan.cpp
+    fluxui/src/render/renderer_text.cpp
+    fluxui/src/render/renderer_effects.cpp
     fluxui/src/render/renderer_svg.cpp
     fluxui/src/render/software_raster.cpp
     fluxui/src/render/image_resource.cpp
