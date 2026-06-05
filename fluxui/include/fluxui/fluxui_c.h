@@ -114,6 +114,11 @@ FLUXUI_API void fluxui_app_stop(FluxUIApp* app);
 // Application resources and callbacks
 FLUXUI_API int fluxui_app_load_stylesheet(FluxUIApp* app, const char* path);
 FLUXUI_API void fluxui_app_add_stylesheet(FluxUIApp* app, const char* css);
+
+// CSS hot-reload: watch loaded stylesheet files and live-reload on change.
+FLUXUI_API void fluxui_app_enable_hot_reload(FluxUIApp* app, int enable, float poll_interval_seconds);
+FLUXUI_API void fluxui_app_watch_stylesheet(FluxUIApp* app, const char* path);
+FLUXUI_API int fluxui_app_reload_styles(FluxUIApp* app);
 FLUXUI_API int fluxui_app_load_font(FluxUIApp* app, const char* path, float size);
 FLUXUI_API int fluxui_app_load_font_named(FluxUIApp* app, const char* path, float size, const char* name);
 FLUXUI_API int fluxui_app_load_default_font(FluxUIApp* app, float size);

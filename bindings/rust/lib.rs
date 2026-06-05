@@ -85,6 +85,9 @@ pub mod sys {
         pub fn fluxui_app_stop(app: *mut FluxUIApp);
         pub fn fluxui_app_load_stylesheet(app: *mut FluxUIApp, path: *const c_char) -> i32;
         pub fn fluxui_app_add_stylesheet(app: *mut FluxUIApp, css: *const c_char);
+        pub fn fluxui_app_enable_hot_reload(app: *mut FluxUIApp, enable: i32, poll_interval_seconds: f32);
+        pub fn fluxui_app_watch_stylesheet(app: *mut FluxUIApp, path: *const c_char);
+        pub fn fluxui_app_reload_styles(app: *mut FluxUIApp) -> i32;
         pub fn fluxui_app_load_font(app: *mut FluxUIApp, path: *const c_char, size: f32) -> i32;
         pub fn fluxui_app_load_font_named(
             app: *mut FluxUIApp,
@@ -543,6 +546,29 @@ impl App {
         let css = cstring(css)?;
         unsafe { sys::fluxui_app_add_stylesheet(self.raw.as_ptr(), css.as_ptr()) };
         Ok(())
+    }
+
+    /// Enable live CSS reloading: stylesheets loaded via `load_stylesheet` are
+    /// watched and re-applied on edit — no recompile, no relaunch.
+    pub fn enable_hot_reload(&self, enable: bool, poll_interval_seconds: f32) {
+        unsafe {
+            sys::fluxui_app_enable_hot_reload(
+                self.raw.as_ptr(),
+                if enable { 1 } else { 0 },
+                poll_interval_seconds,
+            )
+        };
+    }
+
+    /// Watch an extra CSS file (e.g. a partial or `@import` target).
+    pub fn watch_stylesheet(&self, path: &str) {
+        let Ok(path) = cstring(path) else { return };
+        unsafe { sys::fluxui_app_watch_stylesheet(self.raw.as_ptr(), path.as_ptr()) };
+    }
+
+    /// Force an immediate reload of all CSS sources from disk.
+    pub fn reload_styles(&self) -> bool {
+        unsafe { sys::fluxui_app_reload_styles(self.raw.as_ptr()) != 0 }
     }
 
     pub fn root(&self) -> Option<Widget> {
@@ -1593,6 +1619,22 @@ pub mod dsl {
         /// Alias for `add_stylesheet` (matches C++ `App::addCSS`).
         pub fn add_css(&self, css: &str) {
             let _ = self.add_stylesheet(css);
+        }
+
+        /// Enable live CSS reloading (matches C++ `App::hotReload`). Stylesheets
+        /// loaded via `load_stylesheet`/`load_css` are watched and re-applied on edit.
+        pub fn hot_reload(&self, enable: bool) {
+            self.enable_hot_reload(enable, 0.25);
+        }
+
+        /// Watch an extra CSS file for changes (matches C++ `App::watchCSS`).
+        pub fn watch_css(&self, path: &str) {
+            self.watch_stylesheet(path);
+        }
+
+        /// Force an immediate reload of all CSS sources (matches `reloadCSS`).
+        pub fn reload_css(&self) {
+            self.reload_styles();
         }
 
         /// Register a route. `view` returns a Node tree for that path.

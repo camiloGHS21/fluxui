@@ -191,6 +191,21 @@ void fluxui_app_add_stylesheet(FluxUIApp* app, const char* css) {
     app->app.addStylesheet(css);
 }
 
+void fluxui_app_enable_hot_reload(FluxUIApp* app, int enable, float poll_interval_seconds) {
+    if (!app) return;
+    app->app.enableHotReload(enable != 0, poll_interval_seconds);
+}
+
+void fluxui_app_watch_stylesheet(FluxUIApp* app, const char* path) {
+    if (!app || !path) return;
+    app->app.watchStylesheet(path);
+}
+
+int fluxui_app_reload_styles(FluxUIApp* app) {
+    if (!app) return 0;
+    return app->app.reloadStyles() ? 1 : 0;
+}
+
 int fluxui_app_load_font(FluxUIApp* app, const char* path, float size) {
     return fluxui_app_load_font_named(app, path, size, "default");
 }

@@ -22,6 +22,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdlib>
+#include <filesystem>
 #include <mutex>
 #include <condition_variable>
 #include <queue>
@@ -6646,6 +6647,16 @@ bool Application::loadStylesheet(const std::string& path) {
     }
     if (ok && root_) root_->markStyleDirtyRecursive();
     if (ok) needsRedraw_ = true;
+    if (ok) {
+        // Record the file as a style source for hot-reload (dedup by path).
+        bool found = false;
+        for (auto& s : styleSources_) {
+            if (s.isFile && s.pathOrCss == path) { s.lastWriteNs = fileWriteTimeNs(path); found = true; break; }
+        }
+        if (!found) {
+            styleSources_.push_back({true, path, fileWriteTimeNs(path)});
+        }
+    }
     return ok;
 }
 void Application::addStylesheet(const std::string& css) {
@@ -6655,6 +6666,84 @@ void Application::addStylesheet(const std::string& css) {
     }
     if (root_) root_->markStyleDirtyRecursive();
     needsRedraw_ = true;
+    // Record inline CSS so a hot-reload replays it in the same cascade order.
+    styleSources_.push_back({false, css, 0});
+}
+int64_t Application::fileWriteTimeNs(const std::string& path) {
+    std::error_code ec;
+    auto t = std::filesystem::last_write_time(path, ec);
+    if (ec) return 0;
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+               t.time_since_epoch()).count();
+}
+void Application::enableHotReload(bool enable, float pollIntervalSeconds) {
+    hotReloadEnabled_ = enable;
+    hotReloadInterval_ = pollIntervalSeconds > 0.0f ? pollIntervalSeconds : 0.25f;
+    hotReloadAccum_ = 0.0f;
+    if (enable) {
+        // Refresh mtimes so the first poll only fires on a genuine change.
+        for (auto& s : styleSources_) {
+            if (s.isFile) s.lastWriteNs = fileWriteTimeNs(s.pathOrCss);
+        }
+    }
+}
+void Application::watchStylesheet(const std::string& path) {
+    for (auto& s : styleSources_) {
+        if (s.isFile && s.pathOrCss == path) return;  // already watched
+    }
+    // Watch-only entries are loaded during reloadStyles() like any other file.
+    styleSources_.push_back({true, path, fileWriteTimeNs(path)});
+}
+bool Application::reloadStyles() {
+    // Rebuild the cascade from scratch: reset to the UA sheet, then replay every
+    // recorded source (files re-read from disk, inline CSS re-parsed) in order.
+    stylesheet_.reset();
+    bool allOk = true;
+    for (auto& s : styleSources_) {
+        if (s.isFile) {
+            bool ok = stylesheet_.loadFile(s.pathOrCss);
+            if (ok) {
+                std::string dir;
+                size_t lastSlash = s.pathOrCss.find_last_of("/\\");
+                if (lastSlash != std::string::npos) dir = s.pathOrCss.substr(0, lastSlash + 1);
+                for (const auto& ff : stylesheet_.fontFaces) {
+                    std::string fontPath = ff.src;
+                    if (!fontPath.empty() && fontPath[0] != '/' && fontPath[0] != '\\' &&
+                        (fontPath.size() < 2 || fontPath[1] != ':')) {
+                        fontPath = dir + fontPath;
+                    }
+                    renderer_.registerCustomFont(ff.fontFamily, fontPath);
+                }
+                s.lastWriteNs = fileWriteTimeNs(s.pathOrCss);
+            } else {
+                allOk = false;
+            }
+        } else {
+            stylesheet_.parse(s.pathOrCss);
+            for (const auto& ff : stylesheet_.fontFaces) {
+                renderer_.registerCustomFont(ff.fontFamily, ff.src);
+            }
+        }
+    }
+    if (root_) root_->markStyleDirtyRecursive();
+    needsRedraw_ = true;
+    return allOk;
+}
+bool Application::pollStyleHotReload() {
+    if (!hotReloadEnabled_) return false;
+    bool changed = false;
+    for (auto& s : styleSources_) {
+        if (!s.isFile) continue;
+        int64_t now = fileWriteTimeNs(s.pathOrCss);
+        if (now != 0 && now != s.lastWriteNs) {
+            changed = true;
+            // mtime is refreshed inside reloadStyles().
+        }
+    }
+    if (changed) {
+        reloadStyles();
+    }
+    return changed;
 }
 size_t Application::on(UIEventType type, EventCallback callback) {
     if (!callback) return 0;
@@ -7530,13 +7619,31 @@ void Application::run() {
         if (!running) {
             break;
         }
+        // CSS hot-reload: poll watched files on an interval. Accumulate real
+        // elapsed time so the poll cadence is independent of frame rate.
+        if (hotReloadEnabled_) {
+            auto nowHR = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<float> sinceLast = nowHR - lastTime_;
+            hotReloadAccum_ += sinceLast.count();
+            if (hotReloadAccum_ >= hotReloadInterval_) {
+                hotReloadAccum_ = 0.0f;
+                pollStyleHotReload();  // sets needsRedraw_ if a file changed
+            }
+        }
         bool hasAnimations = false;
         if (!needsRedraw_ && !firstFrame && root_) {
             hasAnimations = root_->hasActiveAnimations();
         }
         if (!needsRedraw_ && !hasAnimations && !firstFrame) {
 #ifdef _WIN32
-            WaitMessage();
+            if (hotReloadEnabled_) {
+                // Don't block indefinitely: wake at least once per poll interval
+                // so file changes are picked up even with no input/animations.
+                DWORD waitMs = (DWORD)std::max(1.0f, hotReloadInterval_ * 1000.0f);
+                MsgWaitForMultipleObjects(0, nullptr, FALSE, waitMs, QS_ALLINPUT);
+            } else {
+                WaitMessage();
+            }
 #else
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
 #endif

@@ -4,6 +4,8 @@
 #include "fluxui/dsl.h"
 #include <iostream>
 #include <string>
+#include <fstream>
+#include <cstdio>
 
 using namespace fluxui;
 
@@ -247,6 +249,81 @@ int test_route_param_match() {
     std::cout << "  PASS" << std::endl; return 0;
 }
 
+static bool hasRuleFor(const FluxUI::StyleSheet& sheet, const std::string& selector) {
+    for (const auto& r : sheet.rules) {
+        if (r.selector == selector) return true;
+    }
+    return false;
+}
+
+static std::string ruleValue(const FluxUI::StyleSheet& sheet, const std::string& selector,
+                             const std::string& prop) {
+    // Last matching rule wins (later rules override earlier in source order).
+    std::string val;
+    for (const auto& r : sheet.rules) {
+        if (r.selector != selector) continue;
+        for (const auto& p : r.properties) {
+            if (p.name == prop) val = p.value;
+        }
+    }
+    return val;
+}
+
+int test_stylesheet_reset() {
+    std::cout << "[15] StyleSheet::reset() clears rules + replays cascade (hot-reload core)" << std::endl;
+    FluxUI::StyleSheet sheet;
+
+    // A user rule is present on top of the UA defaults.
+    sheet.parse(".btn { color: #ff0000; width: 100px; }");
+    CHECK(hasRuleFor(sheet, ".btn"));
+    CHECK(ruleValue(sheet, ".btn", "color") == "#ff0000");
+
+    // After reset(), the user rule is gone but UA defaults remain (e.g. button).
+    sheet.reset();
+    CHECK(!hasRuleFor(sheet, ".btn"));
+    CHECK(hasRuleFor(sheet, "button"));   // UA stylesheet reloaded
+
+    // Re-parsing a *changed* rule reflects the new value (simulates an edit).
+    sheet.parse(".btn { color: #00ff00; width: 200px; }");
+    CHECK(hasRuleFor(sheet, ".btn"));
+    CHECK(ruleValue(sheet, ".btn", "color") == "#00ff00");
+    CHECK(ruleValue(sheet, ".btn", "width") == "200px");
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
+int test_hot_reload_source_replay() {
+    std::cout << "[16] hot-reload replays file + inline sources from disk" << std::endl;
+    // Write a temp CSS file, load it + an inline rule, then edit the file and
+    // verify a reset()+replay produces the edited cascade.
+    const std::string tmp = "build/__hot_reload_test.css";
+    {
+        std::ofstream f(tmp);
+        CHECK((bool)f);
+        f << ".card { color: #ff0000; }";
+    }
+    FluxUI::StyleSheet sheet;
+    CHECK(sheet.loadFile(tmp));
+    sheet.parse(".badge { color: #0000ff; }");  // inline source
+
+    CHECK(ruleValue(sheet, ".card", "color") == "#ff0000");  // red from file
+
+    // Edit the file on disk.
+    {
+        std::ofstream f(tmp);
+        f << ".card { color: #00ff00; }";
+    }
+    // Simulate Application::reloadStyles(): reset, replay file then inline.
+    sheet.reset();
+    CHECK(sheet.loadFile(tmp));
+    sheet.parse(".badge { color: #0000ff; }");
+
+    CHECK(ruleValue(sheet, ".card", "color") == "#00ff00");  // green now
+    CHECK(hasRuleFor(sheet, ".badge"));                       // inline replayed
+
+    std::remove(tmp.c_str());
+    std::cout << "  PASS" << std::endl; return 0;
+}
+
 int main() {
     std::cout << "=== FluxUI DSL Test (HTML/Blink-named) ===" << std::endl;
     int rc = 0;
@@ -264,6 +341,8 @@ int main() {
     rc |= test_schema_zod();
     rc |= test_skeleton();
     rc |= test_route_param_match();
+    rc |= test_stylesheet_reset();
+    rc |= test_hot_reload_source_replay();
     if (rc == 0) std::cout << "All DSL tests passed!" << std::endl;
     return rc;
 }

@@ -233,6 +233,40 @@ extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appAddStylesheet(
     fluxui_app_add_stylesheet(as_app(app), cssChars.c_str());
 }
 
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appLoadStylesheet(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring path) {
+    UtfChars pathChars(env, path);
+    return fluxui_app_load_stylesheet(as_app(app), pathChars.c_str()) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appEnableHotReload(
+    JNIEnv*,
+    jclass,
+    jlong app,
+    jboolean enable,
+    jfloat pollIntervalSeconds) {
+    fluxui_app_enable_hot_reload(as_app(app), enable ? 1 : 0, pollIntervalSeconds);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_io_fluxui_Native_appWatchStylesheet(
+    JNIEnv* env,
+    jclass,
+    jlong app,
+    jstring path) {
+    UtfChars pathChars(env, path);
+    fluxui_app_watch_stylesheet(as_app(app), pathChars.c_str());
+}
+
+extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appReloadStyles(
+    JNIEnv*,
+    jclass,
+    jlong app) {
+    return fluxui_app_reload_styles(as_app(app)) ? JNI_TRUE : JNI_FALSE;
+}
+
 extern "C" JNIEXPORT jboolean JNICALL Java_io_fluxui_Native_appLoadFont(
     JNIEnv* env,
     jclass,

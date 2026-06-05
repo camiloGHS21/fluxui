@@ -147,6 +147,11 @@ public:
 
     // Parse CSS string
     void parse(const std::string& css);
+
+    // Reset all parsed state back to the freshly-constructed defaults (the UA
+    // stylesheet). Used by hot-reload to rebuild the cascade from scratch before
+    // re-applying the app's style sources.
+    void reset();
     bool setViewportSize(float width, float height);
     float viewportWidth() const { return viewportWidth_; }
     float viewportHeight() const { return viewportHeight_; }

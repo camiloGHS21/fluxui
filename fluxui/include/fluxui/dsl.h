@@ -654,6 +654,25 @@ public:
     void addCSS(const std::string& css)   { app_.addStylesheet(css); }
     void loadStyle(const std::string& path) { loadCSS(path); }
 
+    // ── CSS Hot-Reload ─────────────────────────────────────────────────────
+    // Enable live CSS reloading: any stylesheet loaded via loadCSS()/loadStyle()
+    // is watched, and edits on disk re-style the running app instantly — no
+    // recompile, no relaunch. Inline addCSS() is replayed in order on reload.
+    //
+    //   App app(1200, 800, "MyApp");
+    //   app.loadStyle("assets/styles/theme.css");
+    //   app.hotReload();          // watch + live-reload theme.css
+    //
+    // pollIntervalSeconds tunes how often the file mtime is checked.
+    App& hotReload(bool enable = true, float pollIntervalSeconds = 0.25f) {
+        app_.enableHotReload(enable, pollIntervalSeconds);
+        return *this;
+    }
+    // Watch an extra CSS file (e.g. a partial or @import target).
+    App& watchCSS(const std::string& path) { app_.watchStylesheet(path); return *this; }
+    // Force an immediate reload of all CSS sources from disk.
+    void reloadCSS() { app_.reloadStyles(); }
+
     // --- Simple single-page mode (no routing) ---
     void setRoot(const Element& root) {
         auto rootWidget = app_.root();

@@ -90,6 +90,15 @@ _lib.fluxui_app_load_stylesheet.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 _lib.fluxui_app_add_stylesheet.restype = None
 _lib.fluxui_app_add_stylesheet.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
 
+_lib.fluxui_app_enable_hot_reload.restype = None
+_lib.fluxui_app_enable_hot_reload.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_float]
+
+_lib.fluxui_app_watch_stylesheet.restype = None
+_lib.fluxui_app_watch_stylesheet.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+_lib.fluxui_app_reload_styles.restype = ctypes.c_int
+_lib.fluxui_app_reload_styles.argtypes = [ctypes.c_void_p]
+
 _lib.fluxui_app_load_font.restype = ctypes.c_int
 _lib.fluxui_app_load_font.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_float]
 
@@ -768,6 +777,19 @@ class App:
 
     def add_stylesheet(self, css):
         _lib.fluxui_app_add_stylesheet(self.handle, css.encode('utf-8'))
+
+    def enable_hot_reload(self, enable=True, poll_interval_seconds=0.25):
+        """Live CSS reloading: stylesheets loaded via load_stylesheet are watched
+        and re-applied on edit — no recompile, no relaunch."""
+        _lib.fluxui_app_enable_hot_reload(self.handle, 1 if enable else 0, float(poll_interval_seconds))
+
+    def watch_stylesheet(self, path):
+        """Watch an extra CSS file (e.g. a partial or @import target)."""
+        _lib.fluxui_app_watch_stylesheet(self.handle, path.encode('utf-8'))
+
+    def reload_styles(self):
+        """Force an immediate reload of all CSS sources from disk."""
+        return _lib.fluxui_app_reload_styles(self.handle) != 0
 
     def load_font(self, path, size):
         return _lib.fluxui_app_load_font(self.handle, path.encode('utf-8'), float(size)) != 0
@@ -1474,6 +1496,21 @@ class DslApp(App):
 
     def load_css(self, path):
         return self.load_stylesheet(path)
+
+    def hot_reload(self, enable=True, poll_interval_seconds=0.25):
+        """Enable live CSS reloading (matches C++ App::hotReload). Any stylesheet
+        loaded via load_css/load_style is watched and re-applied on edit."""
+        self.enable_hot_reload(enable, poll_interval_seconds)
+        return self
+
+    def watch_css(self, path):
+        """Watch an extra CSS file for changes (matches C++ App::watchCSS)."""
+        self.watch_stylesheet(path)
+        return self
+
+    def reload_css(self):
+        """Force an immediate reload of all CSS sources from disk."""
+        self.reload_styles()
 
     def set_root(self, root_node):
         r = self.root()

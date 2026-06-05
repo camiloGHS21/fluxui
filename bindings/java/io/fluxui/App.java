@@ -40,6 +40,46 @@ public final class App implements AutoCloseable {
         return this;
     }
 
+    /** Load and parse a CSS file. Loaded files are watched when hot-reload is on. */
+    public boolean loadStylesheet(String path) {
+        return Native.appLoadStylesheet(handle(), path);
+    }
+
+    /** Alias matching the C++/Go/Python naming. */
+    public boolean loadCSS(String path) {
+        return loadStylesheet(path);
+    }
+
+    /** Alias matching the C++/Go/Python naming. */
+    public App addCSS(String css) {
+        return addStylesheet(css);
+    }
+
+    /**
+     * Enable live CSS reloading: stylesheets loaded via {@link #loadStylesheet}
+     * are watched and re-applied on edit — no recompile, no relaunch.
+     */
+    public App hotReload(boolean enable, float pollIntervalSeconds) {
+        Native.appEnableHotReload(handle(), enable, pollIntervalSeconds);
+        return this;
+    }
+
+    /** Enable live CSS reloading with the default 0.25s poll interval. */
+    public App hotReload() {
+        return hotReload(true, 0.25f);
+    }
+
+    /** Watch an extra CSS file (e.g. a partial or @import target). */
+    public App watchCSS(String path) {
+        Native.appWatchStylesheet(handle(), path);
+        return this;
+    }
+
+    /** Force an immediate reload of all CSS sources from disk. */
+    public boolean reloadCSS() {
+        return Native.appReloadStyles(handle());
+    }
+
     public boolean loadFont(String path, float size) {
         return Native.appLoadFont(handle(), path, size);
     }

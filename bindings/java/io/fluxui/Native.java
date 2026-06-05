@@ -17,6 +17,10 @@ final class Native {
     static native void appStop(long app);
     static native void appShutdown(long app);
     static native void appAddStylesheet(long app, String css);
+    static native boolean appLoadStylesheet(long app, String path);
+    static native void appEnableHotReload(long app, boolean enable, float pollIntervalSeconds);
+    static native void appWatchStylesheet(long app, String path);
+    static native boolean appReloadStyles(long app);
     static native boolean appLoadFont(long app, String path, float size);
     static native boolean appLoadDefaultFont(long app, float size);
     static native void appWarmFontCache(long app, float[] sizes, String name);

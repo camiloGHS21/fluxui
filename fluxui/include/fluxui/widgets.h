@@ -1946,6 +1946,25 @@ public:
     const char* activeBackendName() const { return renderer_.activeBackendName(); }
     bool loadStylesheet(const std::string& path);
     void addStylesheet(const std::string& css);
+
+    // ── CSS Hot-Reload (developer experience) ──────────────────────────────
+    // When enabled, the run loop polls every watched stylesheet file's
+    // modification time and, on change, rebuilds the whole cascade from the
+    // recorded style sources (files + inline CSS, in original order) and
+    // re-styles the tree live — no recompile or relaunch. loadStylesheet()
+    // automatically watches the file it loads. Inline addStylesheet() CSS is
+    // replayed in order during a reload so the cascade is identical.
+    void enableHotReload(bool enable = true, float pollIntervalSeconds = 0.25f);
+    bool hotReloadEnabled() const { return hotReloadEnabled_; }
+    // Watch an extra CSS file for changes (e.g. one pulled in via @import or a
+    // partial that loadStylesheet() didn't see). Safe to call repeatedly.
+    void watchStylesheet(const std::string& path);
+    // Force an immediate rebuild of the cascade from all recorded sources and
+    // re-style the tree. Returns false if a watched file could not be read.
+    bool reloadStyles();
+    // Poll watched files once; reloads if any changed. Called automatically by
+    // the run loop when hot-reload is on; exposed for custom/embedded loops.
+    bool pollStyleHotReload();
     Widget* root() {
         if (!root_) {
             root_ = std::make_shared<Panel>();
@@ -2016,6 +2035,20 @@ private:
     Renderer renderer_;
     RenderBackendType backendPreference_ = Renderer::defaultBackend();
     StyleSheet stylesheet_;
+
+    // ── CSS hot-reload state ──
+    // Ordered record of every style source applied to the cascade, so a reload
+    // can rebuild it identically. Files also carry the last-seen mtime.
+    struct StyleSource {
+        bool isFile = false;
+        std::string pathOrCss;                 // file path, or inline CSS text
+        int64_t lastWriteNs = 0;               // file mtime (files only)
+    };
+    std::vector<StyleSource> styleSources_;
+    bool hotReloadEnabled_ = false;
+    float hotReloadInterval_ = 0.25f;
+    float hotReloadAccum_ = 0.0f;
+    static int64_t fileWriteTimeNs(const std::string& path);
     InputState input_;
     std::shared_ptr<Widget> root_;
     std::unique_ptr<AXObjectCache> axObjectCache_;

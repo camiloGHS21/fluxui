@@ -267,6 +267,22 @@ func (a *App) AddCSS(css string) { a.AddStylesheet(css) }
 // LoadCSS is an alias for LoadStylesheet (matches C++ App::loadCSS).
 func (a *App) LoadCSS(path string) bool { return a.LoadStylesheet(path) }
 
+// HotReload enables live CSS reloading (matches C++ App::hotReload). Any
+// stylesheet loaded via LoadCSS/LoadStylesheet is watched and re-applied on edit.
+func (a *App) HotReload(enable bool) *App {
+	a.EnableHotReload(enable, 0.25)
+	return a
+}
+
+// WatchCSS watches an extra CSS file for changes (matches C++ App::watchCSS).
+func (a *App) WatchCSS(path string) *App {
+	a.WatchStylesheet(path)
+	return a
+}
+
+// ReloadCSS forces an immediate reload of all CSS sources (matches reloadCSS).
+func (a *App) ReloadCSS() { a.ReloadStyles() }
+
 // SetRoot mounts a declarative Element tree as the application root.
 func (a *App) SetRoot(root *Element) {
 	r := a.Root()

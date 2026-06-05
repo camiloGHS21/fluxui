@@ -93,6 +93,22 @@ pub const App = struct {
         c.fluxui_app_add_stylesheet(self.raw, css);
     }
 
+    /// Enable live CSS reloading: stylesheets loaded via loadStylesheet are
+    /// watched and re-applied on edit — no recompile, no relaunch.
+    pub fn enableHotReload(self: App, enable: bool, poll_interval_seconds: f32) void {
+        c.fluxui_app_enable_hot_reload(self.raw, if (enable) 1 else 0, poll_interval_seconds);
+    }
+
+    /// Watch an extra CSS file (e.g. a partial or @import target).
+    pub fn watchStylesheet(self: App, path: [*:0]const u8) void {
+        c.fluxui_app_watch_stylesheet(self.raw, path);
+    }
+
+    /// Force an immediate reload of all CSS sources from disk.
+    pub fn reloadStyles(self: App) bool {
+        return c.fluxui_app_reload_styles(self.raw) != 0;
+    }
+
     pub fn setUpdateCallback(self: App, callback: c.FluxUIUpdateCallback, user_data: ?*anyopaque) void {
         c.fluxui_app_set_update_callback(self.raw, callback, user_data);
     }

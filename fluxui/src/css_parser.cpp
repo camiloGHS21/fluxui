@@ -1577,6 +1577,22 @@ bool StyleSheet::loadFile(const std::string& path) {
     parse(css);
     return true;
 }
+void StyleSheet::reset() {
+    // Rebuild from a freshly-constructed sheet (which loads the UA stylesheet),
+    // preserving the current viewport + color-scheme so layout/media queries
+    // don't flip on reload. The cache epoch advances so every resolved style is
+    // recomputed against the new rules.
+    float vpW = viewportWidth_;
+    float vpH = viewportHeight_;
+    ColorScheme scheme = colorScheme_;
+    bool forced = forcedColors_;
+    *this = StyleSheet();
+    viewportWidth_ = vpW;
+    viewportHeight_ = vpH;
+    colorScheme_ = scheme;
+    forcedColors_ = forced;
+    currentEpoch_++;
+}
 bool StyleSheet::setViewportSize(float width, float height) {
     width = std::max(0.0f, width);
     height = std::max(0.0f, height);

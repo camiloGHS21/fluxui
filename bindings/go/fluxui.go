@@ -24,6 +24,9 @@ var (
 	fluxui_app_emit_custom_event      = fluxui_dll.NewProc("fluxui_app_emit_custom_event")
 	fluxui_app_load_stylesheet        = fluxui_dll.NewProc("fluxui_app_load_stylesheet")
 	fluxui_app_add_stylesheet         = fluxui_dll.NewProc("fluxui_app_add_stylesheet")
+	fluxui_app_enable_hot_reload      = fluxui_dll.NewProc("fluxui_app_enable_hot_reload")
+	fluxui_app_watch_stylesheet       = fluxui_dll.NewProc("fluxui_app_watch_stylesheet")
+	fluxui_app_reload_styles          = fluxui_dll.NewProc("fluxui_app_reload_styles")
 	fluxui_app_load_default_font      = fluxui_dll.NewProc("fluxui_app_load_default_font")
 
 	fluxui_widget_add_panel           = fluxui_dll.NewProc("fluxui_widget_add_panel")
@@ -253,6 +256,32 @@ func (a *App) AddStylesheet(css string) {
 		return
 	}
 	fluxui_app_add_stylesheet.Call(a.handle, uintptr(unsafe.Pointer(cCss)))
+}
+
+// EnableHotReload turns on live CSS reloading: any stylesheet loaded via
+// LoadStylesheet is watched, and edits on disk re-style the running app
+// instantly. pollIntervalSeconds tunes how often file mtimes are checked.
+func (a *App) EnableHotReload(enable bool, pollIntervalSeconds float32) {
+	e := uintptr(0)
+	if enable {
+		e = 1
+	}
+	fluxui_app_enable_hot_reload.Call(a.handle, e, uintptr(math.Float32bits(pollIntervalSeconds)))
+}
+
+// WatchStylesheet adds an extra CSS file to the hot-reload watch list.
+func (a *App) WatchStylesheet(path string) {
+	cPath, err := syscall.BytePtrFromString(path)
+	if err != nil {
+		return
+	}
+	fluxui_app_watch_stylesheet.Call(a.handle, uintptr(unsafe.Pointer(cPath)))
+}
+
+// ReloadStyles forces an immediate reload of all CSS sources from disk.
+func (a *App) ReloadStyles() bool {
+	r1, _, _ := fluxui_app_reload_styles.Call(a.handle)
+	return r1 != 0
 }
 
 func (a *App) LoadDefaultFont(size float32) bool {

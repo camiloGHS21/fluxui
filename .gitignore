@@ -30,3 +30,6 @@ go.mod
 # Python bytecode caches
 __pycache__/
 *.pyc
+
+# Hot-reload demo's auto-generated stylesheet
+assets/styles/hotreload_demo.css
