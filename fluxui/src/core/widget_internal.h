@@ -34,5 +34,45 @@ inline bool rectIntersects(const Rect& a, const Rect& b, float padding = 0.0f) {
            a.y <= b.y + b.h + padding;
 }
 
+// ── Shared input/widget-tree helpers (used by form controls) ──
+// Normalizes SDL/POSIX scan codes to the Win32 virtual-key codes the widget
+// update() handlers compare against.
+inline int normalizeTextEditingKey(int keyCode) {
+    switch (keyCode) {
+    case 0x4000004a: return 0x24; // SDL home
+    case 0x4000004d: return 0x23; // SDL end
+    case 0x4000004f: return 0x27; // SDL right
+    case 0x40000050: return 0x25; // SDL left
+    case 0x40000051: return 0x28; // SDL down
+    case 0x40000052: return 0x26; // SDL up
+    case 0x4000004b: return 0x21; // SDL page up
+    case 0x4000004e: return 0x22; // SDL page down
+    case 0x7f:       return 0x2E; // POSIX delete
+    default:         return keyCode;
+    }
+}
+inline Widget* rootOfWidget(Widget* widget) {
+    if (!widget) return nullptr;
+    while (widget->parent) {
+        widget = widget->parent;
+    }
+    return widget;
+}
+// Unchecks every other Radio in the same group (or, for an unnamed group, the
+// same parent) when `active` becomes checked.
+inline void clearRadioGroup(Widget* widget, Radio* active, const std::string& group) {
+    if (!widget) return;
+    if (auto* radio = dynamic_cast<Radio*>(widget)) {
+        bool sameGroup = group.empty() ? (radio->parent == active->parent) : (radio->group == group);
+        if (radio != active && sameGroup) {
+            radio->checked = false;
+            radio->markStyleDirty();
+        }
+    }
+    for (auto& child : widget->children) {
+        clearRadioGroup(child.get(), active, group);
+    }
+}
+
 } // namespace detail
 } // namespace FluxUI
