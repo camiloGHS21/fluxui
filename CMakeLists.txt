@@ -211,6 +211,10 @@ set(FLUXUI_SOURCES
     fluxui/src/core/widgets/video.cpp
     fluxui/src/core/widgets/svg.cpp
     fluxui/src/core/widgets/controls.cpp
+    fluxui/src/core/widgets/text.cpp
+    fluxui/src/core/widgets/textarea.cpp
+    fluxui/src/core/widgets/media.cpp
+    fluxui/src/core/widgets/interactive.cpp
     fluxui/src/core/gc.cpp
     fluxui/src/core/accessibility.cpp
     fluxui/src/core/compositor.cpp

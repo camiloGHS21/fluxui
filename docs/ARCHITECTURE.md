@@ -23,12 +23,17 @@ fluxui/
       dsl/                   dsl_core.h dsl_app.h dsl_ecosystem.h
   src/                   ← engine implementation, organized by subsystem:
     core/                  application loop, widget tree, GC, a11y, compositor
-      application.cpp        Application + Widget + base widget subclasses
-      widgets/               one TU per widget group
+      application.cpp        Application + Widget base class only
+      widgets/               one TU per widget group (all concrete widgets)
         video.cpp              HTMLVideoElement (Win32 audio + controls)
         svg.cpp                SVG element tree + rasterization hook
         controls.cpp           form controls: Checkbox/Radio/RangeInput/
                                ProgressBar/Meter/Progress
+        text.cpp               Text, Button, TextInput
+        textarea.cpp           TextArea (multi-line editor)
+        media.cpp              Option, Select, Icon, Image, Canvas,
+                               VirtualList, StatCard
+        interactive.cpp        LazyPanel, Anchor, Details, Summary, Dialog
       widget_internal.h      shared inline detail:: helpers for the widget TUs
       compositor.cpp         animation/scroll compositor thread
       accessibility.cpp      AX object cache
@@ -91,14 +96,15 @@ are being split incrementally into cohesive TUs. The rule that keeps this safe:
 > first be promoted to an `inline` function in a private internal header (in a
 > `FluxUI::detail` namespace), so every TU sees one definition.
 
-`core/widget_internal.h` holds these shared helpers (paint/hit-test gates,
-`normalizeTextEditingKey`, radio-group reset). Widget implementations are
-extracted from `application.cpp` into `core/widgets/<group>.cpp`:
-`video.cpp`, `svg.cpp`, and `controls.cpp` (Checkbox/Radio/RangeInput/
-ProgressBar/Meter/Progress). The remaining text/layout-heavy widgets
-(Text/Button/TextInput/TextArea/Select/Image/VirtualList) still live in
-`application.cpp` because they depend on a large cluster of text-shaping
-statics; they are the next candidates to move once those statics are promoted.
+`core/widget_internal.h` holds these shared helpers: the paint/hit-test gates,
+text shaping/measurement, UTF-8 navigation, overflow/border resolution, text
+transform/decoration, and the layout-signature hash — everything the widget
+TUs and the `Widget` base class share. `application.cpp` and every widget TU do
+`using namespace FluxUI::detail;` so the original call sites compile unchanged.
+
+ALL concrete widget implementations now live under `core/widgets/`; only the
+`Widget` base class and `Application` remain in `application.cpp` (which dropped
+from ~8200 to ~4800 lines). Each widget TU stays well under 1000 lines.
 
 ## Frame pipeline (per redraw)
 
