@@ -206,25 +206,31 @@ enable_release_lto(glad)
 #  FluxUI Framework Library
 # ============================================================
 set(FLUXUI_SOURCES
-    fluxui/src/widgets.cpp
-    fluxui/src/renderer.cpp
-    fluxui/src/css_parser.cpp
-    fluxui/src/fluxui_c.cpp
-    fluxui/src/compositor.cpp
-    fluxui/src/layout.cpp
-    fluxui/src/layout_object.cpp
-    fluxui/src/gc.cpp
-    fluxui/src/accessibility.cpp
+    # core: application loop, widgets, GC, a11y, compositor
+    fluxui/src/core/application.cpp
+    fluxui/src/core/gc.cpp
+    fluxui/src/core/accessibility.cpp
+    fluxui/src/core/compositor.cpp
+    # style: CSS parsing + cascade
+    fluxui/src/style/css_parser.cpp
+    # layout: Blink-style layout solver + objects
+    fluxui/src/layout/layout.cpp
+    fluxui/src/layout/layout_object.cpp
+    # render: GPU/software renderer + image resources
+    fluxui/src/render/renderer.cpp
+    fluxui/src/render/image_resource.cpp
+    # ffi: C ABI for language bindings
+    fluxui/src/ffi/fluxui_c.cpp
 )
 
 if(WIN32)
-    list(APPEND FLUXUI_SOURCES fluxui/src/platform_win32.cpp)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform/platform_win32.cpp)
 elseif(APPLE)
-    list(APPEND FLUXUI_SOURCES fluxui/src/platform_macos.mm)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform/platform_macos.mm)
 elseif(ANDROID)
-    list(APPEND FLUXUI_SOURCES fluxui/src/platform_android.cpp)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform/platform_android.cpp)
 else()
-    list(APPEND FLUXUI_SOURCES fluxui/src/platform_linux.cpp)
+    list(APPEND FLUXUI_SOURCES fluxui/src/platform/platform_linux.cpp)
 endif()
 
 add_library(fluxui STATIC
