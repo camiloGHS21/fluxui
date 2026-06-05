@@ -44,6 +44,26 @@ inline Element ActivityRow(const std::string& icon, const std::string& text,
     }).className("activity-row");
 }
 
+// Reusable iOS-style toggle switch: a pill button that holds a sliding knob.
+// The knob (the white circle) is what makes it read as a switch instead of a
+// blank oval — both ToggleRow and RuleRow share this so they look identical.
+inline Element ToggleSwitch(State<bool>& value) {
+    return Button("")
+        .className(value.get() ? "toggle toggle-on" : "toggle toggle-off")
+        .onMount([&value](FluxUI::Widget* w) {
+            // Add the knob as a child of the button widget.
+            auto knob = std::make_shared<FluxUI::Panel>();
+            knob->className = "toggle-knob";
+            knob->parent = w;
+            w->children.push_back(knob);
+            w->onClick = [&value, w]() {
+                value.toggle();
+                w->className = value.get() ? "toggle toggle-on" : "toggle toggle-off";
+                w->markStyleDirty();
+            };
+        });
+}
+
 inline Element ToggleRow(const std::string& title, const std::string& desc,
                          State<bool>& value) {
     return Div({
@@ -51,21 +71,7 @@ inline Element ToggleRow(const std::string& title, const std::string& desc,
             Span(title).className("toggle-title"),
             Span(desc).className("toggle-desc")
         }).className("toggle-copy"),
-        // Toggle switch: a button that contains the knob.
-        Button("")
-            .className(value.get() ? "toggle toggle-on" : "toggle toggle-off")
-            .onMount([&value](FluxUI::Widget* w) {
-                // Add the knob as a child of the button widget.
-                auto knob = std::make_shared<FluxUI::Panel>();
-                knob->className = "toggle-knob";
-                knob->parent = w;
-                w->children.push_back(knob);
-                w->onClick = [&value, w]() {
-                    value.toggle();
-                    w->className = value.get() ? "toggle toggle-on" : "toggle toggle-off";
-                    w->markStyleDirty();
-                };
-            })
+        ToggleSwitch(value)
     }).className("toggle-row");
 }
 

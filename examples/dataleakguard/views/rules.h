@@ -15,15 +15,7 @@ inline Element RuleRow(int idx, const std::string& name, const std::string& deta
     return Div({
         Div({ Span(name).className("rule-name"), Span(detail).className("rule-detail") }).className("rule-main"),
         Div({ Pill(scope,"info"), Pill(hits,"warning") }).className("rule-meta"),
-        Button("")
-            .className(rule.get() ? "toggle toggle-on" : "toggle toggle-off")
-            .onMount([&rule](FluxUI::Widget* w) {
-                w->onClick = [&rule, w]() {
-                    rule.toggle();
-                    w->className = rule.get() ? "toggle toggle-on" : "toggle toggle-off";
-                    w->markStyleDirty();
-                };
-            })
+        ToggleSwitch(rule)
     }).className("rule-row");
 }
 
