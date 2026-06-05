@@ -209,6 +209,7 @@ set(FLUXUI_SOURCES
     # core: application loop, widgets, GC, a11y, compositor
     fluxui/src/core/application.cpp
     fluxui/src/core/widgets/video.cpp
+    fluxui/src/core/widgets/svg.cpp
     fluxui/src/core/gc.cpp
     fluxui/src/core/accessibility.cpp
     fluxui/src/core/compositor.cpp
