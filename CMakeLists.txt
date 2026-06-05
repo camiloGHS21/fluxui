@@ -221,6 +221,7 @@ set(FLUXUI_SOURCES
     fluxui/src/layout/layout_object.cpp
     # render: GPU/software renderer + image resources
     fluxui/src/render/renderer.cpp
+    fluxui/src/render/software_raster.cpp
     fluxui/src/render/image_resource.cpp
     # ffi: C ABI for language bindings
     fluxui/src/ffi/fluxui_c.cpp
