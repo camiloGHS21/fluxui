@@ -52,6 +52,11 @@ fluxui/
       grid_engine.inl        grid algorithm (included by layout.cpp)
     render/                rendering backends
       renderer.cpp           Vulkan backend, fonts, text shaping, draw API
+      renderer_svg.cpp       SVG parser + document walk (rasterizeSvgToRgba,
+                             rasterizeSvgWidget)
+      renderer_svg_internal.h  SVG geometry types + raster primitives
+                             (inline FluxUI::detail): fills, strokes, paths
+      renderer_svg.h         exported SVG entry points (shared with renderer.cpp)
       software_raster.cpp    CPU software rasterizer (no-GPU fallback)
       software_internal.h    shared inline detail:: pixel helpers
       image_resource.cpp     image decode/cache
