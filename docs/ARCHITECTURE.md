@@ -51,7 +51,11 @@ fluxui/
       layout_object.cpp      layout object tree
       grid_engine.inl        grid algorithm (included by layout.cpp)
     render/                rendering backends
-      renderer.cpp           Vulkan backend, fonts, text shaping, draw API
+      renderer.cpp           backend selection, GL setup, frame loop, draw API
+      renderer_vulkan.cpp    Vulkan backend (device/swapchain/pipelines/draw)
+      renderer_vulkan.h        Vulkan state struct + cross-TU entry points
+      renderer_text.cpp      HarfBuzz/FreeType text shaping + glyph drawing
+      renderer_effects.cpp   backdrop-filter blur (software + GPU Gaussian)
       renderer_svg.cpp       SVG parser + document walk (rasterizeSvgToRgba,
                              rasterizeSvgWidget)
       renderer_svg_internal.h  SVG geometry types + raster primitives
