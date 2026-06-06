@@ -2424,6 +2424,10 @@ uint64_t StyleSheet::computeInheritedHash(const Style& style) {
     hashBytes(&style.wordBreak, sizeof(style.wordBreak));
     hashBytes(&style.pointerEvents, sizeof(style.pointerEvents));
     hashBytes(&style.listStyleType, sizeof(style.listStyleType));
+    // direction / writingMode are inherited too (see widget_cascade.cpp), so
+    // include them here to invalidate descendants when they change.
+    hashBytes(&style.direction, sizeof(style.direction));
+    hashBytes(&style.writingMode, sizeof(style.writingMode));
     for (char c : style.fontFamily) {
         hash ^= static_cast<uint64_t>(c);
         hash *= 1099511628211ULL;

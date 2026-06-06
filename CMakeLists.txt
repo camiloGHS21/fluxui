@@ -826,3 +826,14 @@ target_include_directories(test_disabled PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_disabled)
+
+add_executable(test_inheritance
+    examples/cpp/test_inheritance.cpp
+)
+target_link_libraries(test_inheritance PRIVATE
+    fluxui
+)
+target_include_directories(test_inheritance PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_inheritance)

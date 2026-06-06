@@ -170,18 +170,47 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         }
         if (parent) {
             const Style& inherited = parent->computedStyle;
-            if (!computedStyle.hasColor) computedStyle.color = inherited.color;
-            if (!computedStyle.hasFontSize) computedStyle.fontSize = inherited.fontSize;
-            if (!computedStyle.hasFontWeight) computedStyle.fontWeight = inherited.fontWeight;
-            if (!computedStyle.hasFontStyle) computedStyle.fontStyle = inherited.fontStyle;
-            if (!computedStyle.hasTextAlign) computedStyle.textAlign = inherited.textAlign;
-            if (!computedStyle.hasLineHeight) computedStyle.lineHeight = inherited.lineHeight;
-            if (!computedStyle.hasFontFamily) computedStyle.fontFamily = inherited.fontFamily;
-            if (!computedStyle.hasDirection) computedStyle.direction = inherited.direction;
-            if (!computedStyle.hasWritingMode) computedStyle.writingMode = inherited.writingMode;
+            // ── Table-driven inheritance of CSS inherited properties ──────────
+            // Each entry inherits the parent's computed value when the child did
+            // not set the property itself (tracked by its has* flag). This set
+            // is kept in sync with computeInheritedHash() so the resolved-style
+            // cache invalidates whenever an inherited value changes.
+            // (CSS Cascading & Inheritance L5 / Blink: properties flagged
+            //  `inherited: true` in css_properties.json5.)
+            #define FLUX_INHERIT(field, flag) \
+                if (!computedStyle.flag) computedStyle.field = inherited.field;
+            FLUX_INHERIT(color, hasColor)
+            FLUX_INHERIT(fontSize, hasFontSize)
+            FLUX_INHERIT(fontWeight, hasFontWeight)
+            FLUX_INHERIT(fontStyle, hasFontStyle)
+            FLUX_INHERIT(fontFamily, hasFontFamily)
+            FLUX_INHERIT(textAlign, hasTextAlign)
+            FLUX_INHERIT(lineHeight, hasLineHeight)
+            FLUX_INHERIT(letterSpacing, hasLetterSpacing)
+            FLUX_INHERIT(wordSpacing, hasWordSpacing)
+            FLUX_INHERIT(whiteSpace, hasWhiteSpace)
+            FLUX_INHERIT(textTransform, hasTextTransform)
+            FLUX_INHERIT(wordBreak, hasWordBreak)
+            FLUX_INHERIT(direction, hasDirection)
+            FLUX_INHERIT(writingMode, hasWritingMode)
+            #undef FLUX_INHERIT
+            // list-style-type also propagates its has* flag so the value keeps
+            // cascading to grandchildren that query hasListStyleType directly.
             if (!computedStyle.hasListStyleType) {
                 computedStyle.listStyleType = inherited.listStyleType;
                 computedStyle.hasListStyleType = inherited.hasListStyleType;
+            }
+            // cursor / visibility / pointer-events are CSS-inherited but have no
+            // has* flag; inherit when the child still holds the initial value
+            // (same heuristic the property cascade already uses for cursor).
+            if (computedStyle.cursor == CursorType::Default) {
+                computedStyle.cursor = inherited.cursor;
+            }
+            if (computedStyle.visibility == Visibility::Visible) {
+                computedStyle.visibility = inherited.visibility;
+            }
+            if (computedStyle.pointerEvents == PointerEvents::Auto) {
+                computedStyle.pointerEvents = inherited.pointerEvents;
             }
         }
         if (style.width.isSet()) computedStyle.width = style.width;
