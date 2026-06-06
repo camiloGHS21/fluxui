@@ -2809,6 +2809,10 @@ void Application::lazyLoad(std::function<void()> loader, std::function<void()> o
 }
 
 void Application::shutdown() {
+    // Clear the global instance pointer FIRST so that Widget destructors
+    // (which fire during root_ teardown) don't call back into a partially-
+    // destroyed Application. This fixes a Release-mode DLL crash.
+    g_activeApp = nullptr;
 #ifdef _WIN32
     if (window_) {
         SetWindowLongPtr((HWND)window_, GWLP_USERDATA, 0);
