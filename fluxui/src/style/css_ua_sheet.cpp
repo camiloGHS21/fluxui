@@ -29,7 +29,7 @@ const StyleSheet& StyleSheet::getUaSheet() {
             dl { display: block; margin-block-start: 1em; margin-block-end: 1em; }
             dd { display: block; margin-inline-start: 40px; }
             center { display: block; text-align: center; }
-            hr { display: block; overflow: hidden; margin-block-start: 0.5em; margin-block-end: 0.5em; border: 1px solid rgb(128, 128, 128); }
+            hr { display: block; overflow: hidden; margin-block-start: 0.5em; margin-block-end: 0.5em; border-style: inset; border-width: 1px; color: rgb(128, 128, 128); }
             h1 { display: block; font-size: 2em; margin-block-start: 0.67em; margin-block-end: 0.67em; font-weight: bold; }
             h2 { display: block; font-size: 1.5em; margin-block-start: 0.83em; margin-block-end: 0.83em; font-weight: bold; }
             h3 { display: block; font-size: 1.17em; margin-block-start: 1em; margin-block-end: 1em; font-weight: bold; }
@@ -81,7 +81,7 @@ const StyleSheet& StyleSheet::getUaSheet() {
             slot { display: contents; }
             rt { display: block; font-size: 8px; }
             label { display: inline; cursor: default; }
-            fieldset { display: block; margin: 0px 2px; padding: 5.6px 12px 10px 12px; border: 2px solid rgb(192, 192, 192); min-width: 0px; }
+            fieldset { display: block; margin: 0px 2px; padding: 5.6px 12px 10px 12px; border: 2px groove rgb(192, 192, 192); min-width: 0px; }
             legend { display: block; padding: 0px 2px; }
             input[type="hidden"] {
                 display: none !important;
@@ -154,8 +154,7 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 appearance: textfield;
                 cursor: text;
                 padding: 1px 2px;
-                border: 2px solid rgb(118, 118, 118);
-                border-radius: 2px;
+                border: 2px inset rgb(118, 118, 118);
                 background-color: rgb(255, 255, 255);
                 color: rgb(0, 0, 0);
                 width: 170px;
@@ -200,8 +199,8 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 appearance: menulist;
                 cursor: default;
                 padding: 1px 22px 1px 4px;
-                border: 1px solid rgb(0, 0, 0);
-                border-radius: 5px;
+                border: 1px solid rgb(118, 118, 118);
+                border-radius: 0px;
                 background-color: rgb(255, 255, 255);
                 color: rgb(0, 0, 0);
                 margin: 0px;
@@ -233,12 +232,12 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 display: inline-block;
                 appearance: checkbox;
                 cursor: default;
-                margin: 3px 4px 3px 4px;
+                margin: 3px 3px 3px 4px;
                 width: 13px;
                 height: 13px;
                 border: 1px solid rgb(118, 118, 118);
                 background-color: rgb(255, 255, 255);
-                border-radius: 0px;
+                border-radius: 2px;
                 padding: 0px;
                 font-size: 13.333px;
                 font-weight: normal;
@@ -253,7 +252,7 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 display: inline-block;
                 appearance: radio;
                 cursor: default;
-                margin: 3px 4px 3px 4px;
+                margin: 3px 3px 0px 5px;
                 width: 13px;
                 height: 13px;
                 border: 1px solid rgb(118, 118, 118);
@@ -277,7 +276,7 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 width: 129px;
                 height: 16px;
                 border: none;
-                color: rgb(144, 144, 144);
+                color: rgb(16, 16, 16);
                 padding: 0px;
                 font-size: 13.333px;
                 font-weight: normal;
@@ -295,9 +294,8 @@ const StyleSheet& StyleSheet::getUaSheet() {
                 box-sizing: border-box;
                 background-color: rgb(239, 239, 239);
                 color: rgb(0, 0, 0);
-                border: 2px solid rgb(118, 118, 118);
-                border-radius: 2px;
-                padding: 2px 6px 3px 6px;
+                border: 2px outset rgb(118, 118, 118);
+                padding: 1px 6px;
                 font-family: system-ui;
                 font-size: 13.333px;
                 font-weight: normal;
@@ -310,9 +308,9 @@ const StyleSheet& StyleSheet::getUaSheet() {
             }
             details { display: block; }
             summary { display: block; padding-left: 20px; cursor: pointer; }
-            dialog { display: none; position: absolute; background-color: rgb(255, 255, 255); color: rgb(0, 0, 0); border: 1px solid rgb(0, 0, 0); padding: 20px; }
-            meter { display: inline-block; width: 80px; height: 16px; background-color: rgb(229, 229, 229); border: 1px solid rgb(179, 179, 179); border-radius: 4px; }
-            progress { display: inline-block; width: 160px; height: 16px; background-color: rgba(26, 26, 26, 0.1); border: 1px solid rgba(76, 76, 76, 0.3); border-radius: 8px; }
+            dialog { display: none; position: absolute; background-color: rgb(255, 255, 255); color: rgb(0, 0, 0); border: solid; padding: 1em; }
+            meter { display: inline-block; width: 5em; height: 1em; background-color: rgb(239, 239, 239); border: 1px solid rgba(118, 118, 118, 0.3); border-radius: 20px; vertical-align: -0.2em; box-sizing: border-box; }
+            progress { display: inline-block; width: 10em; height: 1em; background-color: rgb(239, 239, 239); border: 1px solid rgba(118, 118, 118, 0.3); border-radius: 20px; vertical-align: -0.2em; box-sizing: border-box; }
             br { display: block; width: 100%; height: 0px; }
             [dir="rtl"] { direction: rtl; unicode-bidi: isolate; }
             [dir="ltr"] { direction: ltr; unicode-bidi: isolate; }

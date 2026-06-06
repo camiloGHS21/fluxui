@@ -295,11 +295,15 @@ void Meter::render(Renderer& renderer) {
     }
     fraction = std::max(0.0f, std::min(1.0f, fraction));
     if (fraction > 0.0f) {
-        Color barColor(0.2f, 0.8f, 0.2f, 1.0f); // Default green
+        // Blink-faithful meter colors (non-auto appearance, light mode):
+        // Optimum (normal): #107c10, Suboptimum (warning): #ffb900, Even-less-good (danger): #d83b01
+        Color barColor = Color::fromHex("#107c10"); // Default green (optimum)
         if (value < low || value > high) {
-            barColor = Color(0.9f, 0.2f, 0.2f, 1.0f); // Red
+            barColor = Color::fromHex("#d83b01"); // Red — even-less-good
         } else if (optimum < low && value > low) {
-            barColor = Color(0.9f, 0.7f, 0.1f, 1.0f); // Yellow
+            barColor = Color::fromHex("#ffb900"); // Yellow — suboptimum
+        } else if (optimum > high && value < high) {
+            barColor = Color::fromHex("#ffb900"); // Yellow — suboptimum
         }
         Rect barRect = bounds;
         barRect.x += computedStyle->padding.left;
@@ -327,7 +331,7 @@ void Progress::render(Renderer& renderer) {
     fillRect.h = bounds.h - computedStyle->padding.top - computedStyle->padding.bottom;
     float maxW = bounds.w - computedStyle->padding.left - computedStyle->padding.right;
 
-    Color progressColor(0.2f, 0.6f, 0.95f, 1.0f); // Sleek modern blue
+    Color progressColor = Color::fromHex("#107c10"); // Blink: green progress value
 
     if (value < 0.0f) {
         // Indeterminate state: animate sliding bar
