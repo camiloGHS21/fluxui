@@ -43,7 +43,13 @@ fluxui/
       accessibility.cpp      AX object cache
       gc.cpp                 mark/sweep helpers
     style/                 CSS parsing + cascade
-      css_parser.cpp         StyleSheet: tokenize, parse, selector match, cascade
+      css_parser.cpp         tokenize, parse rules, selectors, cascade resolve
+      css_merge.cpp          property merge: maps declarations to Style fields
+      css_value_parser.cpp   typed value + animation/timing parsers, @supports
+      css_transform_parser.cpp transform / grid / filter value grammars
+      css_interpolate.cpp    animation interpolation + @property <syntax> check
+      css_media_query.cpp    @media query evaluation
+      css_ua_sheet.cpp       built-in User-Agent stylesheet + UA defaults
       css_color.cpp          color + gradient parsing (parseColor/parseGradient)
       css_internal.h         shared inline detail:: string + color-channel helpers
     layout/                Blink-style layout

@@ -46,6 +46,52 @@ inline std::string functionInner(const std::string& value) {
     if (start == std::string::npos || end == std::string::npos || end <= start) return "";
     return value.substr(start + 1, end - start - 1);
 }
+// Splits a string on ASCII whitespace into a fixed-size token array (no alloc).
+inline void splitWhitespace(std::string_view val, std::string_view tokens[], int maxTokens, int& count) {
+    count = 0;
+    size_t i = 0;
+    while (i < val.size() && count < maxTokens) {
+        while (i < val.size() && (val[i] == ' ' || val[i] == '\t' || val[i] == '\r' || val[i] == '\n')) {
+            i++;
+        }
+        if (i == val.size()) break;
+        size_t start = i;
+        while (i < val.size() && val[i] != ' ' && val[i] != '\t' && val[i] != '\r' && val[i] != '\n') {
+            i++;
+        }
+        tokens[count++] = val.substr(start, i - start);
+    }
+}
+// Splits on top-level whitespace, ignoring whitespace inside (), [], {}.
+inline std::vector<std::string> splitWhitespaceTopLevel(std::string_view val) {
+    std::vector<std::string> tokens;
+    std::string current;
+    int parenDepth = 0;
+    int bracketDepth = 0;
+    int braceDepth = 0;
+    for (size_t i = 0; i < val.size(); ++i) {
+        char c = val[i];
+        if (c == '(') parenDepth++;
+        else if (c == ')' && parenDepth > 0) parenDepth--;
+        else if (c == '[') bracketDepth++;
+        else if (c == ']' && bracketDepth > 0) bracketDepth--;
+        else if (c == '{') braceDepth++;
+        else if (c == '}' && braceDepth > 0) braceDepth--;
+        bool isWhitespace = (c == ' ' || c == '\t' || c == '\r' || c == '\n');
+        if (isWhitespace && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
+            if (!current.empty()) {
+                tokens.push_back(current);
+                current.clear();
+            }
+        } else {
+            current += c;
+        }
+    }
+    if (!current.empty()) {
+        tokens.push_back(current);
+    }
+    return tokens;
+}
 
 // ── CSS color channel parsers (shared by parseColor / parseGradient) ──
 inline std::vector<std::string> splitColorTokens(const std::string& inner) {
