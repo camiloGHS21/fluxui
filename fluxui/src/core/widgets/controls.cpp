@@ -89,8 +89,10 @@ void Checkbox::render(Renderer& renderer) {
                                 FontWeight::Bold);
     }
     if (focused) {
-        renderer.drawBorder({box.x - 3.0f, box.y - 3.0f, box.w + 6.0f, box.h + 6.0f},
-                            Border(2.0f, Color(0.90f, 0.59f, 0.0f, 1.0f)),
+        // Blink: input[type=checkbox]:focus-visible { outline: auto 1px -webkit-focus-ring-color;
+        //         outline-offset: 2px } — blue ring, not orange.
+        renderer.drawBorder({box.x - 2.0f, box.y - 2.0f, box.w + 4.0f, box.h + 4.0f},
+                            Border(2.0f, Color::fromHex("#1a73e8")),
                             BorderRadius(4.0f));
     }
 }
@@ -165,7 +167,8 @@ void Radio::render(Renderer& renderer) {
     renderer.drawBorder(ring, Border(std::max(1.0f, s.border.width), borderColor),
                         BorderRadius(size * 0.5f));
     if (checked) {
-        float dot = std::max(4.0f, size * 0.48f);
+        // Blink PaintRadio: dot = skrect.makeInset(0.2, 0.2) → 60% of the box.
+        float dot = std::max(4.0f, size * 0.6f);
         renderer.drawRoundedRect({ring.x + (ring.w - dot) * 0.5f,
                                   ring.y + (ring.h - dot) * 0.5f,
                                   dot,
@@ -174,9 +177,10 @@ void Radio::render(Renderer& renderer) {
                                  BorderRadius(dot * 0.5f));
     }
     if (focused) {
-        renderer.drawBorder({ring.x - 3.0f, ring.y - 3.0f, ring.w + 6.0f, ring.h + 6.0f},
-                            Border(2.0f, Color(0.90f, 0.59f, 0.0f, 1.0f)),
-                            BorderRadius((size + 6.0f) * 0.5f));
+        // Blink: input[type=radio]:focus-visible { outline-offset: 2px } — blue focus ring.
+        renderer.drawBorder({ring.x - 2.0f, ring.y - 2.0f, ring.w + 4.0f, ring.h + 4.0f},
+                            Border(2.0f, Color::fromHex("#1a73e8")),
+                            BorderRadius((size + 4.0f) * 0.5f));
     }
 }
 
@@ -202,7 +206,7 @@ void RangeInput::layout(const Rect& parentBounds) {
 void RangeInput::update(const InputState& input) {
     Widget::update(input);
     auto setFromPoint = [&](float x) {
-        float pad = 7.0f;
+        float pad = 8.0f;
         float t = (x - (bounds.x + pad)) / std::max(1.0f, bounds.w - pad * 2.0f);
         setValue(min + std::clamp(t, 0.0f, 1.0f) * (max - min));
     };
@@ -230,9 +234,10 @@ void RangeInput::update(const InputState& input) {
 }
 void RangeInput::render(Renderer& renderer) {
     if (!canPaintWidget(this)) return;
-    const Style& s = *computedStyle;
-    float pad = 7.0f;
-    float trackH = 4.0f;
+    // Blink native_theme_base: kSliderTrackThickness = 8, kSliderThumbThickness = 16.
+    float thumb = 16.0f;
+    float pad = thumb * 0.5f;
+    float trackH = 8.0f;
     Rect track = {bounds.x + pad, bounds.y + (bounds.h - trackH) * 0.5f,
                   std::max(1.0f, bounds.w - pad * 2.0f), trackH};
     float t = (max == min) ? 0.0f : std::clamp((value - min) / (max - min), 0.0f, 1.0f);
@@ -247,22 +252,22 @@ void RangeInput::render(Renderer& renderer) {
     } else {
         accentColor = activeAccent;
     }
-    Color trackColor = Color::fromHex("#cccccc");
+    // Blink track fill = kFillColors (light grey #f3f3f3 / similar); value bar = accent.
+    Color trackColor = Color::fromHex("#dbdbdb");
+    // GetBorderRadiusForPart(kSliderTrack) → 40px (fully rounded for thin tracks).
     renderer.drawRoundedRect(track, trackColor, BorderRadius(trackH * 0.5f));
     renderer.drawRoundedRect({track.x, track.y, track.w * t, track.h},
                              accentColor, BorderRadius(trackH * 0.5f));
-    float thumb = 14.0f;
     Rect knob = {track.x + track.w * t - thumb * 0.5f,
                  bounds.y + (bounds.h - thumb) * 0.5f,
                  thumb,
                  thumb};
+    // Blink PaintSliderThumb: accent-colored circle, no white ring.
     renderer.drawRoundedRect(knob, accentColor, BorderRadius(thumb * 0.5f));
-    renderer.drawBorder(knob, Border(1.0f, Color(1, 1, 1, 1.0f)),
-                        BorderRadius(thumb * 0.5f));
     if (focused) {
-        renderer.drawBorder({knob.x - 3.0f, knob.y - 3.0f, knob.w + 6.0f, knob.h + 6.0f},
-                            Border(2.0f, Color(0.90f, 0.59f, 0.0f, 1.0f)),
-                            BorderRadius((thumb + 6.0f) * 0.5f));
+        renderer.drawBorder({knob.x - 2.0f, knob.y - 2.0f, knob.w + 4.0f, knob.h + 4.0f},
+                            Border(2.0f, Color::fromHex("#1a73e8")),
+                            BorderRadius((thumb + 4.0f) * 0.5f));
     }
 }
 
@@ -331,7 +336,9 @@ void Progress::render(Renderer& renderer) {
     fillRect.h = bounds.h - computedStyle->padding.top - computedStyle->padding.bottom;
     float maxW = bounds.w - computedStyle->padding.left - computedStyle->padding.right;
 
-    Color progressColor = Color::fromHex("#107c10"); // Blink: green progress value
+    // Blink modern native_theme: progress value bar uses the accent color
+    // (kColorWebNativeControlAccent → Google Blue #1A73E8), track uses kFill.
+    Color progressColor = Color::fromHex("#1a73e8");
 
     if (value < 0.0f) {
         // Indeterminate state: animate sliding bar
