@@ -14,7 +14,157 @@
 #include "fluxui/detail/core/css_enums.h"
 #include "fluxui/detail/core/css_value.h"
 #include "fluxui/detail/core/transform.h"
+#include "fluxui/detail/core/data_ref.h"
 namespace FluxUI {
+// ── StyleRareData — cold (rarely-set) non-inherited properties ───────────────
+// Held by Style behind a DataRef so copying a Style shares this group by pointer
+// and only clones it on first write (copy-on-write). Mirrors Blink's
+// StyleRareNonInheritedData. Read via style.rare(), write via the non-const
+// overload (which triggers COW through DataRef::access()).
+struct StyleRareData {
+    // ── Masking, Clipping, Blending (CSS Masking L1 / Compositing L1) ──
+    std::string clipPath;                     // clip-path
+    bool hasClipPath = false;
+    std::string shapeOutside;                 // shape-outside
+    bool hasShapeOutside = false;
+    std::string maskImage;
+    std::string maskMode;
+    std::string maskRepeat;
+    std::string maskPosition;
+    std::string maskSize;
+    std::string maskClip;
+    std::string maskOrigin;
+    std::string maskComposite;
+    bool hasMask = false;
+    BlendMode mixBlendMode = BlendMode::Normal;
+    bool hasMixBlendMode = false;
+    Isolation isolation = Isolation::Auto;
+    bool hasIsolation = false;
+    BlendMode backgroundBlendMode = BlendMode::Normal;
+    bool hasBackgroundBlendMode = false;
+
+    // ── Scroll API (CSS Scroll Snap L1, Overscroll Behavior L1, Scrollbars L1) ──
+    std::string scrollSnapType;
+    bool hasScrollSnapType = false;
+    std::string scrollSnapAlign;
+    bool hasScrollSnapAlign = false;
+    std::string scrollSnapStop;
+    EdgeInsets scrollPadding;
+    EdgeInsets scrollMargin;
+    bool hasScrollPadding = false;
+    bool hasScrollMargin = false;
+    OverscrollBehavior overscrollBehaviorX = OverscrollBehavior::Auto;
+    OverscrollBehavior overscrollBehaviorY = OverscrollBehavior::Auto;
+    bool hasOverscrollBehavior = false;
+    Color scrollbarThumbColor = Color(0,0,0,0);
+    Color scrollbarTrackColor = Color(0,0,0,0);
+    bool hasScrollbarColor = false;
+    ScrollbarWidth scrollbarWidth = ScrollbarWidth::Auto;
+    bool hasScrollbarWidth = false;
+    OverflowAnchor overflowAnchor = OverflowAnchor::Auto;
+    bool hasOverflowAnchor = false;
+    std::string scrollbarGutter;
+    bool hasScrollbarGutter = false;
+    ScrollBehavior scrollBehavior = ScrollBehavior::Auto;
+    bool hasScrollBehavior = false;
+
+    // ── Advanced Typography (CSS Fonts L4, CSS Text L4) ──
+    std::string fontVariantCaps;
+    std::string fontVariantNumeric;
+    std::string fontVariantLigatures;
+    std::string fontVariantEastAsian;
+    std::string fontVariantPosition;
+    std::string fontVariantAlternates;
+    std::string fontFeatureSettings;
+    std::string fontVariationSettings;
+    std::string fontOpticalSizing;
+    std::string fontPalette;
+    std::string fontStretch;
+    float tabSize = 8.0f;
+    bool hasTabSize = false;
+    std::string hyphens;
+    bool hasHyphens = false;
+    std::string lineBreak;
+    bool hasLineBreak = false;
+    std::string overflowWrap;
+    bool hasOverflowWrap = false;
+    std::string textJustify;
+    bool hasTextJustify = false;
+    float textIndent = 0.0f;
+    bool hasTextIndent = false;
+    std::string hangingPunctuation;
+    bool hasHangingPunctuation = false;
+    std::string fontSynthesis;
+    std::string fontLanguageOverride;
+    bool hasFontVariantCaps = false;
+    bool hasFontVariantNumeric = false;
+    bool hasFontVariantLigatures = false;
+    bool hasFontVariantEastAsian = false;
+    bool hasFontFeatureSettings = false;
+    bool hasFontVariationSettings = false;
+    bool hasFontOpticalSizing = false;
+    bool hasFontStretch = false;
+
+    // ── UI Misc Properties (CSS UI L4, CSS Color Adjust L1) ──
+    Color accentColor = Color(0, 0, 0, 0);
+    bool hasAccentColor = false;
+    Color caretColor = Color(0, 0, 0, 0);
+    bool hasCaretColor = false;
+    std::string colorScheme;
+    bool hasColorScheme = false;
+    bool inert = false;
+    std::string fieldSizing;
+    bool hasFieldSizing = false;
+    std::string imageRendering;
+    bool hasImageRendering = false;
+    std::string imageOrientation;
+    bool hasImageOrientation = false;
+    std::string objectViewBox;
+    bool hasObjectViewBox = false;
+    std::string touchAction;
+    bool hasTouchAction = false;
+    std::string userSelect;
+    bool hasUserSelect = false;
+    std::string willChange;
+    bool hasWillChange = false;
+    std::string containIntrinsicSize;
+    bool hasContainIntrinsicSize = false;
+    std::string contentVisibility;
+    bool hasContentVisibility = false;
+
+    // ── Animations (CSS Animations L1) ──
+    std::vector<std::string> animationName;
+    std::vector<float> animationDuration;
+    std::vector<float> animationDelay;
+    std::vector<float> animationIterationCount;
+    std::vector<AnimationDirection> animationDirection;
+    std::vector<AnimationFillMode> animationFillMode;
+    std::vector<AnimationPlayState> animationPlayState;
+    std::vector<TimingFunction> animationTimingFunction;
+    std::vector<AnimationComposition> animationComposition;
+
+    // ── Scroll-driven Animations (CSS Scroll-driven Animations L1) ──
+    std::vector<std::string> animationTimeline;
+    std::string animationRangeStart;
+    std::string animationRangeEnd;
+    std::vector<std::string> scrollTimelineName;
+    std::vector<std::string> scrollTimelineAxis;
+    std::vector<std::string> viewTimelineName;
+    std::vector<std::string> viewTimelineAxis;
+    std::string viewTimelineInset;
+    std::vector<std::string> timelineScope;
+    bool hasAnimationTimeline = false;
+    bool hasScrollTimeline    = false;
+    bool hasViewTimeline      = false;
+    bool hasTimelineScope     = false;
+
+    // ── Transitions (CSS Transitions L1) ──
+    std::vector<std::string> transitionProperty;
+    std::vector<float> transitionDurations;
+    std::vector<float> transitionDelays;
+    std::vector<TimingFunction> transitionTimingFunctions;
+    std::vector<TransitionBehavior> transitionBehavior;
+};
 struct Style {
     Display display = Display::Block;
     Position position = Position::Static;
@@ -470,75 +620,16 @@ struct Style {
     bool hasFilter = false;
     bool hasBackdropFilter = false;
 
-    // ── Masking, Clipping, Blending (CSS Masking Level 1 / Compositing Level 1) ──
-    // clip-path: <basic-shape> | url(#clip) | none
-    std::string clipPath;                     // raw value string (e.g. "circle(50%)", "url(#c)")
-    bool hasClipPath = false;
-    // shape-outside: <basic-shape> | url() | none
-    std::string shapeOutside;
-    bool hasShapeOutside = false;
-    // mask shorthand sub-properties
-    std::string maskImage;                    // mask-image: url(...) | <gradient> | none
-    std::string maskMode;                     // mask-mode: alpha | luminance | match-source
-    std::string maskRepeat;                   // mask-repeat: repeat | no-repeat | ...
-    std::string maskPosition;                 // mask-position: <position>
-    std::string maskSize;                     // mask-size: <length> | cover | contain
-    std::string maskClip;                     // mask-clip: border-box | content-box | ...
-    std::string maskOrigin;                   // mask-origin: border-box | content-box | ...
-    std::string maskComposite;                // mask-composite: add | subtract | intersect | exclude
-    bool hasMask = false;
-    // mix-blend-mode / isolation / background-blend-mode
-    enum class BlendMode {
-        Normal, Multiply, Screen, Overlay, Darken, Lighten,
-        ColorDodge, ColorBurn, HardLight, SoftLight, Difference,
-        Exclusion, Hue, Saturation, Color, Luminosity
-    };
-    enum class Isolation { Auto, Isolate };
-    BlendMode mixBlendMode = BlendMode::Normal;
-    bool hasMixBlendMode = false;
-    Isolation isolation = Isolation::Auto;
-    bool hasIsolation = false;
-    BlendMode backgroundBlendMode = BlendMode::Normal;
-    bool hasBackgroundBlendMode = false;
-
-    // ── Scroll API (CSS Scroll Snap L1, Overscroll Behavior L1, Scrollbars L1) ──
-    // scroll-snap-type: none | x/y/block/inline/both [mandatory|proximity]
-    std::string scrollSnapType;
-    bool hasScrollSnapType = false;
-    // scroll-snap-align: none | start | end | center (block inline)
-    std::string scrollSnapAlign;
-    bool hasScrollSnapAlign = false;
-    // scroll-snap-stop: normal | always
-    std::string scrollSnapStop;
-    // scroll-padding / scroll-margin (stored as EdgeInsets)
-    EdgeInsets scrollPadding;
-    EdgeInsets scrollMargin;
-    bool hasScrollPadding = false;
-    bool hasScrollMargin = false;
-    // overscroll-behavior: auto | contain | none (x/y)
-    enum class OverscrollBehavior { Auto, Contain, None };
-    OverscrollBehavior overscrollBehaviorX = OverscrollBehavior::Auto;
-    OverscrollBehavior overscrollBehaviorY = OverscrollBehavior::Auto;
-    bool hasOverscrollBehavior = false;
-    // scrollbar-color: auto | <color> <color> (thumb, track)
-    Color scrollbarThumbColor = Color(0,0,0,0);
-    Color scrollbarTrackColor = Color(0,0,0,0);
-    bool hasScrollbarColor = false;
-    // scrollbar-width: auto | thin | none
-    enum class ScrollbarWidth { Auto, Thin, None };
-    ScrollbarWidth scrollbarWidth = ScrollbarWidth::Auto;
-    bool hasScrollbarWidth = false;
-    // overflow-anchor: auto | none
-    enum class OverflowAnchor { Auto, None };
-    OverflowAnchor overflowAnchor = OverflowAnchor::Auto;
-    bool hasOverflowAnchor = false;
-    // scrollbar-gutter: auto | stable [both-edges]
-    std::string scrollbarGutter;
-    bool hasScrollbarGutter = false;
-    // scroll-behavior: auto | smooth
-    enum class ScrollBehavior { Auto, Smooth };
-    ScrollBehavior scrollBehavior = ScrollBehavior::Auto;
-    bool hasScrollBehavior = false;
+    // ── Masking / Scroll / Blending enum aliases ──────────────────────────────
+    // The enums themselves now live at namespace scope (css_enums.h) so the cold
+    // StyleRareData group can use them, but these `using` aliases keep all existing
+    // `Style::BlendMode::X` / `Style::Isolation::X` references compiling unchanged.
+    using BlendMode = FluxUI::BlendMode;
+    using Isolation = FluxUI::Isolation;
+    using OverscrollBehavior = FluxUI::OverscrollBehavior;
+    using ScrollbarWidth = FluxUI::ScrollbarWidth;
+    using OverflowAnchor = FluxUI::OverflowAnchor;
+    using ScrollBehavior = FluxUI::ScrollBehavior;
 
     float fontSize = 14.0f;
     FontWeight fontWeight = FontWeight::Normal;
@@ -574,97 +665,10 @@ struct Style {
     bool hasVerticalAlign = false;
     bool hasListStyleType = false;
 
-    // ── Advanced Typography (CSS Fonts L4, CSS Text L4 / Blink parity) ──
-    // font-variant sub-properties
-    std::string fontVariantCaps;       // normal | small-caps | all-small-caps | petite-caps | all-petite-caps | unicase | titling-caps
-    std::string fontVariantNumeric;    // normal | ordinal | slashed-zero | lining-nums | oldstyle-nums | proportional-nums | tabular-nums | diagonal-fractions | stacked-fractions
-    std::string fontVariantLigatures;  // normal | none | common-ligatures | no-common-ligatures | ...
-    std::string fontVariantEastAsian;  // normal | jis78 | jis83 | jis90 | jis04 | simplified | traditional | full-width | proportional-width | ruby
-    std::string fontVariantPosition;   // normal | sub | super
-    std::string fontVariantAlternates; // normal | historical-forms | stylistic() | swash() | ornaments() | annotation() | styleset() | character-variant()
-    // font-feature-settings / font-variation-settings (OpenType)
-    std::string fontFeatureSettings;   // normal | <feature-tag-value>#
-    std::string fontVariationSettings; // normal | [<string> <number>]#
-    // font-optical-sizing
-    std::string fontOpticalSizing;     // auto | none
-    // font-palette
-    std::string fontPalette;           // normal | light | dark | <dashed-ident>
-    // font-stretch
-    std::string fontStretch;           // normal | ultra-condensed...ultra-expanded | <percentage>
-    // tab-size
-    float tabSize = 8.0f;             // <integer> | <length>
-    bool hasTabSize = false;
-    // hyphens
-    std::string hyphens;               // none | manual | auto
-    bool hasHyphens = false;
-    // line-break
-    std::string lineBreak;             // auto | loose | normal | strict | anywhere
-    bool hasLineBreak = false;
-    // overflow-wrap (word-wrap alias)
-    std::string overflowWrap;          // normal | break-word | anywhere
-    bool hasOverflowWrap = false;
-    // text-justify
-    std::string textJustify;           // auto | inter-word | inter-character | none
-    bool hasTextJustify = false;
-    // text-indent
-    float textIndent = 0.0f;
-    bool hasTextIndent = false;
-    // hanging-punctuation
-    std::string hangingPunctuation;    // none | first | last | force-end | allow-end
-    bool hasHangingPunctuation = false;
-    // font-synthesis
-    std::string fontSynthesis;         // none | weight | style | small-caps | position
-    // font-language-override
-    std::string fontLanguageOverride;
-
-    bool hasFontVariantCaps = false;
-    bool hasFontVariantNumeric = false;
-    bool hasFontVariantLigatures = false;
-    bool hasFontVariantEastAsian = false;
-    bool hasFontFeatureSettings = false;
-    bool hasFontVariationSettings = false;
-    bool hasFontOpticalSizing = false;
-    bool hasFontStretch = false;
-
-    // ── UI Misc Properties (CSS UI L4, CSS Color Adjust L1 / Blink parity) ──
-    // accent-color: auto | <color>
-    Color accentColor = Color(0, 0, 0, 0);
-    bool hasAccentColor = false;
-    // caret-color: auto | <color>
-    Color caretColor = Color(0, 0, 0, 0);
-    bool hasCaretColor = false;
-    // color-scheme: normal | light | dark | [light dark]
-    std::string colorScheme;            // "light", "dark", "light dark", "normal"
-    bool hasColorScheme = false;
-    // inert attribute / interactivity: inert
-    bool inert = false;
-    // field-sizing: content | fixed
-    std::string fieldSizing;            // "content" | "fixed"
-    bool hasFieldSizing = false;
-    // image-rendering: auto | crisp-edges | pixelated | smooth | high-quality
-    std::string imageRendering;
-    bool hasImageRendering = false;
-    // image-orientation: from-image | none | <angle>
-    std::string imageOrientation;
-    bool hasImageOrientation = false;
-    // object-view-box: none | inset(<values>)
-    std::string objectViewBox;
-    bool hasObjectViewBox = false;
-    // touch-action: auto | none | pan-x | pan-y | manipulation | ...
-    std::string touchAction;
-    bool hasTouchAction = false;
-    // user-select: auto | none | text | all | contain
-    std::string userSelect;
-    bool hasUserSelect = false;
-    // will-change: auto | <property># (compositor hints)
-    std::string willChange;
-    bool hasWillChange = false;
-    // contain-intrinsic-size: none | auto <length> [auto <length>]
-    std::string containIntrinsicSize;
-    bool hasContainIntrinsicSize = false;
-    // content-visibility: visible | auto | hidden
-    std::string contentVisibility;
-    bool hasContentVisibility = false;
+    // ── Advanced Typography / Masking / Scroll / UI-misc / Animation / Transition ──
+    // All cold (rarely-set) non-inherited properties now live in StyleRareData,
+    // shared copy-on-write via DataRef (Blink StyleRareNonInheritedData parity).
+    // Access through rare() — const for reads (no copy), non-const for writes (COW).
 
     FastCustomProperties customProperties;
     FastCustomProperties hoverCustomProperties;
@@ -679,40 +683,6 @@ struct Style {
     float scale = 1.0f;
     float springStiffness = 180.0f;
     float springDamping = 18.0f;
-    std::vector<std::string> animationName;
-    std::vector<float> animationDuration;
-    std::vector<float> animationDelay;
-    std::vector<float> animationIterationCount;
-    std::vector<AnimationDirection> animationDirection;
-    std::vector<AnimationFillMode> animationFillMode;
-    std::vector<AnimationPlayState> animationPlayState;
-    std::vector<TimingFunction> animationTimingFunction;
-    std::vector<AnimationComposition> animationComposition;
-    // ── Scroll-driven Animations (CSS Scroll-driven Animations L1 / Blink parity) ──
-    // animation-timeline: auto | none | <timeline-name> | scroll() | view()
-    std::vector<std::string> animationTimeline;
-    // animation-range: normal | <length-percentage> | <timeline-range-name> <pct>
-    std::string animationRangeStart;
-    std::string animationRangeEnd;
-    // scroll-timeline: <name> [<axis>] (shorthand for scroll-timeline-name + scroll-timeline-axis)
-    std::vector<std::string> scrollTimelineName;
-    std::vector<std::string> scrollTimelineAxis;  // block | inline | x | y
-    // view-timeline: <name> [<axis>] (shorthand for view-timeline-name + view-timeline-axis)
-    std::vector<std::string> viewTimelineName;
-    std::vector<std::string> viewTimelineAxis;
-    // view-timeline-inset: auto | [<length-pct>{1,2}]
-    std::string viewTimelineInset;
-    // timeline-scope: none | <dashed-ident>#
-    std::vector<std::string> timelineScope;
-    bool hasAnimationTimeline = false;
-    bool hasScrollTimeline    = false;
-    bool hasViewTimeline      = false;
-    bool hasTimelineScope     = false;
-    std::vector<std::string> transitionProperty;
-    std::vector<float> transitionDurations;
-    std::vector<float> transitionDelays;
-    std::vector<TimingFunction> transitionTimingFunctions;
-    std::vector<TransitionBehavior> transitionBehavior;
     Color hoverBackgroundColor;
     Color hoverColor;
     Gradient hoverBackgroundGradient;
@@ -761,6 +731,15 @@ struct Style {
     bool hasPerspective = false;
     bool hasPerspectiveOrigin = false;
     bool hasBackfaceVisibility = false;
+
+    // ── Cold (rarely-set) non-inherited property group (copy-on-write) ──────────
+    // Shared by pointer across Style copies; cloned lazily on first write.
+    DataRef<StyleRareData> rareData;
+    // Read access (no copy). Use on const Style / when only reading.
+    const StyleRareData& rare() const { return *rareData; }
+    // Write access (copy-on-write via DataRef::access()).
+    StyleRareData& rare() { return *rareData.access(); }
+
     uint64_t inheritedHash = 0;
 };
 class ComputedStyle {

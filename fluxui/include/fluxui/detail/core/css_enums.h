@@ -180,4 +180,18 @@ enum class TransitionBehavior {
     Normal,
     AllowDiscrete
 };
+// ── Rare non-inherited enums (moved to namespace scope so they can be used by
+//    StyleRareData; Style keeps `using` aliases for source-compatibility with
+//    existing `Style::BlendMode::X` references). Blink groups these under
+//    StyleRareNonInheritedData. ──────────────────────────────────────────────
+enum class BlendMode {
+    Normal, Multiply, Screen, Overlay, Darken, Lighten,
+    ColorDodge, ColorBurn, HardLight, SoftLight, Difference,
+    Exclusion, Hue, Saturation, Color, Luminosity
+};
+enum class Isolation { Auto, Isolate };
+enum class OverscrollBehavior { Auto, Contain, None };
+enum class ScrollbarWidth { Auto, Thin, None };
+enum class OverflowAnchor { Auto, None };
+enum class ScrollBehavior { Auto, Smooth };
 }

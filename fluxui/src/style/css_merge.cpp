@@ -298,111 +298,111 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
             }
         }
     } else if (name == "clip-path") {
-        style.clipPath = value;
-        style.hasClipPath = (value != "none" && !value.empty());
+        style.rare().clipPath = value;
+        style.rare().hasClipPath = (value != "none" && !value.empty());
     } else if (name == "shape-outside") {
-        style.shapeOutside = value;
-        style.hasShapeOutside = (value != "none" && !value.empty());
+        style.rare().shapeOutside = value;
+        style.rare().hasShapeOutside = (value != "none" && !value.empty());
     } else if (name == "mask" || name == "mask-image") {
-        style.maskImage = value;
-        style.hasMask = (value != "none" && !value.empty());
+        style.rare().maskImage = value;
+        style.rare().hasMask = (value != "none" && !value.empty());
     } else if (name == "mask-mode") {
-        style.maskMode = value;
+        style.rare().maskMode = value;
     } else if (name == "mask-repeat") {
-        style.maskRepeat = value;
+        style.rare().maskRepeat = value;
     } else if (name == "mask-position") {
-        style.maskPosition = value;
+        style.rare().maskPosition = value;
     } else if (name == "mask-size") {
-        style.maskSize = value;
+        style.rare().maskSize = value;
     } else if (name == "mask-clip") {
-        style.maskClip = value;
+        style.rare().maskClip = value;
     } else if (name == "mask-origin") {
-        style.maskOrigin = value;
+        style.rare().maskOrigin = value;
     } else if (name == "mask-composite") {
-        style.maskComposite = value;
+        style.rare().maskComposite = value;
     } else if (name == "mix-blend-mode") {
         std::string v = lowerAscii(trim(value));
-        style.hasMixBlendMode = true;
-        if (v == "multiply")        style.mixBlendMode = Style::BlendMode::Multiply;
-        else if (v == "screen")     style.mixBlendMode = Style::BlendMode::Screen;
-        else if (v == "overlay")    style.mixBlendMode = Style::BlendMode::Overlay;
-        else if (v == "darken")     style.mixBlendMode = Style::BlendMode::Darken;
-        else if (v == "lighten")    style.mixBlendMode = Style::BlendMode::Lighten;
-        else if (v == "color-dodge")style.mixBlendMode = Style::BlendMode::ColorDodge;
-        else if (v == "color-burn") style.mixBlendMode = Style::BlendMode::ColorBurn;
-        else if (v == "hard-light") style.mixBlendMode = Style::BlendMode::HardLight;
-        else if (v == "soft-light") style.mixBlendMode = Style::BlendMode::SoftLight;
-        else if (v == "difference") style.mixBlendMode = Style::BlendMode::Difference;
-        else if (v == "exclusion")  style.mixBlendMode = Style::BlendMode::Exclusion;
-        else if (v == "hue")        style.mixBlendMode = Style::BlendMode::Hue;
-        else if (v == "saturation") style.mixBlendMode = Style::BlendMode::Saturation;
-        else if (v == "color")      style.mixBlendMode = Style::BlendMode::Color;
-        else if (v == "luminosity") style.mixBlendMode = Style::BlendMode::Luminosity;
-        else { style.mixBlendMode = Style::BlendMode::Normal; style.hasMixBlendMode = (v != "normal"); }
+        style.rare().hasMixBlendMode = true;
+        if (v == "multiply")        style.rare().mixBlendMode = Style::BlendMode::Multiply;
+        else if (v == "screen")     style.rare().mixBlendMode = Style::BlendMode::Screen;
+        else if (v == "overlay")    style.rare().mixBlendMode = Style::BlendMode::Overlay;
+        else if (v == "darken")     style.rare().mixBlendMode = Style::BlendMode::Darken;
+        else if (v == "lighten")    style.rare().mixBlendMode = Style::BlendMode::Lighten;
+        else if (v == "color-dodge")style.rare().mixBlendMode = Style::BlendMode::ColorDodge;
+        else if (v == "color-burn") style.rare().mixBlendMode = Style::BlendMode::ColorBurn;
+        else if (v == "hard-light") style.rare().mixBlendMode = Style::BlendMode::HardLight;
+        else if (v == "soft-light") style.rare().mixBlendMode = Style::BlendMode::SoftLight;
+        else if (v == "difference") style.rare().mixBlendMode = Style::BlendMode::Difference;
+        else if (v == "exclusion")  style.rare().mixBlendMode = Style::BlendMode::Exclusion;
+        else if (v == "hue")        style.rare().mixBlendMode = Style::BlendMode::Hue;
+        else if (v == "saturation") style.rare().mixBlendMode = Style::BlendMode::Saturation;
+        else if (v == "color")      style.rare().mixBlendMode = Style::BlendMode::Color;
+        else if (v == "luminosity") style.rare().mixBlendMode = Style::BlendMode::Luminosity;
+        else { style.rare().mixBlendMode = Style::BlendMode::Normal; style.rare().hasMixBlendMode = (v != "normal"); }
     } else if (name == "isolation") {
         std::string v = lowerAscii(trim(value));
-        style.hasIsolation = true;
-        style.isolation = (v == "isolate") ? Style::Isolation::Isolate : Style::Isolation::Auto;
+        style.rare().hasIsolation = true;
+        style.rare().isolation = (v == "isolate") ? Style::Isolation::Isolate : Style::Isolation::Auto;
     } else if (name == "background-blend-mode") {
         std::string v = lowerAscii(trim(value));
-        style.hasBackgroundBlendMode = true;
-        if (v == "multiply")        style.backgroundBlendMode = Style::BlendMode::Multiply;
-        else if (v == "screen")     style.backgroundBlendMode = Style::BlendMode::Screen;
-        else if (v == "overlay")    style.backgroundBlendMode = Style::BlendMode::Overlay;
-        else if (v == "darken")     style.backgroundBlendMode = Style::BlendMode::Darken;
-        else if (v == "lighten")    style.backgroundBlendMode = Style::BlendMode::Lighten;
-        else if (v == "color-dodge")style.backgroundBlendMode = Style::BlendMode::ColorDodge;
-        else if (v == "color-burn") style.backgroundBlendMode = Style::BlendMode::ColorBurn;
-        else if (v == "hard-light") style.backgroundBlendMode = Style::BlendMode::HardLight;
-        else if (v == "soft-light") style.backgroundBlendMode = Style::BlendMode::SoftLight;
-        else if (v == "difference") style.backgroundBlendMode = Style::BlendMode::Difference;
-        else if (v == "exclusion")  style.backgroundBlendMode = Style::BlendMode::Exclusion;
-        else if (v == "hue")        style.backgroundBlendMode = Style::BlendMode::Hue;
-        else if (v == "saturation") style.backgroundBlendMode = Style::BlendMode::Saturation;
-        else if (v == "color")      style.backgroundBlendMode = Style::BlendMode::Color;
-        else if (v == "luminosity") style.backgroundBlendMode = Style::BlendMode::Luminosity;
-        else                        style.backgroundBlendMode = Style::BlendMode::Normal;
+        style.rare().hasBackgroundBlendMode = true;
+        if (v == "multiply")        style.rare().backgroundBlendMode = Style::BlendMode::Multiply;
+        else if (v == "screen")     style.rare().backgroundBlendMode = Style::BlendMode::Screen;
+        else if (v == "overlay")    style.rare().backgroundBlendMode = Style::BlendMode::Overlay;
+        else if (v == "darken")     style.rare().backgroundBlendMode = Style::BlendMode::Darken;
+        else if (v == "lighten")    style.rare().backgroundBlendMode = Style::BlendMode::Lighten;
+        else if (v == "color-dodge")style.rare().backgroundBlendMode = Style::BlendMode::ColorDodge;
+        else if (v == "color-burn") style.rare().backgroundBlendMode = Style::BlendMode::ColorBurn;
+        else if (v == "hard-light") style.rare().backgroundBlendMode = Style::BlendMode::HardLight;
+        else if (v == "soft-light") style.rare().backgroundBlendMode = Style::BlendMode::SoftLight;
+        else if (v == "difference") style.rare().backgroundBlendMode = Style::BlendMode::Difference;
+        else if (v == "exclusion")  style.rare().backgroundBlendMode = Style::BlendMode::Exclusion;
+        else if (v == "hue")        style.rare().backgroundBlendMode = Style::BlendMode::Hue;
+        else if (v == "saturation") style.rare().backgroundBlendMode = Style::BlendMode::Saturation;
+        else if (v == "color")      style.rare().backgroundBlendMode = Style::BlendMode::Color;
+        else if (v == "luminosity") style.rare().backgroundBlendMode = Style::BlendMode::Luminosity;
+        else                        style.rare().backgroundBlendMode = Style::BlendMode::Normal;
     } else if (name == "scroll-snap-type") {
-        style.scrollSnapType = value;
-        style.hasScrollSnapType = (value != "none" && !value.empty());
+        style.rare().scrollSnapType = value;
+        style.rare().hasScrollSnapType = (value != "none" && !value.empty());
     } else if (name == "scroll-snap-align") {
-        style.scrollSnapAlign = value;
-        style.hasScrollSnapAlign = (value != "none" && !value.empty());
+        style.rare().scrollSnapAlign = value;
+        style.rare().hasScrollSnapAlign = (value != "none" && !value.empty());
     } else if (name == "scroll-snap-stop") {
-        style.scrollSnapStop = lowerAscii(trim(value));
+        style.rare().scrollSnapStop = lowerAscii(trim(value));
     } else if (name == "scroll-padding") {
-        style.scrollPadding = parseEdgeInsets(value, emBase);
-        style.hasScrollPadding = true;
+        style.rare().scrollPadding = parseEdgeInsets(value, emBase);
+        style.rare().hasScrollPadding = true;
     } else if (name == "scroll-padding-top") {
-        style.scrollPadding.top = parseLengthPixels(value, emBase);
-        style.hasScrollPadding = true;
+        style.rare().scrollPadding.top = parseLengthPixels(value, emBase);
+        style.rare().hasScrollPadding = true;
     } else if (name == "scroll-padding-right") {
-        style.scrollPadding.right = parseLengthPixels(value, emBase);
-        style.hasScrollPadding = true;
+        style.rare().scrollPadding.right = parseLengthPixels(value, emBase);
+        style.rare().hasScrollPadding = true;
     } else if (name == "scroll-padding-bottom") {
-        style.scrollPadding.bottom = parseLengthPixels(value, emBase);
-        style.hasScrollPadding = true;
+        style.rare().scrollPadding.bottom = parseLengthPixels(value, emBase);
+        style.rare().hasScrollPadding = true;
     } else if (name == "scroll-padding-left") {
-        style.scrollPadding.left = parseLengthPixels(value, emBase);
-        style.hasScrollPadding = true;
+        style.rare().scrollPadding.left = parseLengthPixels(value, emBase);
+        style.rare().hasScrollPadding = true;
     } else if (name == "scroll-margin") {
-        style.scrollMargin = parseEdgeInsets(value, emBase);
-        style.hasScrollMargin = true;
+        style.rare().scrollMargin = parseEdgeInsets(value, emBase);
+        style.rare().hasScrollMargin = true;
     } else if (name == "scroll-margin-top") {
-        style.scrollMargin.top = parseLengthPixels(value, emBase);
-        style.hasScrollMargin = true;
+        style.rare().scrollMargin.top = parseLengthPixels(value, emBase);
+        style.rare().hasScrollMargin = true;
     } else if (name == "scroll-margin-right") {
-        style.scrollMargin.right = parseLengthPixels(value, emBase);
-        style.hasScrollMargin = true;
+        style.rare().scrollMargin.right = parseLengthPixels(value, emBase);
+        style.rare().hasScrollMargin = true;
     } else if (name == "scroll-margin-bottom") {
-        style.scrollMargin.bottom = parseLengthPixels(value, emBase);
-        style.hasScrollMargin = true;
+        style.rare().scrollMargin.bottom = parseLengthPixels(value, emBase);
+        style.rare().hasScrollMargin = true;
     } else if (name == "scroll-margin-left") {
-        style.scrollMargin.left = parseLengthPixels(value, emBase);
-        style.hasScrollMargin = true;
+        style.rare().scrollMargin.left = parseLengthPixels(value, emBase);
+        style.rare().hasScrollMargin = true;
     } else if (name == "overscroll-behavior") {
         std::string v = lowerAscii(trim(value));
-        style.hasOverscrollBehavior = true;
+        style.rare().hasOverscrollBehavior = true;
         auto parseOB = [](const std::string& s) -> Style::OverscrollBehavior {
             if (s == "contain") return Style::OverscrollBehavior::Contain;
             if (s == "none") return Style::OverscrollBehavior::None;
@@ -410,54 +410,54 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
         };
         std::istringstream iss(v); std::string t1, t2;
         iss >> t1; iss >> t2;
-        style.overscrollBehaviorX = parseOB(t1);
-        style.overscrollBehaviorY = t2.empty() ? style.overscrollBehaviorX : parseOB(t2);
+        style.rare().overscrollBehaviorX = parseOB(t1);
+        style.rare().overscrollBehaviorY = t2.empty() ? style.rare().overscrollBehaviorX : parseOB(t2);
     } else if (name == "overscroll-behavior-x") {
         std::string v = lowerAscii(trim(value));
-        style.hasOverscrollBehavior = true;
-        if (v == "contain") style.overscrollBehaviorX = Style::OverscrollBehavior::Contain;
-        else if (v == "none") style.overscrollBehaviorX = Style::OverscrollBehavior::None;
-        else style.overscrollBehaviorX = Style::OverscrollBehavior::Auto;
+        style.rare().hasOverscrollBehavior = true;
+        if (v == "contain") style.rare().overscrollBehaviorX = Style::OverscrollBehavior::Contain;
+        else if (v == "none") style.rare().overscrollBehaviorX = Style::OverscrollBehavior::None;
+        else style.rare().overscrollBehaviorX = Style::OverscrollBehavior::Auto;
     } else if (name == "overscroll-behavior-y") {
         std::string v = lowerAscii(trim(value));
-        style.hasOverscrollBehavior = true;
-        if (v == "contain") style.overscrollBehaviorY = Style::OverscrollBehavior::Contain;
-        else if (v == "none") style.overscrollBehaviorY = Style::OverscrollBehavior::None;
-        else style.overscrollBehaviorY = Style::OverscrollBehavior::Auto;
+        style.rare().hasOverscrollBehavior = true;
+        if (v == "contain") style.rare().overscrollBehaviorY = Style::OverscrollBehavior::Contain;
+        else if (v == "none") style.rare().overscrollBehaviorY = Style::OverscrollBehavior::None;
+        else style.rare().overscrollBehaviorY = Style::OverscrollBehavior::Auto;
     } else if (name == "scrollbar-color") {
         std::string v = trim(value);
         if (lowerAscii(v) == "auto") {
-            style.hasScrollbarColor = false;
+            style.rare().hasScrollbarColor = false;
         } else {
             // scrollbar-color: <thumb-color> <track-color>
             auto tokens = splitColorTokens(functionInner("(" + v + ")"));
             if (tokens.size() >= 2) {
-                style.scrollbarThumbColor = parseColor(tokens[0]);
-                style.scrollbarTrackColor = parseColor(tokens[1]);
-                style.hasScrollbarColor = true;
+                style.rare().scrollbarThumbColor = parseColor(tokens[0]);
+                style.rare().scrollbarTrackColor = parseColor(tokens[1]);
+                style.rare().hasScrollbarColor = true;
             } else if (tokens.size() == 1) {
-                style.scrollbarThumbColor = parseColor(tokens[0]);
-                style.scrollbarTrackColor = parseColor(tokens[0]);
-                style.hasScrollbarColor = true;
+                style.rare().scrollbarThumbColor = parseColor(tokens[0]);
+                style.rare().scrollbarTrackColor = parseColor(tokens[0]);
+                style.rare().hasScrollbarColor = true;
             }
         }
     } else if (name == "scrollbar-width") {
         std::string v = lowerAscii(trim(value));
-        style.hasScrollbarWidth = true;
-        if (v == "thin") style.scrollbarWidth = Style::ScrollbarWidth::Thin;
-        else if (v == "none") style.scrollbarWidth = Style::ScrollbarWidth::None;
-        else style.scrollbarWidth = Style::ScrollbarWidth::Auto;
+        style.rare().hasScrollbarWidth = true;
+        if (v == "thin") style.rare().scrollbarWidth = Style::ScrollbarWidth::Thin;
+        else if (v == "none") style.rare().scrollbarWidth = Style::ScrollbarWidth::None;
+        else style.rare().scrollbarWidth = Style::ScrollbarWidth::Auto;
     } else if (name == "overflow-anchor") {
         std::string v = lowerAscii(trim(value));
-        style.hasOverflowAnchor = true;
-        style.overflowAnchor = (v == "none") ? Style::OverflowAnchor::None : Style::OverflowAnchor::Auto;
+        style.rare().hasOverflowAnchor = true;
+        style.rare().overflowAnchor = (v == "none") ? Style::OverflowAnchor::None : Style::OverflowAnchor::Auto;
     } else if (name == "scrollbar-gutter") {
-        style.scrollbarGutter = lowerAscii(trim(value));
-        style.hasScrollbarGutter = !style.scrollbarGutter.empty() && style.scrollbarGutter != "auto";
+        style.rare().scrollbarGutter = lowerAscii(trim(value));
+        style.rare().hasScrollbarGutter = !style.rare().scrollbarGutter.empty() && style.rare().scrollbarGutter != "auto";
     } else if (name == "scroll-behavior") {
         std::string v = lowerAscii(trim(value));
-        style.hasScrollBehavior = true;
-        style.scrollBehavior = (v == "smooth") ? Style::ScrollBehavior::Smooth : Style::ScrollBehavior::Auto;
+        style.rare().hasScrollBehavior = true;
+        style.rare().scrollBehavior = (v == "smooth") ? Style::ScrollBehavior::Smooth : Style::ScrollBehavior::Auto;
     } else if (name == "border-radius") {
         style.borderRadius = parseBorderRadius(value, emBase);
     } else if (name == "border") {
@@ -1152,27 +1152,27 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             tfs.push_back(tf);
             behaviors.push_back(behavior);
         }
-        style.transitionProperty         = std::move(props);
-        style.transitionDurations        = std::move(durations);
-        style.transitionDelays           = std::move(delays);
-        style.transitionTimingFunctions  = std::move(tfs);
-        style.transitionBehavior         = std::move(behaviors);
-        if (!style.transitionDurations.empty()) {
-            style.transitionDuration = style.transitionDurations[0];
+        style.rare().transitionProperty         = std::move(props);
+        style.rare().transitionDurations        = std::move(durations);
+        style.rare().transitionDelays           = std::move(delays);
+        style.rare().transitionTimingFunctions  = std::move(tfs);
+        style.rare().transitionBehavior         = std::move(behaviors);
+        if (!style.rare().transitionDurations.empty()) {
+            style.transitionDuration = style.rare().transitionDurations[0];
         }
     } else if (name == "transition-property") {
-        style.transitionProperty = parseTransitionPropertyList(value);
+        style.rare().transitionProperty = parseTransitionPropertyList(value);
     } else if (name == "transition-duration") {
-        style.transitionDurations = parseDurationList(value);
-        if (!style.transitionDurations.empty()) {
-            style.transitionDuration = style.transitionDurations[0];
+        style.rare().transitionDurations = parseDurationList(value);
+        if (!style.rare().transitionDurations.empty()) {
+            style.transitionDuration = style.rare().transitionDurations[0];
         }
     } else if (name == "transition-delay") {
-        style.transitionDelays = parseDurationList(value);
+        style.rare().transitionDelays = parseDurationList(value);
     } else if (name == "transition-timing-function") {
-        style.transitionTimingFunctions = parseTimingFunctionList(value);
+        style.rare().transitionTimingFunctions = parseTimingFunctionList(value);
     } else if (name == "transition-behavior") {
-        style.transitionBehavior = parseTransitionBehaviorList(value);
+        style.rare().transitionBehavior = parseTransitionBehaviorList(value);
     } else if (name == "animation") {
         auto parts = splitTopLevel(value, ',');
         std::vector<std::string> names;
@@ -1256,39 +1256,39 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             tfs.push_back(tf);
             compositions.push_back(comp);
         }
-        style.animationName           = std::move(names);
-        style.animationDuration       = std::move(durations);
-        style.animationDelay          = std::move(delays);
-        style.animationIterationCount = std::move(iterationCounts);
-        style.animationDirection      = std::move(directions);
-        style.animationFillMode       = std::move(fillModes);
-        style.animationPlayState      = std::move(playStates);
-        style.animationTimingFunction = std::move(tfs);
-        style.animationComposition    = std::move(compositions);
+        style.rare().animationName           = std::move(names);
+        style.rare().animationDuration       = std::move(durations);
+        style.rare().animationDelay          = std::move(delays);
+        style.rare().animationIterationCount = std::move(iterationCounts);
+        style.rare().animationDirection      = std::move(directions);
+        style.rare().animationFillMode       = std::move(fillModes);
+        style.rare().animationPlayState      = std::move(playStates);
+        style.rare().animationTimingFunction = std::move(tfs);
+        style.rare().animationComposition    = std::move(compositions);
     } else if (name == "animation-name") {
-        style.animationName = parseAnimationNameList(value);
+        style.rare().animationName = parseAnimationNameList(value);
     } else if (name == "animation-duration") {
-        style.animationDuration = parseDurationList(value);
+        style.rare().animationDuration = parseDurationList(value);
     } else if (name == "animation-delay") {
-        style.animationDelay = parseDurationList(value);
+        style.rare().animationDelay = parseDurationList(value);
     } else if (name == "animation-iteration-count") {
-        style.animationIterationCount.clear();
+        style.rare().animationIterationCount.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
             std::string s = trim(part);
             for (char& c : s) c = (char)std::tolower((unsigned char)c);
-            if (s == "infinite") style.animationIterationCount.push_back(-1.0f);
-            else                 style.animationIterationCount.push_back(parseFloat(s));
+            if (s == "infinite") style.rare().animationIterationCount.push_back(-1.0f);
+            else                 style.rare().animationIterationCount.push_back(parseFloat(s));
         }
     } else if (name == "animation-direction") {
-        style.animationDirection = parseAnimationDirectionList(value);
+        style.rare().animationDirection = parseAnimationDirectionList(value);
     } else if (name == "animation-fill-mode") {
-        style.animationFillMode = parseAnimationFillModeList(value);
+        style.rare().animationFillMode = parseAnimationFillModeList(value);
     } else if (name == "animation-play-state") {
-        style.animationPlayState = parseAnimationPlayStateList(value);
+        style.rare().animationPlayState = parseAnimationPlayStateList(value);
     } else if (name == "animation-timing-function") {
-        style.animationTimingFunction = parseTimingFunctionList(value);
+        style.rare().animationTimingFunction = parseTimingFunctionList(value);
     } else if (name == "animation-composition") {
-        style.animationComposition = parseAnimationCompositionList(value);
+        style.rare().animationComposition = parseAnimationCompositionList(value);
     } else if (name == "position") {
         if (value == "relative") style.position = Position::Relative;
         else if (value == "absolute") style.position = Position::Absolute;
@@ -1632,191 +1632,191 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
 // -- mergePropertyPart3: scroll-driven animations + timeline properties --
 void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "animation-timeline") {
-        style.animationTimeline.clear();
+        style.rare().animationTimeline.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
-            style.animationTimeline.push_back(trim(part));
+            style.rare().animationTimeline.push_back(trim(part));
         }
-        style.hasAnimationTimeline = !style.animationTimeline.empty();
+        style.rare().hasAnimationTimeline = !style.rare().animationTimeline.empty();
     } else if (name == "animation-range" || name == "animation-range-start") {
         if (name == "animation-range") {
             auto parts = splitTopLevel(value, ' ');
-            style.animationRangeStart = trim(parts.size() > 0 ? parts[0] : value);
-            style.animationRangeEnd   = parts.size() > 1 ? trim(parts[1]) : "normal";
+            style.rare().animationRangeStart = trim(parts.size() > 0 ? parts[0] : value);
+            style.rare().animationRangeEnd   = parts.size() > 1 ? trim(parts[1]) : "normal";
         } else {
-            style.animationRangeStart = trim(value);
+            style.rare().animationRangeStart = trim(value);
         }
     } else if (name == "animation-range-end") {
-        style.animationRangeEnd = trim(value);
+        style.rare().animationRangeEnd = trim(value);
     } else if (name == "scroll-timeline") {
-        style.scrollTimelineName.clear();
-        style.scrollTimelineAxis.clear();
+        style.rare().scrollTimelineName.clear();
+        style.rare().scrollTimelineAxis.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
             std::string s = trim(part);
             std::istringstream iss(s);
             std::string n, a;
             iss >> n; iss >> a;
-            style.scrollTimelineName.push_back(n);
-            style.scrollTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
+            style.rare().scrollTimelineName.push_back(n);
+            style.rare().scrollTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
         }
-        style.hasScrollTimeline = !style.scrollTimelineName.empty();
+        style.rare().hasScrollTimeline = !style.rare().scrollTimelineName.empty();
     } else if (name == "scroll-timeline-name") {
-        style.scrollTimelineName.clear();
+        style.rare().scrollTimelineName.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
-            style.scrollTimelineName.push_back(trim(part));
+            style.rare().scrollTimelineName.push_back(trim(part));
         }
-        style.hasScrollTimeline = !style.scrollTimelineName.empty();
+        style.rare().hasScrollTimeline = !style.rare().scrollTimelineName.empty();
     } else if (name == "scroll-timeline-axis") {
-        style.scrollTimelineAxis.clear();
+        style.rare().scrollTimelineAxis.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
-            style.scrollTimelineAxis.push_back(lowerAscii(trim(part)));
+            style.rare().scrollTimelineAxis.push_back(lowerAscii(trim(part)));
         }
     } else if (name == "view-timeline") {
-        style.viewTimelineName.clear();
-        style.viewTimelineAxis.clear();
+        style.rare().viewTimelineName.clear();
+        style.rare().viewTimelineAxis.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
             std::string s = trim(part);
             std::istringstream iss(s);
             std::string n, a;
             iss >> n; iss >> a;
-            style.viewTimelineName.push_back(n);
-            style.viewTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
+            style.rare().viewTimelineName.push_back(n);
+            style.rare().viewTimelineAxis.push_back(a.empty() ? "block" : lowerAscii(a));
         }
-        style.hasViewTimeline = !style.viewTimelineName.empty();
+        style.rare().hasViewTimeline = !style.rare().viewTimelineName.empty();
     } else if (name == "view-timeline-name") {
-        style.viewTimelineName.clear();
+        style.rare().viewTimelineName.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
-            style.viewTimelineName.push_back(trim(part));
+            style.rare().viewTimelineName.push_back(trim(part));
         }
-        style.hasViewTimeline = !style.viewTimelineName.empty();
+        style.rare().hasViewTimeline = !style.rare().viewTimelineName.empty();
     } else if (name == "view-timeline-axis") {
-        style.viewTimelineAxis.clear();
+        style.rare().viewTimelineAxis.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
-            style.viewTimelineAxis.push_back(lowerAscii(trim(part)));
+            style.rare().viewTimelineAxis.push_back(lowerAscii(trim(part)));
         }
     } else if (name == "view-timeline-inset") {
-        style.viewTimelineInset = trim(value);
+        style.rare().viewTimelineInset = trim(value);
     } else if (name == "timeline-scope") {
-        style.timelineScope.clear();
+        style.rare().timelineScope.clear();
         if (lowerAscii(trim(value)) != "none") {
             for (const auto& part : splitTopLevel(value, ',')) {
-                style.timelineScope.push_back(trim(part));
+                style.rare().timelineScope.push_back(trim(part));
             }
         }
-        style.hasTimelineScope = !style.timelineScope.empty();
+        style.rare().hasTimelineScope = !style.rare().timelineScope.empty();
     } else if (name == "font-variant-caps") {
-        style.fontVariantCaps = lowerAscii(trim(value));
-        style.hasFontVariantCaps = (style.fontVariantCaps != "normal");
+        style.rare().fontVariantCaps = lowerAscii(trim(value));
+        style.rare().hasFontVariantCaps = (style.rare().fontVariantCaps != "normal");
     } else if (name == "font-variant-numeric") {
-        style.fontVariantNumeric = lowerAscii(trim(value));
-        style.hasFontVariantNumeric = (style.fontVariantNumeric != "normal");
+        style.rare().fontVariantNumeric = lowerAscii(trim(value));
+        style.rare().hasFontVariantNumeric = (style.rare().fontVariantNumeric != "normal");
     } else if (name == "font-variant-ligatures") {
-        style.fontVariantLigatures = lowerAscii(trim(value));
-        style.hasFontVariantLigatures = (style.fontVariantLigatures != "normal");
+        style.rare().fontVariantLigatures = lowerAscii(trim(value));
+        style.rare().hasFontVariantLigatures = (style.rare().fontVariantLigatures != "normal");
     } else if (name == "font-variant-east-asian") {
-        style.fontVariantEastAsian = lowerAscii(trim(value));
-        style.hasFontVariantEastAsian = (style.fontVariantEastAsian != "normal");
+        style.rare().fontVariantEastAsian = lowerAscii(trim(value));
+        style.rare().hasFontVariantEastAsian = (style.rare().fontVariantEastAsian != "normal");
     } else if (name == "font-variant-position") {
-        style.fontVariantPosition = lowerAscii(trim(value));
+        style.rare().fontVariantPosition = lowerAscii(trim(value));
     } else if (name == "font-variant-alternates") {
-        style.fontVariantAlternates = trim(value);
+        style.rare().fontVariantAlternates = trim(value);
     } else if (name == "font-variant") {
         // font-variant shorthand ? distribute to sub-properties
         std::string v = lowerAscii(trim(value));
         if (v == "normal" || v == "none") {
-            style.fontVariantCaps = "normal";
-            style.fontVariantNumeric = "normal";
-            style.fontVariantLigatures = v;
-            style.fontVariantEastAsian = "normal";
+            style.rare().fontVariantCaps = "normal";
+            style.rare().fontVariantNumeric = "normal";
+            style.rare().fontVariantLigatures = v;
+            style.rare().fontVariantEastAsian = "normal";
         } else if (v == "small-caps" || v == "all-small-caps" || v == "petite-caps" ||
                    v == "all-petite-caps" || v == "unicase" || v == "titling-caps") {
-            style.fontVariantCaps = v;
-            style.hasFontVariantCaps = true;
+            style.rare().fontVariantCaps = v;
+            style.rare().hasFontVariantCaps = true;
         } else {
-            style.fontVariantCaps = v; // best-effort
+            style.rare().fontVariantCaps = v; // best-effort
         }
     } else if (name == "font-feature-settings") {
-        style.fontFeatureSettings = trim(value);
-        style.hasFontFeatureSettings = (lowerAscii(style.fontFeatureSettings) != "normal");
+        style.rare().fontFeatureSettings = trim(value);
+        style.rare().hasFontFeatureSettings = (lowerAscii(style.rare().fontFeatureSettings) != "normal");
     } else if (name == "font-variation-settings") {
-        style.fontVariationSettings = trim(value);
-        style.hasFontVariationSettings = (lowerAscii(style.fontVariationSettings) != "normal");
+        style.rare().fontVariationSettings = trim(value);
+        style.rare().hasFontVariationSettings = (lowerAscii(style.rare().fontVariationSettings) != "normal");
     } else if (name == "font-optical-sizing") {
-        style.fontOpticalSizing = lowerAscii(trim(value));
-        style.hasFontOpticalSizing = (style.fontOpticalSizing != "auto");
+        style.rare().fontOpticalSizing = lowerAscii(trim(value));
+        style.rare().hasFontOpticalSizing = (style.rare().fontOpticalSizing != "auto");
     } else if (name == "font-palette") {
-        style.fontPalette = trim(value);
+        style.rare().fontPalette = trim(value);
     } else if (name == "font-stretch") {
-        style.fontStretch = lowerAscii(trim(value));
-        style.hasFontStretch = (style.fontStretch != "normal");
+        style.rare().fontStretch = lowerAscii(trim(value));
+        style.rare().hasFontStretch = (style.rare().fontStretch != "normal");
     } else if (name == "font-synthesis") {
-        style.fontSynthesis = lowerAscii(trim(value));
+        style.rare().fontSynthesis = lowerAscii(trim(value));
     } else if (name == "font-language-override") {
-        style.fontLanguageOverride = trim(value);
+        style.rare().fontLanguageOverride = trim(value);
     } else if (name == "tab-size") {
-        style.tabSize = parseLengthPixels(value, emBase);
-        if (style.tabSize == 0.0f) {
+        style.rare().tabSize = parseLengthPixels(value, emBase);
+        if (style.rare().tabSize == 0.0f) {
             // Bare integer (number of spaces)
-            try { style.tabSize = std::stof(trim(value)); } catch (...) {}
+            try { style.rare().tabSize = std::stof(trim(value)); } catch (...) {}
         }
-        style.hasTabSize = true;
+        style.rare().hasTabSize = true;
     } else if (name == "hyphens") {
-        style.hyphens = lowerAscii(trim(value));
-        style.hasHyphens = (style.hyphens != "manual");
+        style.rare().hyphens = lowerAscii(trim(value));
+        style.rare().hasHyphens = (style.rare().hyphens != "manual");
     } else if (name == "line-break") {
-        style.lineBreak = lowerAscii(trim(value));
-        style.hasLineBreak = (style.lineBreak != "auto");
+        style.rare().lineBreak = lowerAscii(trim(value));
+        style.rare().hasLineBreak = (style.rare().lineBreak != "auto");
     } else if (name == "overflow-wrap" || name == "word-wrap") {
-        style.overflowWrap = lowerAscii(trim(value));
-        style.hasOverflowWrap = (style.overflowWrap != "normal");
+        style.rare().overflowWrap = lowerAscii(trim(value));
+        style.rare().hasOverflowWrap = (style.rare().overflowWrap != "normal");
     } else if (name == "text-justify") {
-        style.textJustify = lowerAscii(trim(value));
-        style.hasTextJustify = (style.textJustify != "auto");
+        style.rare().textJustify = lowerAscii(trim(value));
+        style.rare().hasTextJustify = (style.rare().textJustify != "auto");
     } else if (name == "text-indent") {
-        style.textIndent = parseLengthPixels(value, emBase);
-        style.hasTextIndent = true;
+        style.rare().textIndent = parseLengthPixels(value, emBase);
+        style.rare().hasTextIndent = true;
     } else if (name == "hanging-punctuation") {
-        style.hangingPunctuation = lowerAscii(trim(value));
-        style.hasHangingPunctuation = (style.hangingPunctuation != "none");
+        style.rare().hangingPunctuation = lowerAscii(trim(value));
+        style.rare().hasHangingPunctuation = (style.rare().hangingPunctuation != "none");
     } else if (name == "accent-color") {
         std::string v = lowerAscii(trim(value));
-        if (v == "auto") { style.hasAccentColor = false; }
-        else { style.accentColor = parseColor(value); style.hasAccentColor = true; }
+        if (v == "auto") { style.rare().hasAccentColor = false; }
+        else { style.rare().accentColor = parseColor(value); style.rare().hasAccentColor = true; }
     } else if (name == "caret-color") {
         std::string v = lowerAscii(trim(value));
-        if (v == "auto") { style.hasCaretColor = false; }
-        else { style.caretColor = parseColor(value); style.hasCaretColor = true; }
+        if (v == "auto") { style.rare().hasCaretColor = false; }
+        else { style.rare().caretColor = parseColor(value); style.rare().hasCaretColor = true; }
     } else if (name == "color-scheme") {
-        style.colorScheme = lowerAscii(trim(value));
-        style.hasColorScheme = (style.colorScheme != "normal" && !style.colorScheme.empty());
+        style.rare().colorScheme = lowerAscii(trim(value));
+        style.rare().hasColorScheme = (style.rare().colorScheme != "normal" && !style.rare().colorScheme.empty());
     } else if (name == "inert") {
-        style.inert = (lowerAscii(trim(value)) != "false" && !value.empty());
+        style.rare().inert = (lowerAscii(trim(value)) != "false" && !value.empty());
     } else if (name == "field-sizing") {
-        style.fieldSizing = lowerAscii(trim(value));
-        style.hasFieldSizing = !style.fieldSizing.empty();
+        style.rare().fieldSizing = lowerAscii(trim(value));
+        style.rare().hasFieldSizing = !style.rare().fieldSizing.empty();
     } else if (name == "image-rendering") {
-        style.imageRendering = lowerAscii(trim(value));
-        style.hasImageRendering = (style.imageRendering != "auto");
+        style.rare().imageRendering = lowerAscii(trim(value));
+        style.rare().hasImageRendering = (style.rare().imageRendering != "auto");
     } else if (name == "image-orientation") {
-        style.imageOrientation = lowerAscii(trim(value));
-        style.hasImageOrientation = (style.imageOrientation != "from-image");
+        style.rare().imageOrientation = lowerAscii(trim(value));
+        style.rare().hasImageOrientation = (style.rare().imageOrientation != "from-image");
     } else if (name == "object-view-box") {
-        style.objectViewBox = trim(value);
-        style.hasObjectViewBox = (lowerAscii(style.objectViewBox) != "none" && !style.objectViewBox.empty());
+        style.rare().objectViewBox = trim(value);
+        style.rare().hasObjectViewBox = (lowerAscii(style.rare().objectViewBox) != "none" && !style.rare().objectViewBox.empty());
     } else if (name == "touch-action") {
-        style.touchAction = lowerAscii(trim(value));
-        style.hasTouchAction = (style.touchAction != "auto");
+        style.rare().touchAction = lowerAscii(trim(value));
+        style.rare().hasTouchAction = (style.rare().touchAction != "auto");
     } else if (name == "user-select") {
-        style.userSelect = lowerAscii(trim(value));
-        style.hasUserSelect = (style.userSelect != "auto");
+        style.rare().userSelect = lowerAscii(trim(value));
+        style.rare().hasUserSelect = (style.rare().userSelect != "auto");
     } else if (name == "will-change") {
-        style.willChange = trim(value);
-        style.hasWillChange = (lowerAscii(style.willChange) != "auto" && !style.willChange.empty());
+        style.rare().willChange = trim(value);
+        style.rare().hasWillChange = (lowerAscii(style.rare().willChange) != "auto" && !style.rare().willChange.empty());
     } else if (name == "contain-intrinsic-size" || name == "contain-intrinsic-width" || name == "contain-intrinsic-height") {
-        style.containIntrinsicSize = trim(value);
-        style.hasContainIntrinsicSize = (lowerAscii(style.containIntrinsicSize) != "none");
+        style.rare().containIntrinsicSize = trim(value);
+        style.rare().hasContainIntrinsicSize = (lowerAscii(style.rare().containIntrinsicSize) != "none");
     } else if (name == "content-visibility") {
-        style.contentVisibility = lowerAscii(trim(value));
-        style.hasContentVisibility = (style.contentVisibility != "visible");
+        style.rare().contentVisibility = lowerAscii(trim(value));
+        style.rare().hasContentVisibility = (style.rare().contentVisibility != "visible");
     }
 }
 void StyleSheet::mergeHoverProperty(Style& style, const std::string& name, const std::string& value) {

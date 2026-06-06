@@ -302,15 +302,15 @@ void Widget::render(Renderer& renderer) {
     const Style& s = *computedStyle;
 
     // ── Push compositing layer for filter/blend/isolation (Blink cc::PaintOp parity) ──
-    bool needsCompositingLayer = s.hasMixBlendMode || s.hasFilter || s.hasIsolation;
+    bool needsCompositingLayer = s.rare().hasMixBlendMode || s.hasFilter || s.rare().hasIsolation;
     if (needsCompositingLayer && renderer.isRecording()) {
         RenderCommand saveCmd;
         saveCmd.type = RenderCommandType::SaveLayer;
         saveCmd.rect = bounds;
         saveCmd.opacity = s.opacity;
-        saveCmd.blendMode = s.mixBlendMode;
+        saveCmd.blendMode = s.rare().mixBlendMode;
         saveCmd.filterOps = s.filterOperations;
-        saveCmd.isolate   = (s.isolation == Style::Isolation::Isolate);
+        saveCmd.isolate   = (s.rare().isolation == Style::Isolation::Isolate);
         renderer.recordCommand(saveCmd);
     }
 

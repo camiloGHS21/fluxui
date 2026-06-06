@@ -19,8 +19,8 @@ int test_accent_color() {
     auto wx = std::make_shared<Panel>("x"); auto wy = std::make_shared<Panel>("y");
     Style sx = sheet.resolve("x","","panel",{},nullptr,wx.get());
     Style sy = sheet.resolve("y","","panel",{},nullptr,wy.get());
-    CHECK(sx.hasAccentColor); CHECK_NEAR(sx.accentColor.r, 1.0f, 1e-2f);
-    CHECK(!sy.hasAccentColor);
+    CHECK(sx.rare().hasAccentColor); CHECK_NEAR(sx.rare().accentColor.r, 1.0f, 1e-2f);
+    CHECK(!sy.rare().hasAccentColor);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -30,7 +30,7 @@ int test_caret_color() {
     sheet.parse(".x { caret-color: #00ff00; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasCaretColor); CHECK_NEAR(s.caretColor.g, 1.0f, 1e-2f);
+    CHECK(s.rare().hasCaretColor); CHECK_NEAR(s.rare().caretColor.g, 1.0f, 1e-2f);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -41,8 +41,8 @@ int test_color_scheme() {
     auto wa = std::make_shared<Panel>("a"); auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasColorScheme); CHECK(sa.colorScheme == "light dark");
-    CHECK(sb.hasColorScheme); CHECK(sb.colorScheme == "dark");
+    CHECK(sa.rare().hasColorScheme); CHECK(sa.rare().colorScheme == "light dark");
+    CHECK(sb.rare().hasColorScheme); CHECK(sb.rare().colorScheme == "dark");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -52,7 +52,7 @@ int test_field_sizing() {
     sheet.parse(".x { field-sizing: content; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFieldSizing); CHECK(s.fieldSizing == "content");
+    CHECK(s.rare().hasFieldSizing); CHECK(s.rare().fieldSizing == "content");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -63,8 +63,8 @@ int test_image_rendering() {
     auto wa = std::make_shared<Panel>("a"); auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasImageRendering); CHECK(sa.imageRendering == "pixelated");
-    CHECK(sb.hasImageRendering); CHECK(sb.imageRendering == "crisp-edges");
+    CHECK(sa.rare().hasImageRendering); CHECK(sa.rare().imageRendering == "pixelated");
+    CHECK(sb.rare().hasImageRendering); CHECK(sb.rare().imageRendering == "crisp-edges");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -74,7 +74,7 @@ int test_image_orientation() {
     sheet.parse(".x { image-orientation: none; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasImageOrientation); CHECK(s.imageOrientation == "none");
+    CHECK(s.rare().hasImageOrientation); CHECK(s.rare().imageOrientation == "none");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -84,7 +84,7 @@ int test_object_view_box() {
     sheet.parse(".x { object-view-box: inset(25% 25% 25% 25%); }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasObjectViewBox); CHECK(s.objectViewBox.find("inset") != std::string::npos);
+    CHECK(s.rare().hasObjectViewBox); CHECK(s.rare().objectViewBox.find("inset") != std::string::npos);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -94,7 +94,7 @@ int test_touch_action() {
     sheet.parse(".x { touch-action: pan-x pan-y; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasTouchAction); CHECK(s.touchAction == "pan-x pan-y");
+    CHECK(s.rare().hasTouchAction); CHECK(s.rare().touchAction == "pan-x pan-y");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -104,7 +104,7 @@ int test_user_select() {
     sheet.parse(".x { user-select: none; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasUserSelect); CHECK(s.userSelect == "none");
+    CHECK(s.rare().hasUserSelect); CHECK(s.rare().userSelect == "none");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -114,7 +114,7 @@ int test_will_change() {
     sheet.parse(".x { will-change: transform, opacity; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasWillChange); CHECK(s.willChange.find("transform") != std::string::npos);
+    CHECK(s.rare().hasWillChange); CHECK(s.rare().willChange.find("transform") != std::string::npos);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -125,8 +125,8 @@ int test_content_visibility() {
     auto wa = std::make_shared<Panel>("a"); auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasContentVisibility); CHECK(sa.contentVisibility == "auto");
-    CHECK(sb.hasContentVisibility); CHECK(sb.contentVisibility == "hidden");
+    CHECK(sa.rare().hasContentVisibility); CHECK(sa.rare().contentVisibility == "auto");
+    CHECK(sb.rare().hasContentVisibility); CHECK(sb.rare().contentVisibility == "hidden");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -136,7 +136,7 @@ int test_contain_intrinsic_size() {
     sheet.parse(".x { contain-intrinsic-size: auto 300px; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasContainIntrinsicSize); CHECK(s.containIntrinsicSize == "auto 300px");
+    CHECK(s.rare().hasContainIntrinsicSize); CHECK(s.rare().containIntrinsicSize == "auto 300px");
     std::cout << "  PASS" << std::endl; return 0;
 }
 

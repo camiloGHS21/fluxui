@@ -18,8 +18,8 @@ int test_font_variant_caps() {
     sheet.parse(".x { font-variant-caps: small-caps; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontVariantCaps);
-    CHECK(s.fontVariantCaps == "small-caps");
+    CHECK(s.rare().hasFontVariantCaps);
+    CHECK(s.rare().fontVariantCaps == "small-caps");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -29,8 +29,8 @@ int test_font_variant_numeric() {
     sheet.parse(".x { font-variant-numeric: tabular-nums lining-nums; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontVariantNumeric);
-    CHECK(s.fontVariantNumeric.find("tabular-nums") != std::string::npos);
+    CHECK(s.rare().hasFontVariantNumeric);
+    CHECK(s.rare().fontVariantNumeric.find("tabular-nums") != std::string::npos);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -40,8 +40,8 @@ int test_font_variant_ligatures() {
     sheet.parse(".x { font-variant-ligatures: no-common-ligatures; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontVariantLigatures);
-    CHECK(s.fontVariantLigatures == "no-common-ligatures");
+    CHECK(s.rare().hasFontVariantLigatures);
+    CHECK(s.rare().fontVariantLigatures == "no-common-ligatures");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -51,8 +51,8 @@ int test_font_feature_settings() {
     sheet.parse(".x { font-feature-settings: \"smcp\" on, \"liga\" off; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontFeatureSettings);
-    CHECK(s.fontFeatureSettings.find("smcp") != std::string::npos);
+    CHECK(s.rare().hasFontFeatureSettings);
+    CHECK(s.rare().fontFeatureSettings.find("smcp") != std::string::npos);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -62,8 +62,8 @@ int test_font_variation_settings() {
     sheet.parse(".x { font-variation-settings: \"wght\" 700, \"wdth\" 75; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontVariationSettings);
-    CHECK(s.fontVariationSettings.find("wght") != std::string::npos);
+    CHECK(s.rare().hasFontVariationSettings);
+    CHECK(s.rare().fontVariationSettings.find("wght") != std::string::npos);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -73,8 +73,8 @@ int test_font_optical_sizing() {
     sheet.parse(".x { font-optical-sizing: none; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasFontOpticalSizing);
-    CHECK(s.fontOpticalSizing == "none");
+    CHECK(s.rare().hasFontOpticalSizing);
+    CHECK(s.rare().fontOpticalSizing == "none");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -86,8 +86,8 @@ int test_font_stretch() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasFontStretch); CHECK(sa.fontStretch == "condensed");
-    CHECK(sb.hasFontStretch); CHECK(sb.fontStretch == "75%");
+    CHECK(sa.rare().hasFontStretch); CHECK(sa.rare().fontStretch == "condensed");
+    CHECK(sb.rare().hasFontStretch); CHECK(sb.rare().fontStretch == "75%");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -99,8 +99,8 @@ int test_tab_size() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasTabSize); CHECK_NEAR(sa.tabSize, 4.0f, 1e-2f);
-    CHECK(sb.hasTabSize); CHECK_NEAR(sb.tabSize, 32.0f, 1e-2f);
+    CHECK(sa.rare().hasTabSize); CHECK_NEAR(sa.rare().tabSize, 4.0f, 1e-2f);
+    CHECK(sb.rare().hasTabSize); CHECK_NEAR(sb.rare().tabSize, 32.0f, 1e-2f);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -110,7 +110,7 @@ int test_hyphens() {
     sheet.parse(".x { hyphens: auto; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasHyphens); CHECK(s.hyphens == "auto");
+    CHECK(s.rare().hasHyphens); CHECK(s.rare().hyphens == "auto");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -122,8 +122,8 @@ int test_overflow_wrap_and_word_wrap() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasOverflowWrap); CHECK(sa.overflowWrap == "break-word");
-    CHECK(sb.hasOverflowWrap); CHECK(sb.overflowWrap == "anywhere");
+    CHECK(sa.rare().hasOverflowWrap); CHECK(sa.rare().overflowWrap == "break-word");
+    CHECK(sb.rare().hasOverflowWrap); CHECK(sb.rare().overflowWrap == "anywhere");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -133,7 +133,7 @@ int test_text_indent() {
     sheet.parse(".x { text-indent: 2em; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasTextIndent); CHECK_NEAR(s.textIndent, 32.0f, 1.0f); // 2em * 16px emBase default
+    CHECK(s.rare().hasTextIndent); CHECK_NEAR(s.rare().textIndent, 32.0f, 1.0f); // 2em * 16px emBase default
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -143,7 +143,7 @@ int test_text_justify() {
     sheet.parse(".x { text-justify: inter-character; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasTextJustify); CHECK(s.textJustify == "inter-character");
+    CHECK(s.rare().hasTextJustify); CHECK(s.rare().textJustify == "inter-character");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -153,7 +153,7 @@ int test_hanging_punctuation() {
     sheet.parse(".x { hanging-punctuation: first last; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasHangingPunctuation); CHECK(s.hangingPunctuation == "first last");
+    CHECK(s.rare().hasHangingPunctuation); CHECK(s.rare().hangingPunctuation == "first last");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -163,7 +163,7 @@ int test_line_break() {
     sheet.parse(".x { line-break: strict; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasLineBreak); CHECK(s.lineBreak == "strict");
+    CHECK(s.rare().hasLineBreak); CHECK(s.rare().lineBreak == "strict");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -173,7 +173,7 @@ int test_font_palette() {
     sheet.parse(".x { font-palette: --brand; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.fontPalette == "--brand");
+    CHECK(s.rare().fontPalette == "--brand");
     std::cout << "  PASS" << std::endl; return 0;
 }
 

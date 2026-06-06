@@ -56,22 +56,22 @@ static void testParseAnimationShorthand() {
     auto widget = std::make_shared<Panel>("box");
     Style s = sheet.resolve("box", "", "panel", {}, nullptr, widget.get());
 
-    assert(s.animationName.size() == 1);
-    assert(s.animationName[0] == "fadeIn");
-    assert(s.animationDuration.size() == 1);
-    assert(std::abs(s.animationDuration[0] - 0.4f) < 1e-6f);
-    assert(s.animationDelay.size() == 1);
-    assert(std::abs(s.animationDelay[0] - 0.1f) < 1e-6f);
-    assert(s.animationIterationCount.size() == 1);
-    assert(std::abs(s.animationIterationCount[0] - 3.0f) < 1e-6f);
-    assert(s.animationDirection.size() == 1);
-    assert(s.animationDirection[0] == AnimationDirection::Alternate);
-    assert(s.animationFillMode.size() == 1);
-    assert(s.animationFillMode[0] == AnimationFillMode::Both);
-    assert(s.animationPlayState.size() == 1);
-    assert(s.animationPlayState[0] == AnimationPlayState::Paused);
-    assert(s.animationTimingFunction.size() == 1);
-    assert(s.animationTimingFunction[0].kind == TimingFunction::Kind::EaseIn);
+    assert(s.rare().animationName.size() == 1);
+    assert(s.rare().animationName[0] == "fadeIn");
+    assert(s.rare().animationDuration.size() == 1);
+    assert(std::abs(s.rare().animationDuration[0] - 0.4f) < 1e-6f);
+    assert(s.rare().animationDelay.size() == 1);
+    assert(std::abs(s.rare().animationDelay[0] - 0.1f) < 1e-6f);
+    assert(s.rare().animationIterationCount.size() == 1);
+    assert(std::abs(s.rare().animationIterationCount[0] - 3.0f) < 1e-6f);
+    assert(s.rare().animationDirection.size() == 1);
+    assert(s.rare().animationDirection[0] == AnimationDirection::Alternate);
+    assert(s.rare().animationFillMode.size() == 1);
+    assert(s.rare().animationFillMode[0] == AnimationFillMode::Both);
+    assert(s.rare().animationPlayState.size() == 1);
+    assert(s.rare().animationPlayState[0] == AnimationPlayState::Paused);
+    assert(s.rare().animationTimingFunction.size() == 1);
+    assert(s.rare().animationTimingFunction[0].kind == TimingFunction::Kind::EaseIn);
 
     std::cout << "  PASS - shorthand decomposed into all 8 lists." << std::endl;
 }
@@ -87,23 +87,23 @@ static void testParseTransitionShorthand() {
     auto widget = std::make_shared<Panel>("box");
     Style s = sheet.resolve("box", "", "panel", {}, nullptr, widget.get());
 
-    std::cout << "DEBUG: transitionProperty size = " << s.transitionProperty.size() << std::endl;
-    for (size_t i = 0; i < s.transitionProperty.size(); ++i) {
-        std::cout << "DEBUG: transitionProperty[" << i << "] = '" << s.transitionProperty[i] << "'" << std::endl;
+    std::cout << "DEBUG: transitionProperty size = " << s.rare().transitionProperty.size() << std::endl;
+    for (size_t i = 0; i < s.rare().transitionProperty.size(); ++i) {
+        std::cout << "DEBUG: transitionProperty[" << i << "] = '" << s.rare().transitionProperty[i] << "'" << std::endl;
     }
-    assert(s.transitionProperty.size() == 2);
-    assert(s.transitionProperty[0] == "opacity");
-    assert(s.transitionProperty[1] == "transform");
-    assert(std::abs(s.transitionDurations[0] - 0.2f) < 1e-6f);
-    assert(std::abs(s.transitionDurations[1] - 0.4f) < 1e-6f);
-    assert(std::abs(s.transitionDelays[0] - 0.05f) < 1e-6f);
-    assert(std::abs(s.transitionDelays[1] - 0.0f) < 1e-6f);
-    assert(s.transitionTimingFunctions[0].kind == TimingFunction::Kind::EaseInOut);
-    assert(s.transitionTimingFunctions[1].kind == TimingFunction::Kind::CubicBezier);
-    assert(std::abs(s.transitionTimingFunctions[1].params[0] - 0.4f) < 1e-6f);
-    assert(std::abs(s.transitionTimingFunctions[1].params[2] - 0.2f) < 1e-6f);
-    assert(s.transitionBehavior[0] == TransitionBehavior::Normal);
-    assert(s.transitionBehavior[1] == TransitionBehavior::AllowDiscrete);
+    assert(s.rare().transitionProperty.size() == 2);
+    assert(s.rare().transitionProperty[0] == "opacity");
+    assert(s.rare().transitionProperty[1] == "transform");
+    assert(std::abs(s.rare().transitionDurations[0] - 0.2f) < 1e-6f);
+    assert(std::abs(s.rare().transitionDurations[1] - 0.4f) < 1e-6f);
+    assert(std::abs(s.rare().transitionDelays[0] - 0.05f) < 1e-6f);
+    assert(std::abs(s.rare().transitionDelays[1] - 0.0f) < 1e-6f);
+    assert(s.rare().transitionTimingFunctions[0].kind == TimingFunction::Kind::EaseInOut);
+    assert(s.rare().transitionTimingFunctions[1].kind == TimingFunction::Kind::CubicBezier);
+    assert(std::abs(s.rare().transitionTimingFunctions[1].params[0] - 0.4f) < 1e-6f);
+    assert(std::abs(s.rare().transitionTimingFunctions[1].params[2] - 0.2f) < 1e-6f);
+    assert(s.rare().transitionBehavior[0] == TransitionBehavior::Normal);
+    assert(s.rare().transitionBehavior[1] == TransitionBehavior::AllowDiscrete);
 
     // Legacy scalar should be populated from the first duration.
     assert(std::abs(s.transitionDuration - 0.2f) < 1e-6f);
@@ -166,23 +166,23 @@ static void testAnimationSubpropertyParse() {
     auto widget = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x", "", "panel", {}, nullptr, widget.get());
 
-    assert(s.animationName.size() == 2);
-    assert(s.animationName[0] == "spin");
-    assert(s.animationName[1] == "fadeIn");
-    assert(std::abs(s.animationDuration[0] - 1.0f) < 1e-6f);
-    assert(std::abs(s.animationDuration[1] - 0.4f) < 1e-6f);
-    assert(s.animationIterationCount[0] < 0.0f); // infinite
-    assert(std::abs(s.animationIterationCount[1] - 2.0f) < 1e-6f);
-    assert(s.animationDirection[0] == AnimationDirection::Normal);
-    assert(s.animationDirection[1] == AnimationDirection::AlternateReverse);
-    assert(s.animationFillMode[0] == AnimationFillMode::Forwards);
-    assert(s.animationFillMode[1] == AnimationFillMode::Both);
-    assert(s.animationPlayState[0] == AnimationPlayState::Running);
-    assert(s.animationPlayState[1] == AnimationPlayState::Paused);
-    assert(s.animationTimingFunction[0].kind == TimingFunction::Kind::EaseIn);
-    assert(s.animationTimingFunction[1].kind == TimingFunction::Kind::Steps);
-    assert(s.animationTimingFunction[1].stepCount == 3);
-    assert(s.animationComposition[1] == AnimationComposition::Add);
+    assert(s.rare().animationName.size() == 2);
+    assert(s.rare().animationName[0] == "spin");
+    assert(s.rare().animationName[1] == "fadeIn");
+    assert(std::abs(s.rare().animationDuration[0] - 1.0f) < 1e-6f);
+    assert(std::abs(s.rare().animationDuration[1] - 0.4f) < 1e-6f);
+    assert(s.rare().animationIterationCount[0] < 0.0f); // infinite
+    assert(std::abs(s.rare().animationIterationCount[1] - 2.0f) < 1e-6f);
+    assert(s.rare().animationDirection[0] == AnimationDirection::Normal);
+    assert(s.rare().animationDirection[1] == AnimationDirection::AlternateReverse);
+    assert(s.rare().animationFillMode[0] == AnimationFillMode::Forwards);
+    assert(s.rare().animationFillMode[1] == AnimationFillMode::Both);
+    assert(s.rare().animationPlayState[0] == AnimationPlayState::Running);
+    assert(s.rare().animationPlayState[1] == AnimationPlayState::Paused);
+    assert(s.rare().animationTimingFunction[0].kind == TimingFunction::Kind::EaseIn);
+    assert(s.rare().animationTimingFunction[1].kind == TimingFunction::Kind::Steps);
+    assert(s.rare().animationTimingFunction[1].stepCount == 3);
+    assert(s.rare().animationComposition[1] == AnimationComposition::Add);
 
     std::cout << "  PASS - all 9 sub-properties parsed as parallel lists." << std::endl;
 }

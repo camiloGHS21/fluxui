@@ -2059,20 +2059,20 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     auto unresolvedColor = std::move(target.unresolvedColor);
     auto unresolvedBorderColor = std::move(target.unresolvedBorderColor);
     auto unresolvedBackgroundGradient = std::move(target.unresolvedBackgroundGradient);
-    auto animationName              = std::move(target.animationName);
-    auto animationDuration          = std::move(target.animationDuration);
-    auto animationDelay             = std::move(target.animationDelay);
-    auto animationIterationCount    = std::move(target.animationIterationCount);
-    auto animationDirection         = std::move(target.animationDirection);
-    auto animationFillMode          = std::move(target.animationFillMode);
-    auto animationPlayState         = std::move(target.animationPlayState);
-    auto animationTimingFunction    = std::move(target.animationTimingFunction);
-    auto animationComposition       = std::move(target.animationComposition);
-    auto transitionProperty         = std::move(target.transitionProperty);
-    auto transitionDurations        = std::move(target.transitionDurations);
-    auto transitionDelays           = std::move(target.transitionDelays);
-    auto transitionTimingFunctions  = std::move(target.transitionTimingFunctions);
-    auto transitionBehavior         = std::move(target.transitionBehavior);
+    auto animationName              = std::move(target.rare().animationName);
+    auto animationDuration          = std::move(target.rare().animationDuration);
+    auto animationDelay             = std::move(target.rare().animationDelay);
+    auto animationIterationCount    = std::move(target.rare().animationIterationCount);
+    auto animationDirection         = std::move(target.rare().animationDirection);
+    auto animationFillMode          = std::move(target.rare().animationFillMode);
+    auto animationPlayState         = std::move(target.rare().animationPlayState);
+    auto animationTimingFunction    = std::move(target.rare().animationTimingFunction);
+    auto animationComposition       = std::move(target.rare().animationComposition);
+    auto transitionProperty         = std::move(target.rare().transitionProperty);
+    auto transitionDurations        = std::move(target.rare().transitionDurations);
+    auto transitionDelays           = std::move(target.rare().transitionDelays);
+    auto transitionTimingFunctions  = std::move(target.rare().transitionTimingFunctions);
+    auto transitionBehavior         = std::move(target.rare().transitionBehavior);
     target = source;
     target.customProperties = std::move(customProperties);
     target.hoverCustomProperties = std::move(hoverCustomProperties);
@@ -2082,20 +2082,20 @@ static void copyAllNonCustomProperties(Style& target, const Style& source) {
     target.unresolvedColor = std::move(unresolvedColor);
     target.unresolvedBorderColor = std::move(unresolvedBorderColor);
     target.unresolvedBackgroundGradient = std::move(unresolvedBackgroundGradient);
-    target.animationName              = std::move(animationName);
-    target.animationDuration          = std::move(animationDuration);
-    target.animationDelay             = std::move(animationDelay);
-    target.animationIterationCount    = std::move(animationIterationCount);
-    target.animationDirection         = std::move(animationDirection);
-    target.animationFillMode          = std::move(animationFillMode);
-    target.animationPlayState         = std::move(animationPlayState);
-    target.animationTimingFunction    = std::move(animationTimingFunction);
-    target.animationComposition       = std::move(animationComposition);
-    target.transitionProperty         = std::move(transitionProperty);
-    target.transitionDurations        = std::move(transitionDurations);
-    target.transitionDelays           = std::move(transitionDelays);
-    target.transitionTimingFunctions  = std::move(transitionTimingFunctions);
-    target.transitionBehavior         = std::move(transitionBehavior);
+    target.rare().animationName              = std::move(animationName);
+    target.rare().animationDuration          = std::move(animationDuration);
+    target.rare().animationDelay             = std::move(animationDelay);
+    target.rare().animationIterationCount    = std::move(animationIterationCount);
+    target.rare().animationDirection         = std::move(animationDirection);
+    target.rare().animationFillMode          = std::move(animationFillMode);
+    target.rare().animationPlayState         = std::move(animationPlayState);
+    target.rare().animationTimingFunction    = std::move(animationTimingFunction);
+    target.rare().animationComposition       = std::move(animationComposition);
+    target.rare().transitionProperty         = std::move(transitionProperty);
+    target.rare().transitionDurations        = std::move(transitionDurations);
+    target.rare().transitionDelays           = std::move(transitionDelays);
+    target.rare().transitionTimingFunctions  = std::move(transitionTimingFunctions);
+    target.rare().transitionBehavior         = std::move(transitionBehavior);
 }
 static bool applyCSSWideProperty(Style& target,
                                  const std::string& name,
@@ -2262,51 +2262,51 @@ static bool applyCSSWideProperty(Style& target,
     } else if (name == "cursor") {
         target.cursor = source.cursor;
     } else if (name == "transition") {
-        target.transitionDurations = source.transitionDurations;
-        target.transitionProperty = source.transitionProperty;
-        target.transitionDelays = source.transitionDelays;
-        target.transitionTimingFunctions = source.transitionTimingFunctions;
-        target.transitionBehavior = source.transitionBehavior;
+        target.rare().transitionDurations = source.rare().transitionDurations;
+        target.rare().transitionProperty = source.rare().transitionProperty;
+        target.rare().transitionDelays = source.rare().transitionDelays;
+        target.rare().transitionTimingFunctions = source.rare().transitionTimingFunctions;
+        target.rare().transitionBehavior = source.rare().transitionBehavior;
         target.transitionDuration = source.transitionDuration;
     } else if (name == "transition-property") {
-        target.transitionProperty = source.transitionProperty;
+        target.rare().transitionProperty = source.rare().transitionProperty;
     } else if (name == "transition-duration") {
-        target.transitionDurations = source.transitionDurations;
+        target.rare().transitionDurations = source.rare().transitionDurations;
         target.transitionDuration = source.transitionDuration;
     } else if (name == "transition-delay") {
-        target.transitionDelays = source.transitionDelays;
+        target.rare().transitionDelays = source.rare().transitionDelays;
     } else if (name == "transition-timing-function") {
-        target.transitionTimingFunctions = source.transitionTimingFunctions;
+        target.rare().transitionTimingFunctions = source.rare().transitionTimingFunctions;
     } else if (name == "transition-behavior") {
-        target.transitionBehavior = source.transitionBehavior;
+        target.rare().transitionBehavior = source.rare().transitionBehavior;
     } else if (name == "animation") {
-        target.animationName = source.animationName;
-        target.animationDuration = source.animationDuration;
-        target.animationDelay = source.animationDelay;
-        target.animationIterationCount = source.animationIterationCount;
-        target.animationDirection = source.animationDirection;
-        target.animationFillMode = source.animationFillMode;
-        target.animationPlayState = source.animationPlayState;
-        target.animationTimingFunction = source.animationTimingFunction;
-        target.animationComposition = source.animationComposition;
+        target.rare().animationName = source.rare().animationName;
+        target.rare().animationDuration = source.rare().animationDuration;
+        target.rare().animationDelay = source.rare().animationDelay;
+        target.rare().animationIterationCount = source.rare().animationIterationCount;
+        target.rare().animationDirection = source.rare().animationDirection;
+        target.rare().animationFillMode = source.rare().animationFillMode;
+        target.rare().animationPlayState = source.rare().animationPlayState;
+        target.rare().animationTimingFunction = source.rare().animationTimingFunction;
+        target.rare().animationComposition = source.rare().animationComposition;
     } else if (name == "animation-name") {
-        target.animationName = source.animationName;
+        target.rare().animationName = source.rare().animationName;
     } else if (name == "animation-duration") {
-        target.animationDuration = source.animationDuration;
+        target.rare().animationDuration = source.rare().animationDuration;
     } else if (name == "animation-delay") {
-        target.animationDelay = source.animationDelay;
+        target.rare().animationDelay = source.rare().animationDelay;
     } else if (name == "animation-iteration-count") {
-        target.animationIterationCount = source.animationIterationCount;
+        target.rare().animationIterationCount = source.rare().animationIterationCount;
     } else if (name == "animation-direction") {
-        target.animationDirection = source.animationDirection;
+        target.rare().animationDirection = source.rare().animationDirection;
     } else if (name == "animation-fill-mode") {
-        target.animationFillMode = source.animationFillMode;
+        target.rare().animationFillMode = source.rare().animationFillMode;
     } else if (name == "animation-play-state") {
-        target.animationPlayState = source.animationPlayState;
+        target.rare().animationPlayState = source.rare().animationPlayState;
     } else if (name == "animation-timing-function") {
-        target.animationTimingFunction = source.animationTimingFunction;
+        target.rare().animationTimingFunction = source.rare().animationTimingFunction;
     } else if (name == "animation-composition") {
-        target.animationComposition = source.animationComposition;
+        target.rare().animationComposition = source.rare().animationComposition;
     } else if (name == "scale") {
         target.scale = source.scale;
     } else if (name == "transform") {

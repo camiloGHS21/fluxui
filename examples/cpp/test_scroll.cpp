@@ -27,10 +27,10 @@ int test_scroll_snap_type() {
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
     Style sc = sheet.resolve("c","","panel",{},nullptr,wc.get());
     Style sd = sheet.resolve("d","","panel",{},nullptr,wd.get());
-    CHECK(sa.hasScrollSnapType); CHECK(sa.scrollSnapType == "x mandatory");
-    CHECK(sb.hasScrollSnapType); CHECK(sb.scrollSnapType == "y proximity");
-    CHECK(sc.hasScrollSnapType); CHECK(sc.scrollSnapType == "both mandatory");
-    CHECK(!sd.hasScrollSnapType);
+    CHECK(sa.rare().hasScrollSnapType); CHECK(sa.rare().scrollSnapType == "x mandatory");
+    CHECK(sb.rare().hasScrollSnapType); CHECK(sb.rare().scrollSnapType == "y proximity");
+    CHECK(sc.rare().hasScrollSnapType); CHECK(sc.rare().scrollSnapType == "both mandatory");
+    CHECK(!sd.rare().hasScrollSnapType);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -43,8 +43,8 @@ int test_scroll_snap_align() {
     auto wy = std::make_shared<Panel>("y");
     Style sx = sheet.resolve("x","","panel",{},nullptr,wx.get());
     Style sy = sheet.resolve("y","","panel",{},nullptr,wy.get());
-    CHECK(sx.hasScrollSnapAlign); CHECK(sx.scrollSnapAlign == "start");
-    CHECK(sy.hasScrollSnapAlign); CHECK(sy.scrollSnapAlign == "center end");
+    CHECK(sx.rare().hasScrollSnapAlign); CHECK(sx.rare().scrollSnapAlign == "start");
+    CHECK(sy.rare().hasScrollSnapAlign); CHECK(sy.rare().scrollSnapAlign == "center end");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -54,7 +54,7 @@ int test_scroll_snap_stop() {
     sheet.parse(".x { scroll-snap-stop: always; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.scrollSnapStop == "always");
+    CHECK(s.rare().scrollSnapStop == "always");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -64,11 +64,11 @@ int test_scroll_padding() {
     sheet.parse(".x { scroll-padding: 10px 20px 30px 40px; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasScrollPadding);
-    CHECK_NEAR(s.scrollPadding.top, 10.0f, 1e-2f);
-    CHECK_NEAR(s.scrollPadding.right, 20.0f, 1e-2f);
-    CHECK_NEAR(s.scrollPadding.bottom, 30.0f, 1e-2f);
-    CHECK_NEAR(s.scrollPadding.left, 40.0f, 1e-2f);
+    CHECK(s.rare().hasScrollPadding);
+    CHECK_NEAR(s.rare().scrollPadding.top, 10.0f, 1e-2f);
+    CHECK_NEAR(s.rare().scrollPadding.right, 20.0f, 1e-2f);
+    CHECK_NEAR(s.rare().scrollPadding.bottom, 30.0f, 1e-2f);
+    CHECK_NEAR(s.rare().scrollPadding.left, 40.0f, 1e-2f);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -78,9 +78,9 @@ int test_scroll_margin() {
     sheet.parse(".x { scroll-margin: 5px; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasScrollMargin);
-    CHECK_NEAR(s.scrollMargin.top, 5.0f, 1e-2f);
-    CHECK_NEAR(s.scrollMargin.left, 5.0f, 1e-2f);
+    CHECK(s.rare().hasScrollMargin);
+    CHECK_NEAR(s.rare().scrollMargin.top, 5.0f, 1e-2f);
+    CHECK_NEAR(s.rare().scrollMargin.left, 5.0f, 1e-2f);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -96,13 +96,13 @@ int test_overscroll_behavior() {
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
     Style sc = sheet.resolve("c","","panel",{},nullptr,wc.get());
-    CHECK(sa.hasOverscrollBehavior);
-    CHECK(sa.overscrollBehaviorX == Style::OverscrollBehavior::Contain);
-    CHECK(sa.overscrollBehaviorY == Style::OverscrollBehavior::Contain);
-    CHECK(sb.overscrollBehaviorX == Style::OverscrollBehavior::None);
-    CHECK(sb.overscrollBehaviorY == Style::OverscrollBehavior::Auto);
-    CHECK(sc.overscrollBehaviorX == Style::OverscrollBehavior::None);
-    CHECK(sc.overscrollBehaviorY == Style::OverscrollBehavior::Contain);
+    CHECK(sa.rare().hasOverscrollBehavior);
+    CHECK(sa.rare().overscrollBehaviorX == Style::OverscrollBehavior::Contain);
+    CHECK(sa.rare().overscrollBehaviorY == Style::OverscrollBehavior::Contain);
+    CHECK(sb.rare().overscrollBehaviorX == Style::OverscrollBehavior::None);
+    CHECK(sb.rare().overscrollBehaviorY == Style::OverscrollBehavior::Auto);
+    CHECK(sc.rare().overscrollBehaviorX == Style::OverscrollBehavior::None);
+    CHECK(sc.rare().overscrollBehaviorY == Style::OverscrollBehavior::Contain);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -115,10 +115,10 @@ int test_scrollbar_color() {
     auto wy = std::make_shared<Panel>("y");
     Style sx = sheet.resolve("x","","panel",{},nullptr,wx.get());
     Style sy = sheet.resolve("y","","panel",{},nullptr,wy.get());
-    CHECK(sx.hasScrollbarColor);
-    CHECK_NEAR(sx.scrollbarThumbColor.r, 1.0f, 1e-2f);
-    CHECK_NEAR(sx.scrollbarTrackColor.g, 1.0f, 1e-2f);
-    CHECK(!sy.hasScrollbarColor);
+    CHECK(sx.rare().hasScrollbarColor);
+    CHECK_NEAR(sx.rare().scrollbarThumbColor.r, 1.0f, 1e-2f);
+    CHECK_NEAR(sx.rare().scrollbarTrackColor.g, 1.0f, 1e-2f);
+    CHECK(!sy.rare().hasScrollbarColor);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -134,9 +134,9 @@ int test_scrollbar_width() {
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
     Style sc = sheet.resolve("c","","panel",{},nullptr,wc.get());
-    CHECK(sa.scrollbarWidth == Style::ScrollbarWidth::Thin);
-    CHECK(sb.scrollbarWidth == Style::ScrollbarWidth::None);
-    CHECK(sc.scrollbarWidth == Style::ScrollbarWidth::Auto);
+    CHECK(sa.rare().scrollbarWidth == Style::ScrollbarWidth::Thin);
+    CHECK(sb.rare().scrollbarWidth == Style::ScrollbarWidth::None);
+    CHECK(sc.rare().scrollbarWidth == Style::ScrollbarWidth::Auto);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -146,8 +146,8 @@ int test_overflow_anchor() {
     sheet.parse(".x { overflow-anchor: none; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasOverflowAnchor);
-    CHECK(s.overflowAnchor == Style::OverflowAnchor::None);
+    CHECK(s.rare().hasOverflowAnchor);
+    CHECK(s.rare().overflowAnchor == Style::OverflowAnchor::None);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -157,8 +157,8 @@ int test_scrollbar_gutter() {
     sheet.parse(".x { scrollbar-gutter: stable both-edges; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasScrollbarGutter);
-    CHECK(s.scrollbarGutter == "stable both-edges");
+    CHECK(s.rare().hasScrollbarGutter);
+    CHECK(s.rare().scrollbarGutter == "stable both-edges");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -168,8 +168,8 @@ int test_scroll_behavior() {
     sheet.parse(".x { scroll-behavior: smooth; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.hasScrollBehavior);
-    CHECK(s.scrollBehavior == Style::ScrollBehavior::Smooth);
+    CHECK(s.rare().hasScrollBehavior);
+    CHECK(s.rare().scrollBehavior == Style::ScrollBehavior::Smooth);
     std::cout << "  PASS" << std::endl; return 0;
 }
 

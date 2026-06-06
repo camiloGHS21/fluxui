@@ -25,10 +25,10 @@ int test_animation_timeline() {
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
     Style sc = sheet.resolve("c","","panel",{},nullptr,wc.get());
     Style sd = sheet.resolve("d","","panel",{},nullptr,wd.get());
-    CHECK(sa.hasAnimationTimeline); CHECK(sa.animationTimeline[0] == "scroll()");
-    CHECK(sb.hasAnimationTimeline); CHECK(sb.animationTimeline[0] == "view()");
-    CHECK(sc.hasAnimationTimeline); CHECK(sc.animationTimeline[0] == "--my-timeline");
-    CHECK(sd.hasAnimationTimeline); CHECK(sd.animationTimeline[0] == "auto");
+    CHECK(sa.rare().hasAnimationTimeline); CHECK(sa.rare().animationTimeline[0] == "scroll()");
+    CHECK(sb.rare().hasAnimationTimeline); CHECK(sb.rare().animationTimeline[0] == "view()");
+    CHECK(sc.rare().hasAnimationTimeline); CHECK(sc.rare().animationTimeline[0] == "--my-timeline");
+    CHECK(sd.rare().hasAnimationTimeline); CHECK(sd.rare().animationTimeline[0] == "auto");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -41,10 +41,10 @@ int test_animation_range() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(!sa.animationRangeStart.empty());
-    CHECK(!sa.animationRangeEnd.empty());
-    CHECK(sb.animationRangeStart == "entry 25%");
-    CHECK(sb.animationRangeEnd == "exit 75%");
+    CHECK(!sa.rare().animationRangeStart.empty());
+    CHECK(!sa.rare().animationRangeEnd.empty());
+    CHECK(sb.rare().animationRangeStart == "entry 25%");
+    CHECK(sb.rare().animationRangeEnd == "exit 75%");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -57,12 +57,12 @@ int test_scroll_timeline() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasScrollTimeline);
-    CHECK(sa.scrollTimelineName[0] == "--scroller");
-    CHECK(sa.scrollTimelineAxis[0] == "block");
-    CHECK(sb.hasScrollTimeline);
-    CHECK(sb.scrollTimelineName[0] == "--page");
-    CHECK(sb.scrollTimelineAxis[0] == "inline");
+    CHECK(sa.rare().hasScrollTimeline);
+    CHECK(sa.rare().scrollTimelineName[0] == "--scroller");
+    CHECK(sa.rare().scrollTimelineAxis[0] == "block");
+    CHECK(sb.rare().hasScrollTimeline);
+    CHECK(sb.rare().scrollTimelineName[0] == "--page");
+    CHECK(sb.rare().scrollTimelineAxis[0] == "inline");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -78,13 +78,13 @@ int test_view_timeline() {
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
     Style sc = sheet.resolve("c","","panel",{},nullptr,wc.get());
-    CHECK(sa.hasViewTimeline);
-    CHECK(sa.viewTimelineName[0] == "--reveal");
-    CHECK(sa.viewTimelineAxis[0] == "inline");
-    CHECK(sb.hasViewTimeline);
-    CHECK(sb.viewTimelineName[0] == "--fade");
-    CHECK(sb.viewTimelineAxis[0] == "y");
-    CHECK(sc.viewTimelineInset == "auto 20px");
+    CHECK(sa.rare().hasViewTimeline);
+    CHECK(sa.rare().viewTimelineName[0] == "--reveal");
+    CHECK(sa.rare().viewTimelineAxis[0] == "inline");
+    CHECK(sb.rare().hasViewTimeline);
+    CHECK(sb.rare().viewTimelineName[0] == "--fade");
+    CHECK(sb.rare().viewTimelineAxis[0] == "y");
+    CHECK(sc.rare().viewTimelineInset == "auto 20px");
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -97,11 +97,11 @@ int test_timeline_scope() {
     auto wb = std::make_shared<Panel>("b");
     Style sa = sheet.resolve("a","","panel",{},nullptr,wa.get());
     Style sb = sheet.resolve("b","","panel",{},nullptr,wb.get());
-    CHECK(sa.hasTimelineScope);
-    CHECK(sa.timelineScope.size() == 2);
-    CHECK(sa.timelineScope[0] == "--hero");
-    CHECK(sa.timelineScope[1] == "--sidebar");
-    CHECK(!sb.hasTimelineScope);
+    CHECK(sa.rare().hasTimelineScope);
+    CHECK(sa.rare().timelineScope.size() == 2);
+    CHECK(sa.rare().timelineScope[0] == "--hero");
+    CHECK(sa.rare().timelineScope[1] == "--sidebar");
+    CHECK(!sb.rare().hasTimelineScope);
     std::cout << "  PASS" << std::endl; return 0;
 }
 
@@ -111,10 +111,10 @@ int test_multiple_timelines() {
     sheet.parse(".x { animation-timeline: scroll(), view(), --custom; }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x","","panel",{},nullptr,w.get());
-    CHECK(s.animationTimeline.size() == 3);
-    CHECK(s.animationTimeline[0] == "scroll()");
-    CHECK(s.animationTimeline[1] == "view()");
-    CHECK(s.animationTimeline[2] == "--custom");
+    CHECK(s.rare().animationTimeline.size() == 3);
+    CHECK(s.rare().animationTimeline[0] == "scroll()");
+    CHECK(s.rare().animationTimeline[1] == "view()");
+    CHECK(s.rare().animationTimeline[2] == "--custom");
     std::cout << "  PASS" << std::endl; return 0;
 }
 

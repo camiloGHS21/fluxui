@@ -26,13 +26,13 @@ int test_clip_path() {
     Style sb = sheet.resolve("b", "", "panel", {}, nullptr, wb.get());
     Style sc = sheet.resolve("c", "", "panel", {}, nullptr, wc.get());
     Style sd = sheet.resolve("d", "", "panel", {}, nullptr, wd.get());
-    CHECK(sa.hasClipPath);
-    CHECK(sa.clipPath == "circle(50%)");
-    CHECK(sb.hasClipPath);
-    CHECK(sb.clipPath.find("polygon") != std::string::npos);
-    CHECK(sc.hasClipPath);
-    CHECK(sc.clipPath == "url(#myClip)");
-    CHECK(!sd.hasClipPath);
+    CHECK(sa.rare().hasClipPath);
+    CHECK(sa.rare().clipPath == "circle(50%)");
+    CHECK(sb.rare().hasClipPath);
+    CHECK(sb.rare().clipPath.find("polygon") != std::string::npos);
+    CHECK(sc.rare().hasClipPath);
+    CHECK(sc.rare().clipPath == "url(#myClip)");
+    CHECK(!sd.rare().hasClipPath);
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -44,8 +44,8 @@ int test_shape_outside() {
     sheet.parse(".float { shape-outside: circle(50%); }");
     auto w = std::make_shared<Panel>("float");
     Style s = sheet.resolve("float", "", "panel", {}, nullptr, w.get());
-    CHECK(s.hasShapeOutside);
-    CHECK(s.shapeOutside == "circle(50%)");
+    CHECK(s.rare().hasShapeOutside);
+    CHECK(s.rare().shapeOutside == "circle(50%)");
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -60,10 +60,10 @@ int test_mask_image() {
     auto w2 = std::make_shared<Panel>("masked2");
     Style s1 = sheet.resolve("masked", "", "panel", {}, nullptr, w1.get());
     Style s2 = sheet.resolve("masked2", "", "panel", {}, nullptr, w2.get());
-    CHECK(s1.hasMask);
-    CHECK(s1.maskImage == "url(mask.svg)");
-    CHECK(s2.hasMask);
-    CHECK(s2.maskImage == "url(star.png)");
+    CHECK(s1.rare().hasMask);
+    CHECK(s1.rare().maskImage == "url(mask.svg)");
+    CHECK(s2.rare().hasMask);
+    CHECK(s2.rare().maskImage == "url(star.png)");
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -78,13 +78,13 @@ int test_mask_sub_properties() {
                "     mask-composite: subtract; }");
     auto w = std::make_shared<Panel>("m");
     Style s = sheet.resolve("m", "", "panel", {}, nullptr, w.get());
-    CHECK(s.maskMode == "luminance");
-    CHECK(s.maskRepeat == "no-repeat");
-    CHECK(s.maskPosition == "center");
-    CHECK(s.maskSize == "cover");
-    CHECK(s.maskClip == "content-box");
-    CHECK(s.maskOrigin == "padding-box");
-    CHECK(s.maskComposite == "subtract");
+    CHECK(s.rare().maskMode == "luminance");
+    CHECK(s.rare().maskRepeat == "no-repeat");
+    CHECK(s.rare().maskPosition == "center");
+    CHECK(s.rare().maskSize == "cover");
+    CHECK(s.rare().maskClip == "content-box");
+    CHECK(s.rare().maskOrigin == "padding-box");
+    CHECK(s.rare().maskComposite == "subtract");
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -111,12 +111,12 @@ int test_mix_blend_mode() {
     Style sd = sheet.resolve("d", "", "panel", {}, nullptr, wd.get());
     Style se = sheet.resolve("e", "", "panel", {}, nullptr, we.get());
     Style sf = sheet.resolve("f", "", "panel", {}, nullptr, wf.get());
-    CHECK(sa.hasMixBlendMode && sa.mixBlendMode == Style::BlendMode::Multiply);
-    CHECK(sb.hasMixBlendMode && sb.mixBlendMode == Style::BlendMode::Screen);
-    CHECK(sc.hasMixBlendMode && sc.mixBlendMode == Style::BlendMode::Overlay);
-    CHECK(sd.hasMixBlendMode && sd.mixBlendMode == Style::BlendMode::ColorDodge);
-    CHECK(se.hasMixBlendMode && se.mixBlendMode == Style::BlendMode::Luminosity);
-    CHECK(!sf.hasMixBlendMode); // "normal" resets
+    CHECK(sa.rare().hasMixBlendMode && sa.rare().mixBlendMode == Style::BlendMode::Multiply);
+    CHECK(sb.rare().hasMixBlendMode && sb.rare().mixBlendMode == Style::BlendMode::Screen);
+    CHECK(sc.rare().hasMixBlendMode && sc.rare().mixBlendMode == Style::BlendMode::Overlay);
+    CHECK(sd.rare().hasMixBlendMode && sd.rare().mixBlendMode == Style::BlendMode::ColorDodge);
+    CHECK(se.rare().hasMixBlendMode && se.rare().mixBlendMode == Style::BlendMode::Luminosity);
+    CHECK(!sf.rare().hasMixBlendMode); // "normal" resets
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -131,8 +131,8 @@ int test_isolation() {
     auto w2 = std::make_shared<Panel>("def");
     Style s1 = sheet.resolve("iso", "", "panel", {}, nullptr, w1.get());
     Style s2 = sheet.resolve("def", "", "panel", {}, nullptr, w2.get());
-    CHECK(s1.hasIsolation && s1.isolation == Style::Isolation::Isolate);
-    CHECK(s2.hasIsolation && s2.isolation == Style::Isolation::Auto);
+    CHECK(s1.rare().hasIsolation && s1.rare().isolation == Style::Isolation::Isolate);
+    CHECK(s2.rare().hasIsolation && s2.rare().isolation == Style::Isolation::Auto);
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -144,8 +144,8 @@ int test_background_blend_mode() {
     sheet.parse(".bg { background-blend-mode: overlay; }");
     auto w = std::make_shared<Panel>("bg");
     Style s = sheet.resolve("bg", "", "panel", {}, nullptr, w.get());
-    CHECK(s.hasBackgroundBlendMode);
-    CHECK(s.backgroundBlendMode == Style::BlendMode::Overlay);
+    CHECK(s.rare().hasBackgroundBlendMode);
+    CHECK(s.rare().backgroundBlendMode == Style::BlendMode::Overlay);
     std::cout << "  PASS" << std::endl;
     return 0;
 }
@@ -157,9 +157,9 @@ int test_clip_path_inset() {
     sheet.parse(".x { clip-path: inset(10px 20px 30px 40px round 5px); }");
     auto w = std::make_shared<Panel>("x");
     Style s = sheet.resolve("x", "", "panel", {}, nullptr, w.get());
-    CHECK(s.hasClipPath);
-    CHECK(s.clipPath.find("inset") != std::string::npos);
-    CHECK(s.clipPath.find("round") != std::string::npos);
+    CHECK(s.rare().hasClipPath);
+    CHECK(s.rare().clipPath.find("inset") != std::string::npos);
+    CHECK(s.rare().clipPath.find("round") != std::string::npos);
     std::cout << "  PASS" << std::endl;
     return 0;
 }

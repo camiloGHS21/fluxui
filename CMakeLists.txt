@@ -804,3 +804,14 @@ target_include_directories(test_dsl PRIVATE
 enable_release_lto(test_dsl)
 
 
+
+add_executable(bench_style_copy
+    examples/cpp/bench_style_copy.cpp
+)
+target_link_libraries(bench_style_copy PRIVATE
+    fluxui
+)
+target_include_directories(bench_style_copy PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(bench_style_copy)

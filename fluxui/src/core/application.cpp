@@ -3064,7 +3064,7 @@ void Widget::tickAnimations(const InputState& input) {
         resolveStyles(*currentSheet);
     }
     const Style& s = *computedStyle;
-    if (s.animationName.empty()) {
+    if (s.rare().animationName.empty()) {
         if (!activeAnimations.empty()) {
             // Animation list cleared (style change removed all animations): wipe.
             clearAnimationOverrides();
@@ -3079,13 +3079,13 @@ void Widget::tickAnimations(const InputState& input) {
 
     // Reconcile the running animation list with the current style. New names spawn a
     // fresh ActiveAnimation; missing names have their compositor overrides cleared.
-    std::string sig = serializeAnimationNameList(s.animationName);
+    std::string sig = serializeAnimationNameList(s.rare().animationName);
     if (sig != lastAnimationSignature) {
         // Mark all existing as not-yet-restarted so we can detect name disappearance
         // without wiping overrides mid-frame.
-        std::vector<bool> keep(s.animationName.size(), false);
-        for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
-            const std::string& want = s.animationName[ni];
+        std::vector<bool> keep(s.rare().animationName.size(), false);
+        for (size_t ni = 0; ni < s.rare().animationName.size(); ++ni) {
+            const std::string& want = s.rare().animationName[ni];
             if (want.empty() || want == "none") continue;
             for (auto& existing : activeAnimations) {
                 if (existing.name == want) { keep[ni] = true; break; }
@@ -3095,16 +3095,16 @@ void Widget::tickAnimations(const InputState& input) {
         activeAnimations.erase(
             std::remove_if(activeAnimations.begin(), activeAnimations.end(),
                 [&](const ActiveAnimation& a) {
-                    for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
-                        if (s.animationName[ni] == a.name) return false;
+                    for (size_t ni = 0; ni < s.rare().animationName.size(); ++ni) {
+                        if (s.rare().animationName[ni] == a.name) return false;
                     }
                     return true;
                 }),
             activeAnimations.end());
 
         // Spawn missing ones
-        for (size_t ni = 0; ni < s.animationName.size(); ++ni) {
-            const std::string& want = s.animationName[ni];
+        for (size_t ni = 0; ni < s.rare().animationName.size(); ++ni) {
+            const std::string& want = s.rare().animationName[ni];
             if (want.empty() || want == "none") continue;
             bool found = false;
             for (auto& existing : activeAnimations) {
@@ -3113,14 +3113,14 @@ void Widget::tickAnimations(const InputState& input) {
             if (found) continue;
             ActiveAnimation aa;
             aa.name = want;
-            aa.duration  = ni < s.animationDuration.size()        ? s.animationDuration[ni]        : 0.0f;
-            aa.delay     = ni < s.animationDelay.size()           ? s.animationDelay[ni]           : 0.0f;
-            aa.iterationCount = ni < s.animationIterationCount.size() ? s.animationIterationCount[ni] : 1.0f;
-            aa.direction  = ni < s.animationDirection.size()       ? s.animationDirection[ni]       : AnimationDirection::Normal;
-            aa.fillMode   = ni < s.animationFillMode.size()        ? s.animationFillMode[ni]        : AnimationFillMode::None;
-            aa.playState  = ni < s.animationPlayState.size()       ? s.animationPlayState[ni]       : AnimationPlayState::Running;
-            aa.timingFunction = ni < s.animationTimingFunction.size() ? s.animationTimingFunction[ni] : TimingFunction::ease();
-            aa.composition = ni < s.animationComposition.size()    ? s.animationComposition[ni]    : AnimationComposition::Replace;
+            aa.duration  = ni < s.rare().animationDuration.size()        ? s.rare().animationDuration[ni]        : 0.0f;
+            aa.delay     = ni < s.rare().animationDelay.size()           ? s.rare().animationDelay[ni]           : 0.0f;
+            aa.iterationCount = ni < s.rare().animationIterationCount.size() ? s.rare().animationIterationCount[ni] : 1.0f;
+            aa.direction  = ni < s.rare().animationDirection.size()       ? s.rare().animationDirection[ni]       : AnimationDirection::Normal;
+            aa.fillMode   = ni < s.rare().animationFillMode.size()        ? s.rare().animationFillMode[ni]        : AnimationFillMode::None;
+            aa.playState  = ni < s.rare().animationPlayState.size()       ? s.rare().animationPlayState[ni]       : AnimationPlayState::Running;
+            aa.timingFunction = ni < s.rare().animationTimingFunction.size() ? s.rare().animationTimingFunction[ni] : TimingFunction::ease();
+            aa.composition = ni < s.rare().animationComposition.size()    ? s.rare().animationComposition[ni]    : AnimationComposition::Replace;
             aa.startTime = localClock;
             activeAnimations.push_back(aa);
         }
