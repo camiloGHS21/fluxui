@@ -2002,7 +2002,7 @@ const std::string& Renderer::resolveFontName(const std::string& fontName, FontWe
 #endif
         }
         
-        if (weight == FontWeight::Bold) {
+        if (isBoldWeight(weight)) {
             std::string boldName = systemFontName + "-bold";
             auto boldIt = nonConstThis->fonts_.find(boldName);
             if (boldIt == nonConstThis->fonts_.end() || !boldIt->second.loaded) {
@@ -2029,7 +2029,7 @@ const std::string& Renderer::resolveFontName(const std::string& fontName, FontWe
             const_cast<Renderer*>(this)->triggerCustomFontLoad(*baseName);
         }
         if (customIt->second.loaded) {
-            if (weight == FontWeight::Bold) {
+            if (isBoldWeight(weight)) {
                 std::string boldName = *baseName + "-bold";
                 auto boldIt = fonts_.find(boldName);
                 if (boldIt != fonts_.end() && boldIt->second.loaded) {
@@ -2046,7 +2046,7 @@ const std::string& Renderer::resolveFontName(const std::string& fontName, FontWe
     }
     const std::string& resolvedBase = (baseIt != fonts_.end()) ? baseIt->first : s_defaultFont;
 
-    if (weight != FontWeight::Bold) {
+    if (!isBoldWeight(weight)) {
         return resolvedBase;
     }
 

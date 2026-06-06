@@ -107,7 +107,37 @@ enum class CSSFloat { None, Left, Right };
 enum class CSSClear { None, Left, Right, Both };
 enum class Overflow { Visible, Hidden, Scroll, Auto, Clip };
 enum class TextAlign { Left, Center, Right, Justify };
-enum class FontWeight { Normal, Bold };
+// CSS font-weight: numeric ladder 100–900 (CSS Fonts L4). Normal == 400 and
+// Bold == 700 are kept as named aliases so existing FontWeight::Normal/Bold
+// code keeps working. Use isBoldWeight() for bold synthesis decisions.
+enum class FontWeight {
+    Thin       = 100,
+    ExtraLight = 200,
+    Light      = 300,
+    Normal     = 400,
+    Medium     = 500,
+    SemiBold   = 600,
+    Bold       = 700,
+    ExtraBold  = 800,
+    Black      = 900
+};
+// A weight triggers bold synthesis when it is >= 600 (Blink: bold-ish threshold
+// when no dedicated bold face exists).
+inline bool isBoldWeight(FontWeight w) { return static_cast<int>(w) >= 600; }
+inline int fontWeightValue(FontWeight w) { return static_cast<int>(w); }
+// Snap an arbitrary numeric weight (e.g. parsed 100..900, or bolder/lighter
+// results) to the nearest standard FontWeight bucket.
+inline FontWeight fontWeightFromInt(int v) {
+    if (v < 150) return FontWeight::Thin;
+    if (v < 250) return FontWeight::ExtraLight;
+    if (v < 350) return FontWeight::Light;
+    if (v < 450) return FontWeight::Normal;
+    if (v < 550) return FontWeight::Medium;
+    if (v < 650) return FontWeight::SemiBold;
+    if (v < 750) return FontWeight::Bold;
+    if (v < 850) return FontWeight::ExtraBold;
+    return FontWeight::Black;
+}
 enum class FontStyle { Normal, Italic, Oblique };
 enum class CursorType { Default, Pointer, Text, Grab, Grabbing, NotAllowed, Crosshair, ResizeNWSE, ResizeNS };
 enum class BoxSizing { ContentBox, BorderBox };

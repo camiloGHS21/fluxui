@@ -28,6 +28,36 @@ static Overflow parseOverflowKeyword(const std::string& value) {
     if (value == "clip") return Overflow::Clip;
     return Overflow::Visible;
 }
+
+// font-weight value parser (CSS Fonts L4 §2.2): keywords normal/bold, the
+// numeric ladder 100–900, and the relative keywords bolder/lighter resolved
+// against the inherited weight. Returns false if the token isn't a weight.
+static bool parseFontWeightValue(const std::string& lower, FontWeight inherited, FontWeight& out) {
+    if (lower == "normal")  { out = FontWeight::Normal; return true; }
+    if (lower == "bold")    { out = FontWeight::Bold;   return true; }
+    if (lower == "bolder") {
+        // CSS bolder/lighter step table (simplified): bump up one major step.
+        int v = fontWeightValue(inherited);
+        out = fontWeightFromInt(v < 350 ? 400 : (v < 550 ? 700 : 900));
+        return true;
+    }
+    if (lower == "lighter") {
+        int v = fontWeightValue(inherited);
+        out = fontWeightFromInt(v < 550 ? 100 : (v < 750 ? 400 : 700));
+        return true;
+    }
+    // Numeric weight: only accept a bare number (no unit suffix).
+    if (!lower.empty() && (std::isdigit((unsigned char)lower[0]) ||
+                           lower[0] == '+' || lower[0] == '.')) {
+        char* end = nullptr;
+        double num = std::strtod(lower.c_str(), &end);
+        if (end && *end == '\0' && num >= 1.0 && num <= 1000.0) {
+            out = fontWeightFromInt((int)(num + 0.5));
+            return true;
+        }
+    }
+    return false;
+}
 static bool isOverflowVisibleOrClip(Overflow overflow) {
     return overflow == Overflow::Visible || overflow == Overflow::Clip;
 }
@@ -772,14 +802,14 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
                     part = part.substr(0, slash);
                 }
                 std::string lowerPart = lowerAscii(part);
-                if (lowerPart == "bold" || parseFloat(lowerPart) >= 600.0f) {
-                    style.fontWeight = FontWeight::Bold;
+                FontWeight fw;
+                if (parseFontWeightValue(lowerPart, style.fontWeight, fw)) {
+                    style.fontWeight = fw;
                     style.hasFontWeight = true;
-                } else if (lowerPart == "normal") {
-                    style.fontWeight = FontWeight::Normal;
-                    style.fontStyle = FontStyle::Normal;
-                    style.hasFontWeight = true;
-                    style.hasFontStyle = true;
+                    if (lowerPart == "normal") {
+                        style.fontStyle = FontStyle::Normal;
+                        style.hasFontStyle = true;
+                    }
                 } else if (lowerPart == "italic") {
                     style.fontStyle = FontStyle::Italic;
                     style.hasFontStyle = true;
@@ -806,9 +836,11 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
             }
         }
     } else if (name == "font-weight") {
-        style.fontWeight = (value == "bold" || parseFloat(value) >= 600.0f) ?
-            FontWeight::Bold : FontWeight::Normal;
-        style.hasFontWeight = true;
+        FontWeight w;
+        if (parseFontWeightValue(lowerAscii(trimLocal(value)), style.fontWeight, w)) {
+            style.fontWeight = w;
+            style.hasFontWeight = true;
+        }
     } else if (name == "font-style") {
         std::string lower = lowerAscii(value);
         if (lower.find("italic") != std::string::npos) {

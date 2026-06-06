@@ -436,7 +436,7 @@ void Renderer::drawSoftwareText(const std::string& text,
 
     float cursorX = std::floor(drawPos.x + 0.5f);
     float baselineY = std::floor(drawPos.y + font.ascent * glyphScale + 0.5f);
-    float boldOffset = (weight == FontWeight::Bold && resolvedFontName == fontName)
+    float boldOffset = (isBoldWeight(weight) && resolvedFontName == fontName)
         ? std::max(0.35f, renderFontSize * 0.018f)
         : 0.0f;
     float italicSkew = style == FontStyle::Normal ? 0.0f : renderFontSize * 0.18f;

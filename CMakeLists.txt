@@ -837,3 +837,14 @@ target_include_directories(test_inheritance PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_inheritance)
+
+add_executable(test_font_weight
+    examples/cpp/test_font_weight.cpp
+)
+target_link_libraries(test_font_weight PRIVATE
+    fluxui
+)
+target_include_directories(test_font_weight PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_font_weight)

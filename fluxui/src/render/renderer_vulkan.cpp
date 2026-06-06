@@ -2366,7 +2366,7 @@ void Renderer::drawVulkanText(const std::string& text,
 
     float cursorX = snap(pos.x + translation_.x);
     float baselineY = snap(pos.y + font.ascent * fontScale + translation_.y);
-    float boldOffset = (weight == FontWeight::Bold && resolvedFontName == fontName)
+    float boldOffset = (isBoldWeight(weight) && resolvedFontName == fontName)
         ? std::max(0.35f, fontSize * 0.018f)
         : 0.0f;
     float italicSkew = style == FontStyle::Normal ? 0.0f : fontSize * 0.18f;
