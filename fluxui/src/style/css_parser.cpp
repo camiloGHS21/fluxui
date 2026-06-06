@@ -602,8 +602,13 @@ static bool selectorPseudoMatches(std::string_view pseudoName,
     if (pseudoName == "checked") return selectorHasFlag(actualType, "checked");
     if (pseudoName == "open") return selectorHasFlag(actualType, "open");
     if (pseudoName == "indeterminate") return selectorHasFlag(actualType, "indeterminate");
-    if (pseudoName == "enabled") return true;
-    if (pseudoName == "disabled") return false;
+    if (pseudoName == "enabled") {
+        if (selectorHasFlag(actualType, "disabled")) return false;
+        return widget ? !widget->disabled : true;
+    }
+    if (pseudoName == "disabled") {
+        return selectorHasFlag(actualType, "disabled") || (widget && widget->disabled);
+    }
     if (pseudoName == "hover") return widget && widget->hovered;
     if (pseudoName == "focus" || pseudoName == "focus-visible") return widget && widget->focused;
     if (pseudoName == "active") return widget && widget->pressed;

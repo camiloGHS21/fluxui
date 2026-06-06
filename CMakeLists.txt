@@ -815,3 +815,14 @@ target_include_directories(bench_style_copy PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(bench_style_copy)
+
+add_executable(test_disabled
+    examples/cpp/test_disabled.cpp
+)
+target_link_libraries(test_disabled PRIVATE
+    fluxui
+)
+target_include_directories(test_disabled PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_disabled)

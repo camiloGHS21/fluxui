@@ -306,6 +306,9 @@ public:
     bool hovered = false;
     bool pressed = false;
     bool focused = false;
+    // Disabled form-control state. Drives :disabled / :enabled matching and
+    // (like Blink's IsDisabledFormControl) suppresses hover/active/focus.
+    bool disabled = false;
     bool lastFrameFocused = false;
     bool useGPUCompositing = false;
     float hoverAnim = 0;
@@ -526,6 +529,11 @@ public:
     Widget* removeClass(const std::string& value);
     Widget* toggleClass(const std::string& value, bool enabled);
     Widget* css(const std::string& declarations);
+    // Enable/disable this widget (drives :disabled / :enabled and makes the
+    // widget inert to pointer/keyboard input). Marks style dirty so the
+    // :disabled rules re-resolve immediately.
+    Widget* setDisabled(bool value = true);
+    bool isDisabled() const { return disabled; }
     template<typename T = Widget>
     T* as() {
         return static_cast<T*>(this);

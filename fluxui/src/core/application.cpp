@@ -301,6 +301,12 @@ const std::string& Widget::selectorType() const {
         cachedSelectorType += "|dir=";
         cachedSelectorType += dir;
     }
+    // Encode disabled state into the selector type so the resolved-style cache
+    // keys differ between enabled/disabled (same widget pointer) — same trick
+    // used for |checked / |open above.
+    if (disabled) {
+        cachedSelectorType += "|disabled";
+    }
     return cachedSelectorType;
 }
 
@@ -1029,6 +1035,16 @@ void Widget::update(const InputState& input) {
         return;
     }
     float dt = std::max(0.0f, input.deltaTime);
+    // Disabled form controls don't react to pointer/keyboard input (Blink:
+    // IsDisabledFormControl gates hover/active/focus). Keep them inert so
+    // :hover/:active/:focus never match while :disabled does.
+    if (disabled) {
+        hovered = false;
+        pressed = false;
+        focused = false;
+        hoverAnim = 0.0f;
+        return;
+    }
     bool oldHovered = hovered;
     hovered = bounds.contains(input.mousePos);
     if (hovered != oldHovered) {

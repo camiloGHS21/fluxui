@@ -502,6 +502,23 @@ inline Widget* Widget::removeClass(const std::string& value) {
 inline Widget* Widget::toggleClass(const std::string& value, bool enabled) {
     return enabled ? addClass(value) : removeClass(value);
 }
+inline Widget* Widget::setDisabled(bool value) {
+    if (disabled == value) return this;
+    disabled = value;
+    // selectorType() encodes |disabled and is memoized — invalidate it so the
+    // next resolve sees the new state (also done by resolveStyles, but callers
+    // may query selectorType() directly, e.g. sibling/:disabled matching).
+    cachedSelectorType.clear();
+    if (value) {
+        // Going inert: drop any active interactive state so :hover/:active/:focus
+        // stop matching alongside the now-active :disabled.
+        hovered = false;
+        pressed = false;
+        focused = false;
+    }
+    markStyleDirty();
+    return this;
+}
 inline Widget* Widget::css(const std::string& declarations) {
     inlineProperties.clear();
     ++inlinePropertyEpoch;
