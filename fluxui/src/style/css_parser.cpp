@@ -638,6 +638,32 @@ static bool selectorPseudoMatches(std::string_view pseudoName,
         }
         return pseudoName == "read-write" ? editable : !editable;
     }
+    // ── Form-control pseudo-classes (CSS Selectors L4 §4.4 / CSS UI L4) ──
+    // States are encoded into selectorType() (|required, |invalid,
+    // |placeholder-shown) just like |checked / |disabled.
+    if (pseudoName == "placeholder-shown") {
+        return selectorHasFlag(actualType, "placeholder-shown");
+    }
+    if (pseudoName == "required") {
+        return selectorHasFlag(actualType, "required");
+    }
+    if (pseudoName == "optional") {
+        // Optional applies to form controls that are not required.
+        std::string_view baseType = selectorBaseType(actualType);
+        bool isFormControl = baseType == "input" || baseType == "textarea" ||
+                             baseType == "select";
+        return isFormControl && !selectorHasFlag(actualType, "required");
+    }
+    if (pseudoName == "invalid") {
+        return selectorHasFlag(actualType, "invalid");
+    }
+    if (pseudoName == "valid") {
+        // Valid: a form control that is not currently invalid.
+        std::string_view baseType = selectorBaseType(actualType);
+        bool isFormControl = baseType == "input" || baseType == "textarea" ||
+                             baseType == "select";
+        return isFormControl && !selectorHasFlag(actualType, "invalid");
+    }
     return false;
 }
 static void splitSelectorChain(const std::string& selector,
@@ -738,33 +764,90 @@ static int getSiblingIndex(const Widget* widget, bool ofType, bool fromEnd) {
 }
 static bool widgetHasDescendantMatching(const Widget* root, const std::string& selector) {
     if (!root) return false;
-    struct Traversal {
-        static bool search(const Widget* current, const std::string& selector, const Widget* limitRoot) {
-            for (const auto& childShared : current->children) {
-                const Widget* child = childShared.get();
-                if (!child) continue;
-                std::vector<CSSSelectorNode> childAncestors;
-                for (const Widget* p = child->parent; p; p = p->parent) {
-                    childAncestors.push_back({p->className, p->id, p->selectorType(), p});
-                }
-                std::vector<std::string> parts;
-                std::vector<char> combinators;
-                splitSelectorChain(selector, parts, combinators);
-                CSSRule rule;
-                rule.selector = selector;
-                rule.parts = parts;
-                rule.combinators = combinators;
-                if (StyleSheet::selectorMatches(rule, child->className, child->id, child->selectorType(), childAncestors, nullptr, child)) {
-                    return true;
-                }
-                if (search(child, selector, limitRoot)) {
-                    return true;
-                }
+
+    // :has() takes a forgiving relative selector list. Each relative selector
+    // may start with a combinator (>, +, ~) that anchors it to `root`:
+    //   :has(.x)   / :has(> .x)  → descendant / direct-child axis
+    //   :has(+ .x)               → next adjacent sibling
+    //   :has(~ .x)               → any following sibling
+    // (CSS Selectors L4 §4.5 / Blink CheckPseudoHas.)
+    auto matchesAnchored = [](const Widget* anchor, const std::string& rel) -> bool {
+        std::string sel = std::string(trimLocal(rel));
+        if (sel.empty()) return false;
+
+        char leadComb = ' ';            // default: descendant
+        if (sel[0] == '>' || sel[0] == '+' || sel[0] == '~') {
+            leadComb = sel[0];
+            sel = std::string(trimLocal(std::string_view(sel).substr(1)));
+            if (sel.empty()) return false;
+        }
+
+        // Build a rule for the (possibly compound/complex) relative selector.
+        std::vector<std::string> parts;
+        std::vector<char> combinators;
+        splitSelectorChain(sel, parts, combinators);
+        if (parts.empty()) return false;
+        CSSRule rule;
+        rule.selector = sel;
+        rule.parts = parts;
+        rule.combinators = combinators;
+
+        auto matchNode = [&](const Widget* w) -> bool {
+            if (!w) return false;
+            std::vector<CSSSelectorNode> anc;
+            for (const Widget* p = w->parent; p; p = p->parent) {
+                anc.push_back({p->className, p->id, p->selectorType(), p});
+            }
+            return StyleSheet::selectorMatches(rule, w->className, w->id,
+                                               w->selectorType(), anc, nullptr, w);
+        };
+
+        if (leadComb == '+' || leadComb == '~') {
+            // Sibling axis: look at siblings after `anchor` in its parent.
+            if (!anchor->parent) return false;
+            const auto& sibs = anchor->parent->children;
+            size_t idx = 0; bool found = false;
+            for (size_t i = 0; i < sibs.size(); ++i) {
+                if (sibs[i].get() == anchor) { idx = i; found = true; break; }
+            }
+            if (!found) return false;
+            if (leadComb == '+') {
+                return idx + 1 < sibs.size() && matchNode(sibs[idx + 1].get());
+            }
+            for (size_t i = idx + 1; i < sibs.size(); ++i) {
+                if (matchNode(sibs[i].get())) return true;
             }
             return false;
         }
+
+        // Descendant (' ') or direct-child ('>') axis. Iterative walk to avoid
+        // a templated local struct (not allowed) / std::function dependency.
+        if (leadComb == '>') {
+            for (const auto& cs : anchor->children) {
+                if (cs && matchNode(cs.get())) return true;
+            }
+            return false;
+        }
+        std::vector<const Widget*> stack;
+        for (const auto& cs : anchor->children) {
+            if (cs) stack.push_back(cs.get());
+        }
+        while (!stack.empty()) {
+            const Widget* c = stack.back();
+            stack.pop_back();
+            if (matchNode(c)) return true;
+            for (const auto& cs : c->children) {
+                if (cs) stack.push_back(cs.get());
+            }
+        }
+        return false;
     };
-    return Traversal::search(root, selector, root);
+
+    // Forgiving selector list: any relative selector matching satisfies :has().
+    for (const auto& rel : splitSelectorListLocal(selector)) {
+        if (matchesAnchored(root, rel)) return true;
+    }
+    return false;
 }
 static bool matchCompoundSelector(std::string_view compound,
                                   std::string_view className,

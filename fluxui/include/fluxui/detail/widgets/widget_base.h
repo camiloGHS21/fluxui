@@ -309,6 +309,9 @@ public:
     // Disabled form-control state. Drives :disabled / :enabled matching and
     // (like Blink's IsDisabledFormControl) suppresses hover/active/focus.
     bool disabled = false;
+    // Required form-control state. Drives :required / :optional and feeds the
+    // basic :valid / :invalid validity check.
+    bool required = false;
     bool lastFrameFocused = false;
     bool useGPUCompositing = false;
     float hoverAnim = 0;
@@ -534,6 +537,9 @@ public:
     // :disabled rules re-resolve immediately.
     Widget* setDisabled(bool value = true);
     bool isDisabled() const { return disabled; }
+    // Mark this control as required (drives :required / :optional / :invalid).
+    Widget* setRequired(bool value = true);
+    bool isRequired() const { return required; }
     template<typename T = Widget>
     T* as() {
         return static_cast<T*>(this);

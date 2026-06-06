@@ -519,6 +519,13 @@ inline Widget* Widget::setDisabled(bool value) {
     markStyleDirty();
     return this;
 }
+inline Widget* Widget::setRequired(bool value) {
+    if (required == value) return this;
+    required = value;
+    cachedSelectorType.clear();  // selectorType() encodes |required / |invalid
+    markStyleDirty();
+    return this;
+}
 inline Widget* Widget::css(const std::string& declarations) {
     inlineProperties.clear();
     ++inlinePropertyEpoch;

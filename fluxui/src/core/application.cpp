@@ -263,13 +263,29 @@ const std::string& Widget::selectorType() const {
         return cachedSelectorType;
     }
     cachedSelectorType.clear();
-    if (dynamic_cast<const TextArea*>(this)) {
+    if (auto* textarea = dynamic_cast<const TextArea*>(this)) {
         cachedSelectorType = "textarea";
+        if (textarea->value.empty() && !textarea->placeholder.empty())
+            cachedSelectorType += "|placeholder-shown";
+        if (required) {
+            cachedSelectorType += "|required";
+            if (textarea->value.empty()) cachedSelectorType += "|invalid";
+        }
     } else if (auto* input = dynamic_cast<const TextInput*>(this)) {
         if (this->type == "textarea") cachedSelectorType = "textarea";
         else {
             cachedSelectorType = "input|type=";
             cachedSelectorType += textInputTypeSelector(input->inputType);
+        }
+        // :placeholder-shown — text-entry control whose value is empty and that
+        // has a placeholder (CSS UI L4).
+        if (input->value.empty() && !input->placeholder.empty())
+            cachedSelectorType += "|placeholder-shown";
+        // :required / :invalid — basic constraint validation: a required control
+        // with an empty value is invalid (HTML constraint validation subset).
+        if (required) {
+            cachedSelectorType += "|required";
+            if (input->value.empty()) cachedSelectorType += "|invalid";
         }
     } else if (auto* checkbox = dynamic_cast<const Checkbox*>(this)) {
         cachedSelectorType = "input|type=checkbox";

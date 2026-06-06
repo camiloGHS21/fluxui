@@ -848,3 +848,14 @@ target_include_directories(test_font_weight PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_font_weight)
+
+add_executable(test_has_forms
+    examples/cpp/test_has_forms.cpp
+)
+target_link_libraries(test_has_forms PRIVATE
+    fluxui
+)
+target_include_directories(test_has_forms PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_has_forms)
