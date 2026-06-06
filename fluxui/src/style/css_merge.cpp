@@ -912,6 +912,32 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "upper-alpha" || value == "upper-latin") style.listStyleType = ListStyleType::UpperAlpha;
         else style.listStyleType = ListStyleType::Disc;
         style.hasListStyleType = true;
+    } else if (name == "list-style") {
+        // list-style shorthand: [<list-style-type> || <list-style-position> || <list-style-image>]
+        // We resolve the recognized list-style-type keyword from the token list and
+        // ignore position/image (image not supported, position handled separately).
+        std::string_view lsTokens[6];
+        int lsCount = 0;
+        splitWhitespace(value, lsTokens, 6, lsCount);
+        bool sawType = false;
+        for (int i = 0; i < lsCount; ++i) {
+            std::string tok = lowerAscii(std::string(lsTokens[i]));
+            if (tok == "none") { style.listStyleType = ListStyleType::None; sawType = true; }
+            else if (tok == "disc") { style.listStyleType = ListStyleType::Disc; sawType = true; }
+            else if (tok == "circle") { style.listStyleType = ListStyleType::Circle; sawType = true; }
+            else if (tok == "square") { style.listStyleType = ListStyleType::Square; sawType = true; }
+            else if (tok == "decimal") { style.listStyleType = ListStyleType::Decimal; sawType = true; }
+            else if (tok == "decimal-leading-zero") { style.listStyleType = ListStyleType::DecimalLeadingZero; sawType = true; }
+            else if (tok == "lower-roman") { style.listStyleType = ListStyleType::LowerRoman; sawType = true; }
+            else if (tok == "upper-roman") { style.listStyleType = ListStyleType::UpperRoman; sawType = true; }
+            else if (tok == "lower-alpha" || tok == "lower-latin") { style.listStyleType = ListStyleType::LowerAlpha; sawType = true; }
+            else if (tok == "upper-alpha" || tok == "upper-latin") { style.listStyleType = ListStyleType::UpperAlpha; sawType = true; }
+            // "inside"/"outside" (position) and url(...) (image) are accepted but ignored.
+        }
+        if (sawType) style.hasListStyleType = true;
+    } else if (name == "list-style-position" || name == "list-style-image") {
+        // Accepted for compatibility; FluxUI renders markers inside the content box.
+        // No-op to avoid the declaration being treated as unknown.
     } else if (name == "display") {
         if (value == "flex") style.display = Display::Flex;
         else if (value == "grid") style.display = Display::Grid;
@@ -948,10 +974,67 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else if (value == "flex-start") style.alignItems = AlignItems::FlexStart;
         else style.alignItems = AlignItems::Stretch;
     } else if (name == "place-items") {
-        if (value == "center") {
-            style.alignItems = AlignItems::Center;
-            style.justifyContent = JustifyContent::Center;
-        }
+        // place-items: <align-items> [<justify-items>]  (CSS Box Alignment L3)
+        std::string_view pi[2];
+        int piCount = 0;
+        splitWhitespace(value, pi, 2, piCount);
+        std::string alignTok = piCount > 0 ? lowerAscii(std::string(pi[0])) : "stretch";
+        std::string justifyTok = piCount > 1 ? lowerAscii(std::string(pi[1])) : alignTok;
+        // align-items axis
+        if (alignTok == "flex-end" || alignTok == "end") style.alignItems = AlignItems::FlexEnd;
+        else if (alignTok == "center") style.alignItems = AlignItems::Center;
+        else if (alignTok == "flex-start" || alignTok == "start") style.alignItems = AlignItems::FlexStart;
+        else if (alignTok == "baseline") style.alignItems = AlignItems::Baseline;
+        else style.alignItems = AlignItems::Stretch;
+        // justify-items axis
+        if (justifyTok == "start" || justifyTok == "flex-start") style.justifyItems = JustifyItems::FlexStart;
+        else if (justifyTok == "end" || justifyTok == "flex-end") style.justifyItems = JustifyItems::FlexEnd;
+        else if (justifyTok == "center") style.justifyItems = JustifyItems::Center;
+        else if (justifyTok == "baseline") style.justifyItems = JustifyItems::Baseline;
+        else style.justifyItems = JustifyItems::Stretch;
+        style.hasJustifyItems = true;
+    } else if (name == "place-content") {
+        // place-content: <align-content> [<justify-content>]  (CSS Box Alignment L3)
+        std::string_view pc[2];
+        int pcCount = 0;
+        splitWhitespace(value, pc, 2, pcCount);
+        std::string alignTok = pcCount > 0 ? lowerAscii(std::string(pc[0])) : "stretch";
+        std::string justifyTok = pcCount > 1 ? lowerAscii(std::string(pc[1])) : alignTok;
+        // align-content axis
+        if (alignTok == "flex-start" || alignTok == "start") style.alignContent = AlignContent::FlexStart;
+        else if (alignTok == "flex-end" || alignTok == "end") style.alignContent = AlignContent::FlexEnd;
+        else if (alignTok == "center") style.alignContent = AlignContent::Center;
+        else if (alignTok == "space-between") style.alignContent = AlignContent::SpaceBetween;
+        else if (alignTok == "space-around") style.alignContent = AlignContent::SpaceAround;
+        else if (alignTok == "space-evenly") style.alignContent = AlignContent::SpaceEvenly;
+        else style.alignContent = AlignContent::Stretch;
+        // justify-content axis
+        if (justifyTok == "flex-end" || justifyTok == "end") style.justifyContent = JustifyContent::FlexEnd;
+        else if (justifyTok == "center") style.justifyContent = JustifyContent::Center;
+        else if (justifyTok == "space-between") style.justifyContent = JustifyContent::SpaceBetween;
+        else if (justifyTok == "space-around") style.justifyContent = JustifyContent::SpaceAround;
+        else if (justifyTok == "space-evenly") style.justifyContent = JustifyContent::SpaceEvenly;
+        else style.justifyContent = JustifyContent::FlexStart;
+    } else if (name == "place-self") {
+        // place-self: <align-self> [<justify-self>]  (CSS Box Alignment L3)
+        std::string_view ps[2];
+        int psCount = 0;
+        splitWhitespace(value, ps, 2, psCount);
+        std::string alignTok = psCount > 0 ? lowerAscii(std::string(ps[0])) : "auto";
+        std::string justifyTok = psCount > 1 ? lowerAscii(std::string(ps[1])) : alignTok;
+        if (alignTok == "flex-start" || alignTok == "start") style.alignSelf = AlignSelf::FlexStart;
+        else if (alignTok == "flex-end" || alignTok == "end") style.alignSelf = AlignSelf::FlexEnd;
+        else if (alignTok == "center") style.alignSelf = AlignSelf::Center;
+        else if (alignTok == "stretch") style.alignSelf = AlignSelf::Stretch;
+        else if (alignTok == "baseline") style.alignSelf = AlignSelf::Baseline;
+        else style.alignSelf = AlignSelf::Auto;
+        if (justifyTok == "start" || justifyTok == "flex-start") style.justifySelf = JustifySelf::FlexStart;
+        else if (justifyTok == "end" || justifyTok == "flex-end") style.justifySelf = JustifySelf::FlexEnd;
+        else if (justifyTok == "center") style.justifySelf = JustifySelf::Center;
+        else if (justifyTok == "stretch") style.justifySelf = JustifySelf::Stretch;
+        else if (justifyTok == "baseline") style.justifySelf = JustifySelf::Baseline;
+        else style.justifySelf = JustifySelf::Auto;
+        style.hasJustifySelf = true;
     } else if (name == "gap") {
         std::string_view tokens[4];
         int count = 0;
