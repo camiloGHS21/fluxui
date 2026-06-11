@@ -206,6 +206,14 @@ static bool parseObjectPosition(const std::string& value,
     return true;
 }
 
+// True if a value string is any CSS gradient function (linear/radial/conic,
+// including their repeating-* variants).
+static bool isGradientValue(const std::string& v) {
+    return v.find("linear-gradient") != std::string::npos ||
+           v.find("radial-gradient") != std::string::npos ||
+           v.find("conic-gradient") != std::string::npos;
+}
+
 void StyleSheet::mergeProperty(Style& style, const std::string& name, const std::string& value, float emBase) {
     if (name == "padding") {
         style.hasPaddingInlineStart = false; style.hasPaddingInlineEnd = false;
@@ -278,7 +286,7 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
             style.hasColor = true;
         }
     } else if (name == "background-color" || name == "background") {
-        if (value.find("linear-gradient") != std::string::npos) {
+        if (isGradientValue(value)) {
             if (isDynamicValue(value)) {
                 style.unresolvedBackgroundGradient = value;
             } else {
@@ -292,7 +300,7 @@ bool StyleSheet::mergePropertyPart1(Style& style, const std::string& name, const
             }
         }
     } else if (name == "background-image") {
-        if (value.find("linear-gradient") != std::string::npos) {
+        if (isGradientValue(value)) {
             if (isDynamicValue(value)) {
                 style.unresolvedBackgroundGradient = value;
             } else {

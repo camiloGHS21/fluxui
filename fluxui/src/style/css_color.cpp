@@ -264,11 +264,31 @@ Color StyleSheet::parseColor(const std::string& val) {
 
 Gradient StyleSheet::parseGradient(const std::string& val) {
     Gradient grad;
-    if (val.find("linear-gradient") == std::string::npos) return grad;
-    grad.type = Gradient::Linear;
+    std::string lower = lowerAscii(val);
+
+    // Determine gradient kind (and repeating variant).
+    if (lower.find("repeating-linear-gradient") != std::string::npos) {
+        grad.type = Gradient::Linear; grad.repeating = true;
+    } else if (lower.find("repeating-radial-gradient") != std::string::npos) {
+        grad.type = Gradient::Radial; grad.repeating = true;
+    } else if (lower.find("repeating-conic-gradient") != std::string::npos) {
+        grad.type = Gradient::Conic; grad.repeating = true;
+    } else if (lower.find("linear-gradient") != std::string::npos) {
+        grad.type = Gradient::Linear;
+    } else if (lower.find("radial-gradient") != std::string::npos) {
+        grad.type = Gradient::Radial;
+    } else if (lower.find("conic-gradient") != std::string::npos) {
+        grad.type = Gradient::Conic;
+    } else {
+        return grad;  // not a gradient
+    }
+
     auto start = val.find('(');
     auto end = val.rfind(')');
-    if (start == std::string::npos || end == std::string::npos) return grad;
+    if (start == std::string::npos || end == std::string::npos) {
+        grad.type = Gradient::None;
+        return grad;
+    }
     std::string inner = val.substr(start + 1, end - start - 1);
     std::vector<std::string> parts;
     std::string current;
@@ -284,37 +304,139 @@ Gradient StyleSheet::parseGradient(const std::string& val) {
         }
     }
     if (!current.empty()) parts.push_back(trim(current));
+
     size_t colorStart = 0;
-    if (!parts.empty()) {
-        std::string first = parts[0];
-        if (first.find("deg") != std::string::npos) {
-            grad.angle = parseFloat(first);
-            colorStart = 1;
-        } else if (first == "to right") {
-            grad.angle = 90;
-            colorStart = 1;
-        } else if (first == "to left") {
-            grad.angle = 270;
-            colorStart = 1;
-        } else if (first == "to bottom") {
-            grad.angle = 180;
-            colorStart = 1;
-        } else if (first == "to top") {
-            grad.angle = 0;
-            colorStart = 1;
+
+    // ── Parse the optional leading configuration token per gradient type ──
+    auto parsePosition = [&](const std::string& posStr, Gradient& g) {
+        // "at <pos>" already stripped; posStr is the position keyword/length list.
+        std::string p = lowerAscii(trim(posStr));
+        Vec2 c = {0.5f, 0.5f};
+        bool any = false;
+        std::vector<std::string> toks;
+        {
+            std::string cur;
+            for (char ch : p) {
+                if (ch == ' ' || ch == '\t') { if (!cur.empty()) { toks.push_back(cur); cur.clear(); } }
+                else cur += ch;
+            }
+            if (!cur.empty()) toks.push_back(cur);
+        }
+        // Keywords identify their own axis, so order is flexible (top left ==
+        // left top). Percentages/lengths fill x then y in order.
+        int pctAxis = 0;  // which axis the next bare value fills
+        for (const auto& t : toks) {
+            if (t == "center") { any = true; continue; }
+            if (t == "left")   { c.x = 0.0f; any = true; continue; }
+            if (t == "right")  { c.x = 1.0f; any = true; continue; }
+            if (t == "top")    { c.y = 0.0f; any = true; continue; }
+            if (t == "bottom") { c.y = 1.0f; any = true; continue; }
+            if (!t.empty() && t.back() == '%') {
+                float v = parseFloat(t) / 100.0f;
+                if (pctAxis == 0) { c.x = v; pctAxis = 1; }
+                else              { c.y = v; }
+                any = true;
+            }
+        }
+        if (any) { g.center = c; g.hasCenter = true; }
+    };
+
+    if (grad.type == Gradient::Linear) {
+        if (!parts.empty()) {
+            std::string first = lowerAscii(parts[0]);
+            if (first.find("deg") != std::string::npos) {
+                grad.angle = parseFloat(parts[0]); colorStart = 1;
+            } else if (first.find("turn") != std::string::npos) {
+                grad.angle = parseFloat(parts[0]) * 360.0f; colorStart = 1;
+            } else if (first.rfind("to ", 0) == 0) {
+                bool toTop = first.find("top") != std::string::npos;
+                bool toBottom = first.find("bottom") != std::string::npos;
+                bool toLeft = first.find("left") != std::string::npos;
+                bool toRight = first.find("right") != std::string::npos;
+                if (toTop && toRight) grad.angle = 45;
+                else if (toBottom && toRight) grad.angle = 135;
+                else if (toBottom && toLeft) grad.angle = 225;
+                else if (toTop && toLeft) grad.angle = 315;
+                else if (toRight) grad.angle = 90;
+                else if (toLeft) grad.angle = 270;
+                else if (toBottom) grad.angle = 180;
+                else if (toTop) grad.angle = 0;
+                colorStart = 1;
+            }
+        }
+    } else if (grad.type == Gradient::Radial) {
+        // First token may be "<shape>? <size>? (at <position>)?"
+        if (!parts.empty()) {
+            std::string first = lowerAscii(parts[0]);
+            bool looksLikeConfig =
+                first.find("circle") != std::string::npos ||
+                first.find("ellipse") != std::string::npos ||
+                first.find(" at ") != std::string::npos ||
+                first.rfind("at ", 0) == 0 ||
+                first.find("closest") != std::string::npos ||
+                first.find("farthest") != std::string::npos;
+            // Also config if it has no color and contains a length/percentage.
+            if (looksLikeConfig) {
+                if (first.find("circle") != std::string::npos) grad.radialShape = Gradient::Circle;
+                if (first.find("closest-side") != std::string::npos) grad.radialExtent = Gradient::ClosestSide;
+                else if (first.find("closest-corner") != std::string::npos) grad.radialExtent = Gradient::ClosestCorner;
+                else if (first.find("farthest-side") != std::string::npos) grad.radialExtent = Gradient::FarthestSide;
+                else if (first.find("farthest-corner") != std::string::npos) grad.radialExtent = Gradient::FarthestCorner;
+                auto atPos = first.find(" at ");
+                if (atPos != std::string::npos) {
+                    parsePosition(parts[0].substr(atPos + 4), grad);
+                } else if (first.rfind("at ", 0) == 0) {
+                    parsePosition(parts[0].substr(3), grad);
+                }
+                colorStart = 1;
+            }
+        }
+    } else if (grad.type == Gradient::Conic) {
+        // "from <angle>? (at <position>)?"
+        if (!parts.empty()) {
+            std::string first = lowerAscii(parts[0]);
+            bool looksLikeConfig = first.rfind("from", 0) == 0 ||
+                                   first.find(" at ") != std::string::npos ||
+                                   first.rfind("at ", 0) == 0;
+            if (looksLikeConfig) {
+                auto fromPos = first.find("from");
+                if (fromPos != std::string::npos) {
+                    std::string afterFrom = parts[0].substr(fromPos + 4);
+                    grad.angle = parseFloat(afterFrom);  // deg/turn handled by parseFloat? deg only
+                    if (lowerAscii(afterFrom).find("turn") != std::string::npos) {
+                        grad.angle = parseFloat(afterFrom) * 360.0f;
+                    }
+                }
+                auto atPos = first.find(" at ");
+                if (atPos != std::string::npos) {
+                    parsePosition(parts[0].substr(atPos + 4), grad);
+                } else if (first.rfind("at ", 0) == 0) {
+                    parsePosition(parts[0].substr(3), grad);
+                }
+                colorStart = 1;
+            }
         }
     }
+
+    // ── Color stops (shared across all gradient types) ──
     float autoPos = 0;
     float autoStep = (parts.size() > colorStart + 1) ?
         1.0f / (float)(parts.size() - colorStart - 1) : 1.0f;
     for (size_t i = colorStart; i < parts.size(); i++) {
         std::string part = trim(parts[i]);
         float pos = autoPos;
+        // For conic gradients positions can be angles (deg) too; normalize to 0..1.
         auto pctPos = part.rfind('%');
         if (pctPos != std::string::npos) {
             auto numStart = part.rfind(' ', pctPos);
             if (numStart != std::string::npos) {
                 pos = std::stof(part.substr(numStart + 1, pctPos - numStart - 1)) / 100.0f;
+                part = trim(part.substr(0, numStart));
+            }
+        } else if (grad.type == Gradient::Conic && part.find("deg") != std::string::npos) {
+            auto numStart = part.rfind(' ');
+            if (numStart != std::string::npos) {
+                pos = parseFloat(part.substr(numStart + 1)) / 360.0f;
                 part = trim(part.substr(0, numStart));
             }
         }

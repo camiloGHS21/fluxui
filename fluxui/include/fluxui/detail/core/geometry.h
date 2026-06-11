@@ -498,9 +498,19 @@ struct Border {
     bool operator!=(const Border& o) const { return !(*this == o); }
 };
 struct Gradient {
-    enum Type { None, Linear, Radial };
+    enum Type { None, Linear, Radial, Conic };
+    enum RadialShape { Ellipse, Circle };
+    enum RadialExtent { FarthestCorner, FarthestSide, ClosestCorner, ClosestSide };
     Type type = None;
-    float angle = 180.0f;
+    float angle = 180.0f;                 // Linear: direction; Conic: from-angle
+    bool repeating = false;               // repeating-*-gradient
+    // Radial / Conic shape & position (fractions of the box, 0..1).
+    RadialShape radialShape = Ellipse;
+    RadialExtent radialExtent = FarthestCorner;
+    bool hasExplicitRadius = false;
+    Vec2 radius = {0.0f, 0.0f};            // explicit radial radii (px), if set
+    Vec2 center = {0.5f, 0.5f};            // position (fraction of box)
+    bool hasCenter = false;
     std::vector<std::pair<Color, float>> stops;
     static Gradient linear(float angle, std::initializer_list<std::pair<Color, float>> stops) {
         Gradient g;
@@ -514,10 +524,13 @@ struct Gradient {
         if (t >= 1.0f) return b;
         if (a.type == None) return b;
         if (b.type == None) return a;
-        Gradient result;
+        Gradient result = a;
         result.type = a.type;
         result.angle = a.angle + (b.angle - a.angle) * t;
+        result.center = {a.center.x + (b.center.x - a.center.x) * t,
+                         a.center.y + (b.center.y - a.center.y) * t};
         size_t size = std::min(a.stops.size(), b.stops.size());
+        result.stops.clear();
         result.stops.reserve(size);
         for (size_t i = 0; i < size; ++i) {
             Color c = Color::lerp(a.stops[i].first, b.stops[i].first, t);

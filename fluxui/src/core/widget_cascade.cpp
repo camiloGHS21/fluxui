@@ -432,7 +432,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
         if (!computedStyle.unresolvedBackgroundGradient.empty()) {
             bool valid = true;
             std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.customProperties, &valid);
-            if (valid && resolved.find("linear-gradient") != std::string::npos) {
+            if (valid && (resolved.find("linear-gradient") != std::string::npos || resolved.find("radial-gradient") != std::string::npos || resolved.find("conic-gradient") != std::string::npos)) {
                 computedStyle.backgroundGradient = StyleSheet::parseGradient(resolved);
             }
         }
@@ -472,7 +472,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.unresolvedBackgroundGradient.empty()) {
                 bool valid = true;
                 std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.hoverCustomProperties, &valid);
-                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                if (valid && (resolved.find("linear-gradient") != std::string::npos || resolved.find("radial-gradient") != std::string::npos || resolved.find("conic-gradient") != std::string::npos)) {
                     computedStyle.hoverBackgroundGradient = StyleSheet::parseGradient(resolved);
                     computedStyle.hasHoverGradient = true;
                 }
@@ -517,7 +517,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.unresolvedBackgroundGradient.empty()) {
                 bool valid = true;
                 std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.focusCustomProperties, &valid);
-                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                if (valid && (resolved.find("linear-gradient") != std::string::npos || resolved.find("radial-gradient") != std::string::npos || resolved.find("conic-gradient") != std::string::npos)) {
                     computedStyle.focusBackgroundGradient = StyleSheet::parseGradient(resolved);
                     computedStyle.hasFocusGradient = true;
                 }
@@ -562,7 +562,7 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             if (!computedStyle.unresolvedBackgroundGradient.empty()) {
                 bool valid = true;
                 std::string resolved = sheet.resolveValue(computedStyle.unresolvedBackgroundGradient, computedStyle.activeCustomProperties, &valid);
-                if (valid && resolved.find("linear-gradient") != std::string::npos) {
+                if (valid && (resolved.find("linear-gradient") != std::string::npos || resolved.find("radial-gradient") != std::string::npos || resolved.find("conic-gradient") != std::string::npos)) {
                     computedStyle.activeBackgroundGradient = StyleSheet::parseGradient(resolved);
                     computedStyle.hasActiveGradient = true;
                 }
