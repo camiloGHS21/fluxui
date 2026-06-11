@@ -992,3 +992,14 @@ target_include_directories(test_input_change PRIVATE
 enable_release_lto(test_input_change)
 
 
+
+add_executable(test_media_queries
+    examples/cpp/test_media_queries.cpp
+)
+target_link_libraries(test_media_queries PRIVATE
+    fluxui
+)
+target_include_directories(test_media_queries PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_media_queries)

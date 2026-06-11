@@ -166,6 +166,27 @@ public:
     void setForcedColors(bool active) { forcedColors_ = active; }
     bool forcedColors() const { return forcedColors_; }
 
+    // ── User-preference / capability media features (Media Queries 4/5) ──
+    // Drive prefers-reduced-motion / prefers-contrast / prefers-reduced-* and
+    // the pointer/hover capability queries. Defaults match a typical desktop.
+    void setPrefersReducedMotion(bool v) { prefersReducedMotion_ = v; }
+    bool prefersReducedMotion() const { return prefersReducedMotion_; }
+    // contrast: "no-preference" | "more" | "less" | "custom"
+    void setPrefersContrast(const std::string& v) { prefersContrast_ = v; }
+    const std::string& prefersContrast() const { return prefersContrast_; }
+    void setPrefersReducedTransparency(bool v) { prefersReducedTransparency_ = v; }
+    bool prefersReducedTransparency() const { return prefersReducedTransparency_; }
+    void setPrefersReducedData(bool v) { prefersReducedData_ = v; }
+    bool prefersReducedData() const { return prefersReducedData_; }
+    // Device resolution in dots-per-pixel (1.0 = 96dpi). Drives `resolution`.
+    void setResolutionDppx(float v) { resolutionDppx_ = v; }
+    float resolutionDppx() const { return resolutionDppx_; }
+    // pointer / hover capability: "none" | "coarse" | "fine" and bool hover.
+    void setPointerType(const std::string& v) { pointerType_ = v; }
+    const std::string& pointerType() const { return pointerType_; }
+    void setHoverCapable(bool v) { hoverCapable_ = v; }
+    bool hoverCapable() const { return hoverCapable_; }
+
     // Get style for a specific class/id/type
     Style resolve(std::string_view className,
                   std::string_view id = "",
@@ -302,6 +323,13 @@ private:
     float viewportHeight_ = 1080.0f;
     ColorScheme colorScheme_ = ColorScheme::Light;
     bool forcedColors_ = false;
+    bool prefersReducedMotion_ = false;
+    std::string prefersContrast_ = "no-preference";
+    bool prefersReducedTransparency_ = false;
+    bool prefersReducedData_ = false;
+    float resolutionDppx_ = 1.0f;
+    std::string pointerType_ = "fine";
+    bool hoverCapable_ = true;
     // Pseudo-element rule presence flags (set in parseRule, used for fast-path skip).
     bool hasBeforeRules_ = false;
     bool hasAfterRules_ = false;
