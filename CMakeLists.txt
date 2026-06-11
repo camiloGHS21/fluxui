@@ -3,43 +3,67 @@ cmake_minimum_required(VERSION 3.20)
 # ============================================================
 #  vcpkg integration
 # ============================================================
-option(DATALEAKGUARD_SINGLE_BINARY "Prefer static dependencies and build only the application executable" ON)
+set(FLUXUI_SINGLE_BINARY_DEFAULT ON)
+if(DEFINED DATALEAKGUARD_SINGLE_BINARY)
+    set(FLUXUI_SINGLE_BINARY_DEFAULT "${DATALEAKGUARD_SINGLE_BINARY}")
+    message(DEPRECATION "DATALEAKGUARD_SINGLE_BINARY is deprecated; use FLUXUI_SINGLE_BINARY instead.")
+endif()
+option(FLUXUI_SINGLE_BINARY "Prefer static dependencies for standalone FluxUI examples" ${FLUXUI_SINGLE_BINARY_DEFAULT})
 
-if(DATALEAKGUARD_SINGLE_BINARY AND WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
+if(FLUXUI_SINGLE_BINARY AND WIN32 AND NOT DEFINED VCPKG_TARGET_TRIPLET)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "vcpkg target triplet")
 endif()
 
-if(DATALEAKGUARD_SINGLE_BINARY AND WIN32)
+if(FLUXUI_SINGLE_BINARY AND WIN32)
     set(VCPKG_APPLOCAL_DEPS OFF CACHE BOOL "Do not copy vcpkg DLLs next to the executable")
 endif()
 
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/vendor/vcpkg/scripts/buildsystems/vcpkg.cmake"
-    CACHE STRING "Vcpkg toolchain file")
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    set(FLUXUI_VCPKG_TOOLCHAIN "${CMAKE_CURRENT_SOURCE_DIR}/vendor/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    if(EXISTS "${FLUXUI_VCPKG_TOOLCHAIN}")
+        set(CMAKE_TOOLCHAIN_FILE "${FLUXUI_VCPKG_TOOLCHAIN}" CACHE STRING "Vcpkg toolchain file")
+    else()
+        message(STATUS "FluxUI: vendor/vcpkg was not found; using the active CMake package search path. Set CMAKE_TOOLCHAIN_FILE explicitly when configuring from a clean clone.")
+    endif()
+endif()
 
 project(FluxUI VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include(CheckIPOSupported)
+include(CTest)
+include(GNUInstallDirs)
 
-option(DATALEAKGUARD_ENABLE_LTO "Enable release link-time optimization for faster startup/runtime" ON)
-option(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS "Enable aggressive optimizations for maximum runtime speed" ON)
+set(FLUXUI_ENABLE_LTO_DEFAULT ON)
+if(DEFINED DATALEAKGUARD_ENABLE_LTO)
+    set(FLUXUI_ENABLE_LTO_DEFAULT "${DATALEAKGUARD_ENABLE_LTO}")
+    message(DEPRECATION "DATALEAKGUARD_ENABLE_LTO is deprecated; use FLUXUI_ENABLE_LTO instead.")
+endif()
+option(FLUXUI_ENABLE_LTO "Enable release link-time optimization for faster startup/runtime" ${FLUXUI_ENABLE_LTO_DEFAULT})
 
-if(DATALEAKGUARD_ENABLE_LTO)
-    check_ipo_supported(RESULT DATALEAKGUARD_IPO_SUPPORTED
-                        OUTPUT DATALEAKGUARD_IPO_ERROR)
-    if(NOT DATALEAKGUARD_IPO_SUPPORTED)
-        message(WARNING "IPO/LTO is not supported by this toolchain: ${DATALEAKGUARD_IPO_ERROR}")
+set(FLUXUI_AGGRESSIVE_OPTIMIZATIONS_DEFAULT ON)
+if(DEFINED DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS)
+    set(FLUXUI_AGGRESSIVE_OPTIMIZATIONS_DEFAULT "${DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS}")
+    message(DEPRECATION "DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS is deprecated; use FLUXUI_AGGRESSIVE_OPTIMIZATIONS instead.")
+endif()
+option(FLUXUI_AGGRESSIVE_OPTIMIZATIONS "Enable aggressive optimizations for maximum runtime speed" ${FLUXUI_AGGRESSIVE_OPTIMIZATIONS_DEFAULT})
+
+if(FLUXUI_ENABLE_LTO)
+    check_ipo_supported(RESULT FLUXUI_IPO_SUPPORTED
+                        OUTPUT FLUXUI_IPO_ERROR)
+    if(NOT FLUXUI_IPO_SUPPORTED)
+        message(WARNING "IPO/LTO is not supported by this toolchain: ${FLUXUI_IPO_ERROR}")
     endif()
 endif()
 
 function(enable_release_lto target_name)
-    if(DATALEAKGUARD_ENABLE_LTO AND DATALEAKGUARD_IPO_SUPPORTED)
+    if(FLUXUI_ENABLE_LTO AND FLUXUI_IPO_SUPPORTED)
         set_property(TARGET ${target_name} PROPERTY
             INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     endif()
 
-    if(DATALEAKGUARD_AGGRESSIVE_OPTIMIZATIONS)
+    if(FLUXUI_AGGRESSIVE_OPTIMIZATIONS)
         if(MSVC)
             target_compile_options(${target_name} PUBLIC
                 $<$<CONFIG:Release>:/O2 /Oi /Ot /GL /Gw /Gy /Gs /Zi>
@@ -59,6 +83,12 @@ function(enable_release_lto target_name)
                 $<$<CONFIG:RelWithDebInfo>:-flto -Wl,--gc-sections>
             )
         endif()
+    endif()
+endfunction()
+
+function(fluxui_register_ctest target_name)
+    if(BUILD_TESTING AND TARGET ${target_name})
+        add_test(NAME ${target_name} COMMAND $<TARGET_FILE:${target_name}>)
     endif()
 endfunction()
 
@@ -89,9 +119,9 @@ if(NOT EXISTS "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}")
     )
 endif()
 
-if(DATALEAKGUARD_SINGLE_BINARY AND WIN32 AND
+if(FLUXUI_SINGLE_BINARY AND WIN32 AND
    DEFINED VCPKG_TARGET_TRIPLET AND NOT VCPKG_TARGET_TRIPLET MATCHES "static")
-    message(WARNING "DATALEAKGUARD_SINGLE_BINARY is ON, but VCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}' is not a static triplet. Configure with -DVCPKG_TARGET_TRIPLET=x64-windows-static for a Vulkan loader linked into the executable.")
+    message(WARNING "FLUXUI_SINGLE_BINARY is ON, but VCPKG_TARGET_TRIPLET='${VCPKG_TARGET_TRIPLET}' is not a static triplet. Configure with -DVCPKG_TARGET_TRIPLET=x64-windows-static for a Vulkan loader linked into the executable.")
 endif()
 
 if(MSVC)
@@ -106,10 +136,21 @@ find_package(OpenGL REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(harfbuzz CONFIG REQUIRED)
 
-option(DATALEAKGUARD_PREBAKE_UI_FONTS "Bake UI font atlases at build time for faster startup and stable text quality" ON)
-option(DATALEAKGUARD_EMBED_FONT_GENERATOR "Embed font atlas generator into build process (required for prebake)" ON)
+set(FLUXUI_PREBAKE_UI_FONTS_DEFAULT ON)
+if(DEFINED DATALEAKGUARD_PREBAKE_UI_FONTS)
+    set(FLUXUI_PREBAKE_UI_FONTS_DEFAULT "${DATALEAKGUARD_PREBAKE_UI_FONTS}")
+    message(DEPRECATION "DATALEAKGUARD_PREBAKE_UI_FONTS is deprecated; use FLUXUI_PREBAKE_UI_FONTS instead.")
+endif()
+option(FLUXUI_PREBAKE_UI_FONTS "Bake UI font atlases at build time for faster startup and stable text quality" ${FLUXUI_PREBAKE_UI_FONTS_DEFAULT})
 
-if(DATALEAKGUARD_PREBAKE_UI_FONTS AND DATALEAKGUARD_EMBED_FONT_GENERATOR)
+set(FLUXUI_EMBED_FONT_GENERATOR_DEFAULT ON)
+if(DEFINED DATALEAKGUARD_EMBED_FONT_GENERATOR)
+    set(FLUXUI_EMBED_FONT_GENERATOR_DEFAULT "${DATALEAKGUARD_EMBED_FONT_GENERATOR}")
+    message(DEPRECATION "DATALEAKGUARD_EMBED_FONT_GENERATOR is deprecated; use FLUXUI_EMBED_FONT_GENERATOR instead.")
+endif()
+option(FLUXUI_EMBED_FONT_GENERATOR "Embed font atlas generator into build process (required for prebake)" ${FLUXUI_EMBED_FONT_GENERATOR_DEFAULT})
+
+if(FLUXUI_PREBAKE_UI_FONTS AND FLUXUI_EMBED_FONT_GENERATOR)
     add_executable(dataleakguard_font_atlas_generator
         tools/font_atlas_generator.cpp
     )
@@ -122,7 +163,7 @@ if(DATALEAKGUARD_PREBAKE_UI_FONTS AND DATALEAKGUARD_EMBED_FONT_GENERATOR)
                 "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}"
         BYPRODUCTS "${DATALEAKGUARD_EMBEDDED_FONT_ATLAS_HEADER}"
         DEPENDS dataleakguard_font_atlas_generator
-        COMMENT "Prebaking DataLeakGuard UI font atlases"
+        COMMENT "Prebaking FluxUI showcase font atlases"
         VERBATIM
     )
 endif()
@@ -196,7 +237,10 @@ endif()
 add_library(glad STATIC
     vendor/glad/src/gl.c
 )
-target_include_directories(glad PUBLIC vendor/glad/include)
+target_include_directories(glad PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/vendor/glad/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
 set_target_properties(glad PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
@@ -265,10 +309,11 @@ set_target_properties(fluxui PROPERTIES
 
 function(configure_fluxui_target target_name)
     target_include_directories(${target_name} PUBLIC
-        fluxui/include
-        vendor/stb
-        vendor/glad/include
-        "${CMAKE_SOURCE_DIR}"
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/fluxui/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/vendor/stb>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/vendor/glad/include>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
 
     # Include optimization configurations
@@ -415,6 +460,49 @@ if(FLUXUI_BUILD_SHARED)
     endif()
 endif()
 
+option(FLUXUI_INSTALL "Install FluxUI libraries, headers, and CMake package metadata" ON)
+if(FLUXUI_INSTALL)
+    include(CMakePackageConfigHelpers)
+
+    set(FLUXUI_INSTALL_TARGETS fluxui glad)
+    if(TARGET fluxui_shared)
+        list(APPEND FLUXUI_INSTALL_TARGETS fluxui_shared)
+    endif()
+    if(TARGET fluxui_java)
+        list(APPEND FLUXUI_INSTALL_TARGETS fluxui_java)
+    endif()
+
+    install(TARGETS ${FLUXUI_INSTALL_TARGETS}
+        EXPORT FluxUITargets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+    install(DIRECTORY fluxui/include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+    install(DIRECTORY vendor/glad/include/ DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}")
+
+    set(FLUXUI_CONFIG_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/FluxUI")
+    configure_package_config_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/FluxUIConfig.cmake.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/FluxUIConfig.cmake"
+        INSTALL_DESTINATION "${FLUXUI_CONFIG_INSTALL_DIR}"
+    )
+    write_basic_package_version_file(
+        "${CMAKE_CURRENT_BINARY_DIR}/FluxUIConfigVersion.cmake"
+        VERSION "${PROJECT_VERSION}"
+        COMPATIBILITY SameMajorVersion
+    )
+    install(FILES
+        "${CMAKE_CURRENT_BINARY_DIR}/FluxUIConfig.cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/FluxUIConfigVersion.cmake"
+        DESTINATION "${FLUXUI_CONFIG_INSTALL_DIR}"
+    )
+    install(EXPORT FluxUITargets
+        NAMESPACE FluxUI::
+        DESTINATION "${FLUXUI_CONFIG_INSTALL_DIR}"
+    )
+endif()
+
 # ============================================================
 #  DataLeak Guard Showcase Example
 # ============================================================
@@ -440,7 +528,7 @@ target_include_directories(dataleakguard PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
     "${CMAKE_SOURCE_DIR}/examples/dataleakguard"
 )
-if(DATALEAKGUARD_PREBAKE_UI_FONTS)
+if(FLUXUI_PREBAKE_UI_FONTS)
     add_dependencies(dataleakguard dataleakguard_prebaked_fonts)
 endif()
 enable_release_lto(dataleakguard)
@@ -859,3 +947,48 @@ target_include_directories(test_has_forms PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_has_forms)
+
+set(FLUXUI_HEADLESS_TEST_TARGETS
+    test_math
+    test_logical
+    test_video
+    test_svg_parity
+    test_selectors
+    test_animations
+    test_transforms
+    test_filter
+    test_color
+    test_pseudo
+    test_structural
+    test_at_rules
+    test_nesting
+    test_var_cycle
+    test_cascade
+    test_masking
+    test_scroll
+    test_scroll_timeline
+    test_typography
+    test_ui_misc
+    test_dsl
+    test_disabled
+    test_inheritance
+    test_font_weight
+    test_has_forms
+)
+
+foreach(FLUXUI_TEST_TARGET IN LISTS FLUXUI_HEADLESS_TEST_TARGETS)
+    fluxui_register_ctest(${FLUXUI_TEST_TARGET})
+endforeach()
+
+add_executable(test_input_change
+    examples/cpp/test_input_change.cpp
+)
+target_link_libraries(test_input_change PRIVATE
+    fluxui
+)
+target_include_directories(test_input_change PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_input_change)
+
+

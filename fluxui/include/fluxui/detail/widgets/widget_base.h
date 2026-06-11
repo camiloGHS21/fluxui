@@ -313,6 +313,10 @@ public:
     // basic :valid / :invalid validity check.
     bool required = false;
     bool lastFrameFocused = false;
+    // Form-control value tracking for input/change dispatch.
+    std::string lastDispatchedValue_;   // value last seen by checkFormControlChanges
+    std::string valueAtFocus_;          // value captured when the control gained focus
+    bool hasValueSnapshot_ = false;     // lastDispatchedValue_ initialized?
     bool useGPUCompositing = false;
     float hoverAnim = 0;
     float hoverVelocity = 0;
@@ -563,6 +567,21 @@ public:
     size_t addEventListener(const std::string& type, DOMEventListener callback, bool useCapture = false);
     void removeEventListener(size_t listenerId);
     void dispatchEvent(Event& event);
+    // ── Form-control value model (drives `input` / `change` events) ──
+    // Override in form-control widgets to expose their current value so the
+    // engine can fire `input` on every change and `change` on commit/blur
+    // (HTML §4.10.5.5 / Blink HTMLInputElement::SetValue + DispatchInputEvent).
+    virtual bool isFormControl() const { return false; }
+    virtual std::string formControlValue() const { return {}; }
+    // Controls that commit immediately (checkbox, radio, select, range) fire
+    // `change` on every value change rather than waiting for blur (HTML §4.10.5).
+    virtual bool commitsValueOnInput() const { return false; }
+    // Fire an `input` (bubbling, non-cancelable) and `change` (bubbling) event.
+    void dispatchInputEvent();
+    void dispatchChangeEvent();
+    // Walk the tree once per frame to detect value changes and focus loss,
+    // firing input/change accordingly. Called alongside checkFocusChanges().
+    void checkFormControlChanges();
     virtual void resolveStyles(const StyleSheet& sheet);
     void updateStyleAndLayout();
     void markLayoutDirty();

@@ -2481,6 +2481,7 @@ void Application::updateStyleAndLayout() {
     }
 
     if (root_) {
+        root_->checkFormControlChanges();
         root_->checkFocusChanges();
     }
 

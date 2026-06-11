@@ -59,6 +59,8 @@ public:
     TextInput* setInputType(TextInputType kind);
     TextInput* setInputType(const std::string& kind);
     bool isPassword() const { return inputType == TextInputType::Password; }
+    bool isFormControl() const override { return true; }
+    std::string formControlValue() const override { return value; }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     CursorType cursorAt(Vec2 point) const override;
@@ -90,6 +92,8 @@ public:
     TextArea(const std::string& ph, const std::string& cls = "")
         : placeholder(ph) { type = "textarea"; className = cls; style.overflow = Overflow::Auto; }
 
+    bool isFormControl() const override { return true; }
+    std::string formControlValue() const override { return value; }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     CursorType cursorAt(Vec2 point) const override;
@@ -129,6 +133,9 @@ public:
     Checkbox(bool isChecked, const std::string& cls = "")
         : checked(isChecked) { type = "checkbox"; className = cls; style.cursor = CursorType::Default; }
     void setChecked(bool value);
+    bool isFormControl() const override { return true; }
+    bool commitsValueOnInput() const override { return true; }
+    std::string formControlValue() const override { return checked ? "on" : ""; }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     void render(Renderer& renderer) override;
@@ -142,6 +149,9 @@ public:
     Radio(bool isChecked, const std::string& groupName = "", const std::string& cls = "")
         : checked(isChecked), group(groupName) { type = "radio"; className = cls; style.cursor = CursorType::Default; }
     void setChecked(bool value);
+    bool isFormControl() const override { return true; }
+    bool commitsValueOnInput() const override { return true; }
+    std::string formControlValue() const override { return checked ? "on" : ""; }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     void render(Renderer& renderer) override;
@@ -161,6 +171,13 @@ public:
         style.cursor = CursorType::Default;
     }
     void setValue(float newValue, bool notify = true);
+    bool isFormControl() const override { return true; }
+    bool commitsValueOnInput() const override { return true; }
+    std::string formControlValue() const override {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%.6g", value);
+        return buf;
+    }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     void render(Renderer& renderer) override;
@@ -190,6 +207,13 @@ public:
     void selectIndex(size_t index, bool notify = true);
     std::string selectedLabel() const;
     std::string selectedValue() const;
+    bool isFormControl() const override { return true; }
+    bool commitsValueOnInput() const override { return true; }
+    std::string formControlValue() const override {
+        // Use the selected index as the value key. This avoids depending on
+        // selectedValue()'s option lookup and is stable for change detection.
+        return std::to_string(selectedIndex);
+    }
     void layout(const Rect& parentBounds) override;
     void update(const InputState& input) override;
     void render(Renderer& renderer) override;

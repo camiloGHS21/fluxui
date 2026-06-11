@@ -53,6 +53,59 @@ void Widget::checkFocusChanges() {
         }
     }
 }
+void Widget::dispatchInputEvent() {
+    Event ev;
+    ev.type = "input";
+    ev.target = this;
+    ev.bubbles = true;
+    ev.cancelable = false;
+    dispatchEvent(ev);
+}
+void Widget::dispatchChangeEvent() {
+    Event ev;
+    ev.type = "change";
+    ev.target = this;
+    ev.bubbles = true;
+    ev.cancelable = false;
+    dispatchEvent(ev);
+}
+void Widget::checkFormControlChanges() {
+    if (isFormControl()) {
+        std::string current = formControlValue();
+        if (!hasValueSnapshot_) {
+            // First observation: seed snapshots without firing (initial value).
+            lastDispatchedValue_ = current;
+            valueAtFocus_ = current;
+            hasValueSnapshot_ = true;
+        } else {
+            // `input`: fires on every value change (HTML input event).
+            if (current != lastDispatchedValue_) {
+                lastDispatchedValue_ = current;
+                dispatchInputEvent();
+                // Instant-commit controls (checkbox/radio/select/range) also
+                // fire `change` immediately on each value change.
+                if (commitsValueOnInput()) {
+                    valueAtFocus_ = current;
+                    dispatchChangeEvent();
+                }
+            }
+            // `change` for text-entry controls: capture the baseline when focus
+            // is gained; when focus is lost, fire if the value differs.
+            if (focused && !lastFrameFocused) {
+                valueAtFocus_ = current;
+            }
+            if (!focused && lastFrameFocused && current != valueAtFocus_) {
+                valueAtFocus_ = current;
+                dispatchChangeEvent();
+            }
+        }
+    }
+    for (auto& child : children) {
+        if (child) {
+            child->checkFormControlChanges();
+        }
+    }
+}
 void Widget::markStyleDirty() {
     styleDirty = true;
     subtreeStyleDirty = true;
