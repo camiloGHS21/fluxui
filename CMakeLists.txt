@@ -1003,3 +1003,14 @@ target_include_directories(test_media_queries PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_media_queries)
+
+add_executable(test_text_shadow
+    examples/cpp/test_text_shadow.cpp
+)
+target_link_libraries(test_text_shadow PRIVATE
+    fluxui
+)
+target_include_directories(test_text_shadow PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_text_shadow)

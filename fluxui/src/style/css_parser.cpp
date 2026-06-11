@@ -257,6 +257,14 @@ StyleSheet::StyleSheet() {
         "u, ins { text-decoration: underline; }\n"
         "s, strike, del { text-decoration: line-through; }\n"
         "tt { font-family: monospace; }\n"
+        "head, title, base, link, meta, style, script, noscript, template,\n"
+        "param, source, track, area, datalist { display: none; }\n"
+        "picture { display: inline-block; }\n"
+        "audio { display: inline-block; width: 300px; height: 54px; }\n"
+        "embed, iframe, object { display: inline-block; width: 300px; height: 150px; }\n"
+        "iframe { border: 2px solid #767676; }\n"
+        "map { display: inline; }\n"
+        "optgroup { display: block; font-weight: bold; }\n"
         "input:focus, textarea:focus, select:focus { outline-offset: 0; }\n"
     );
 }
@@ -2511,6 +2519,13 @@ uint64_t StyleSheet::computeInheritedHash(const Style& style) {
     // include them here to invalidate descendants when they change.
     hashBytes(&style.direction, sizeof(style.direction));
     hashBytes(&style.writingMode, sizeof(style.writingMode));
+    // text-shadow is inherited; fold each layer into the hash.
+    for (const auto& sh : style.textShadows) {
+        hashBytes(&sh.offsetX, sizeof(sh.offsetX));
+        hashBytes(&sh.offsetY, sizeof(sh.offsetY));
+        hashBytes(&sh.blur, sizeof(sh.blur));
+        hashBytes(&sh.color, sizeof(sh.color));
+    }
     for (char c : style.fontFamily) {
         hash ^= static_cast<uint64_t>(c);
         hash *= 1099511628211ULL;

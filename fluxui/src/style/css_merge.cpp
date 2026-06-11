@@ -1128,6 +1128,9 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         normalizeOverflowAxes(style);
     } else if (name == "box-shadow") {
         style.boxShadow = parseBoxShadow(value, emBase);
+    } else if (name == "text-shadow") {
+        style.textShadows = parseTextShadowList(value, emBase);
+        style.hasTextShadow = !style.textShadows.empty();
     } else if (name == "cursor") {
         if (value == "pointer") style.cursor = CursorType::Pointer;
         else if (value == "text") style.cursor = CursorType::Text;

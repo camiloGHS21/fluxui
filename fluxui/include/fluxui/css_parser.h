@@ -399,6 +399,7 @@ public:
     static BorderRadius parseBorderRadius(const std::string& val, float emBase = 16.0f);
     static Border parseBorder(const std::string& val, float emBase = 16.0f);
     static BoxShadow parseBoxShadow(const std::string& val, float emBase = 16.0f);
+    static std::vector<TextShadow> parseTextShadowList(const std::string& val, float emBase = 16.0f);
     static Gradient parseGradient(const std::string& val);
     static float parseFloat(const std::string& val);
     static float parseDuration(const std::string& val);

@@ -246,6 +246,67 @@ BoxShadow StyleSheet::parseBoxShadow(const std::string& val, float emBase) {
     return shadow;
 }
 // StyleSheet::parseGradient moved to css_color.cpp.
+std::vector<TextShadow> StyleSheet::parseTextShadowList(const std::string& val, float emBase) {
+    std::vector<TextShadow> shadows;
+    std::string trimmed = trim(val);
+    if (trimmed.empty() || trimmed == "none") return shadows;
+    // Split into comma-separated layers, ignoring commas inside rgb()/hsl().
+    for (const auto& layerRaw : splitTopLevel(trimmed, ',')) {
+        std::string v = trim(layerRaw);
+        if (v.empty()) continue;
+        // Extract a color token (hex or rgb()/hsl()) wherever it appears.
+        std::string colorStr;
+        auto hashPos = v.find('#');
+        if (hashPos != std::string::npos) {
+            auto end = v.find(' ', hashPos + 1);
+            if (end == std::string::npos) end = v.size();
+            colorStr = v.substr(hashPos, end - hashPos);
+            v = v.substr(0, hashPos) + v.substr(end);
+        } else {
+            auto rgbPos = v.find("rgb");
+            auto hslPos = v.find("hsl");
+            auto colorPos = rgbPos != std::string::npos ? rgbPos : hslPos;
+            if (colorPos != std::string::npos) {
+                auto end = v.find(')', colorPos);
+                if (end != std::string::npos) {
+                    colorStr = v.substr(colorPos, end - colorPos + 1);
+                    v = v.substr(0, colorPos) + v.substr(end + 1);
+                }
+            } else {
+                // Named color leading or trailing the lengths (e.g. "red 1px 1px").
+                std::istringstream cs(v);
+                std::string tok;
+                std::string rest;
+                while (cs >> tok) {
+                    bool isLen = !tok.empty() &&
+                        (std::isdigit((unsigned char)tok[0]) || tok[0] == '-' ||
+                         tok[0] == '+' || tok[0] == '.');
+                    if (!isLen && colorStr.empty()) {
+                        colorStr = tok;  // treat first non-length token as color
+                    } else {
+                        if (!rest.empty()) rest += ' ';
+                        rest += tok;
+                    }
+                }
+                v = rest;
+            }
+        }
+        std::istringstream ss(trim(v));
+        std::vector<float> vals;
+        std::string token;
+        while (ss >> token) {
+            vals.push_back(parseLengthPixels(token, emBase));
+        }
+        TextShadow sh;
+        if (vals.size() >= 1) sh.offsetX = vals[0];
+        if (vals.size() >= 2) sh.offsetY = vals[1];
+        if (vals.size() >= 3) sh.blur = std::max(0.0f, vals[2]);
+        sh.color = colorStr.empty() ? Color(0, 0, 0, 1.0f) : parseColor(colorStr);
+        // A text-shadow needs at least the two offsets to be meaningful.
+        if (vals.size() >= 2) shadows.push_back(sh);
+    }
+    return shadows;
+}
 float StyleSheet::parseFloat(const std::string& val) {
     std::string v = trim(val);
     for (auto& suffix : {"px", "rem", "em", "deg", "ms", "s", "%"}) {

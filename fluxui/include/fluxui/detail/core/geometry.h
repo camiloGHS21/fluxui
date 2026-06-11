@@ -366,6 +366,19 @@ struct BoxShadow {
     }
     bool operator!=(const BoxShadow& o) const { return !(*this == o); }
 };
+// CSS text-shadow layer (CSS Text Decoration L3). offset-x offset-y [blur] color.
+// Unlike box-shadow there is no spread and no inset. text-shadow takes a
+// comma-separated list of layers painted back-to-front.
+struct TextShadow {
+    float offsetX = 0, offsetY = 0;
+    float blur = 0;
+    Color color = Color(0, 0, 0, 0.0f);
+    bool operator==(const TextShadow& o) const {
+        return offsetX == o.offsetX && offsetY == o.offsetY &&
+               blur == o.blur && color == o.color;
+    }
+    bool operator!=(const TextShadow& o) const { return !(*this == o); }
+};
 
 // ============================================================
 //  CSS Filter Operations (Blink FilterOperation parity)

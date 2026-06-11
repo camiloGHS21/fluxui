@@ -98,6 +98,10 @@ void Text::render(Renderer& renderer) {
         displayTextPtr = &transformedText;
     }
     const std::string& fontName = renderFontName(computedStyle);
+    // Activate CSS text-shadow layers for this element's glyphs.
+    if (computedStyle->hasTextShadow) {
+        renderer.setTextShadows(computedStyle->textShadows);
+    }
     if (computedStyle->whiteSpace != WhiteSpace::NoWrap && textRect.w > 0.0f) {
         std::vector<std::string> lines = layoutTextLines(*displayTextPtr,
                                                          computedStyle->fontSize,
@@ -144,6 +148,9 @@ void Text::render(Renderer& renderer) {
                                 computedStyle->direction,
                                 computedStyle->unicodeBidi);
         renderTextDecoration(renderer, *displayTextPtr, textRect, textColor, computedStyle);
+    }
+    if (computedStyle->hasTextShadow) {
+        renderer.clearTextShadows();
     }
     renderChildren(renderer);
 }

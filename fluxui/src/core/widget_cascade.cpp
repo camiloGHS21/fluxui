@@ -194,6 +194,11 @@ void Widget::resolveStyles(const StyleSheet& sheet) {
             FLUX_INHERIT(direction, hasDirection)
             FLUX_INHERIT(writingMode, hasWritingMode)
             #undef FLUX_INHERIT
+            // text-shadow is inherited (CSS Text Decoration L3).
+            if (!computedStyle.hasTextShadow && inherited.hasTextShadow) {
+                computedStyle.textShadows = inherited.textShadows;
+                computedStyle.hasTextShadow = true;
+            }
             // list-style-type also propagates its has* flag so the value keeps
             // cascading to grandchildren that query hasListStyleType directly.
             if (!computedStyle.hasListStyleType) {

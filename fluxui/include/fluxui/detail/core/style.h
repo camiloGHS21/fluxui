@@ -648,6 +648,9 @@ struct Style {
     float wordSpacing = 0;
     Color textDecorationColor;
     bool hasTextDecorationColor = false;
+    // text-shadow: comma-separated list of shadow layers (inherited).
+    std::vector<TextShadow> textShadows;
+    bool hasTextShadow = false;
     bool hasColor = false;
     bool hasFontSize = false;
     bool hasFontWeight = false;

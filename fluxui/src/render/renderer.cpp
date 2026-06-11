@@ -2562,6 +2562,19 @@ void Renderer::drawTextInRect(const std::string& text, const Rect& rect, const C
                                FontStyle style,
                                Direction direction,
                                UnicodeBidi unicodeBidi) {
+    // Paint CSS text-shadow layers first (back-to-front), then the glyphs.
+    if (!activeTextShadows_.empty()) {
+        std::vector<TextShadow> shadows;
+        shadows.swap(activeTextShadows_);   // disable re-entrancy during layers
+        for (auto it = shadows.rbegin(); it != shadows.rend(); ++it) {
+            Rect shadowRect = rect;
+            shadowRect.x += it->offsetX;
+            shadowRect.y += it->offsetY;
+            drawTextInRect(text, shadowRect, it->color, fontSize, align, weight,
+                           fontName, style, direction, unicodeBidi);
+        }
+        activeTextShadows_.swap(shadows);   // restore for any sibling text
+    }
     if (isRecording()) {
         RenderCommand cmd;
         cmd.type = RenderCommandType::Text;

@@ -299,6 +299,13 @@ public:
     void drawBorder(const Rect& rect, const Border& border, const BorderRadius& radius);
     void drawBoxShadow(const Rect& rect, const BoxShadow& shadow, const BorderRadius& radius);
     void drawBackdropFilterBlur(const Rect& rect, float blurRadius, const BorderRadius& radius);
+    // Active text-shadow layers (CSS text-shadow). When set, the next
+    // drawText/drawTextInRect calls paint each shadow layer (offset + blur,
+    // back-to-front) before the main glyphs. Set around a widget's text paint
+    // and clear afterwards.
+    void setTextShadows(const std::vector<TextShadow>& shadows) { activeTextShadows_ = shadows; }
+    void clearTextShadows() { activeTextShadows_.clear(); }
+    const std::vector<TextShadow>& activeTextShadows() const { return activeTextShadows_; }
     void drawText(const std::string& text, const Vec2& pos, const Color& color,
                   float fontSize = 14.0f, FontWeight weight = FontWeight::Normal,
                   const std::string& fontName = "default",
@@ -476,6 +483,8 @@ private:
     // Translation
     Vec2 translation_ = {0, 0};
     std::vector<Vec2> translationStack_;
+    // Active CSS text-shadow layers (see setTextShadows()).
+    std::vector<TextShadow> activeTextShadows_;
 
     // Scale
     float scale_ = 1.0f;
