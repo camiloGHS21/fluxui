@@ -700,6 +700,12 @@ static bool selectorPseudoMatches(std::string_view pseudoName,
                              baseType == "select";
         return isFormControl && !selectorHasFlag(actualType, "invalid");
     }
+    if (pseudoName == "in-range") {
+        return selectorHasFlag(actualType, "in-range");
+    }
+    if (pseudoName == "out-of-range") {
+        return selectorHasFlag(actualType, "out-of-range");
+    }
     return false;
 }
 static void splitSelectorChain(const std::string& selector,

@@ -293,8 +293,13 @@ const std::string& Widget::selectorType() const {
     } else if (auto* radio = dynamic_cast<const Radio*>(this)) {
         cachedSelectorType = "input|type=radio";
         if (radio->checked) cachedSelectorType += "|checked";
-    } else if (dynamic_cast<const RangeInput*>(this)) {
+    } else if (auto* range = dynamic_cast<const RangeInput*>(this)) {
         cachedSelectorType = "input|type=range";
+        // :in-range / :out-of-range (CSS Selectors L4) for the range value.
+        if (range->value < range->min || range->value > range->max)
+            cachedSelectorType += "|out-of-range";
+        else
+            cachedSelectorType += "|in-range";
     } else if (auto* select = dynamic_cast<const Select*>(this)) {
         cachedSelectorType = "select";
         if (select->expanded) cachedSelectorType += "|open";

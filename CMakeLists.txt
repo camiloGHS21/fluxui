@@ -1069,3 +1069,14 @@ target_include_directories(test_location_pseudo PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_location_pseudo)
+
+add_executable(test_range_pseudo
+    examples/cpp/test_range_pseudo.cpp
+)
+target_link_libraries(test_range_pseudo PRIVATE
+    fluxui
+)
+target_include_directories(test_range_pseudo PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_range_pseudo)

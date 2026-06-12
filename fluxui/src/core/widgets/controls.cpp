@@ -196,6 +196,7 @@ void RangeInput::setValue(float newValue, bool notify) {
     }
     if (std::abs(value - clamped) < 0.0001f) return;
     value = clamped;
+    cachedSelectorType.clear();  // value affects :in-range/:out-of-range
     if (notify && onChange) onChange(value);
 }
 void RangeInput::layout(const Rect& parentBounds) {
