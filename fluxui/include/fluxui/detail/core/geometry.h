@@ -539,5 +539,81 @@ struct Gradient {
         }
         return result;
     }
+    // Sample the gradient color ramp at position t in [0,1] using the full
+    // multi-stop list (linear interpolation between adjacent stops). For the
+    // repeating variants t is wrapped into [0,1]. Works for all gradient types
+    // once the geometric t has been computed by sampleAt().
+    Color sampleColor(float t) const {
+        if (stops.empty()) return Color(0, 0, 0, 0);
+        if (stops.size() == 1) return stops.front().first;
+        if (repeating) {
+            float lo = stops.front().second;
+            float hi = stops.back().second;
+            float span = hi - lo;
+            if (span > 1e-6f) {
+                t = lo + std::fmod(std::fmod(t - lo, span) + span, span);
+            }
+        }
+        if (t <= stops.front().second) return stops.front().first;
+        if (t >= stops.back().second) return stops.back().first;
+        for (size_t i = 1; i < stops.size(); ++i) {
+            if (t <= stops[i].second) {
+                float a = stops[i - 1].second;
+                float b = stops[i].second;
+                float local = (b - a) > 1e-6f ? (t - a) / (b - a) : 0.0f;
+                return Color::lerp(stops[i - 1].first, stops[i].first, local);
+            }
+        }
+        return stops.back().first;
+    }
+    // Compute the geometric position t in [0,1] for a point (px,py) within the
+    // box rect (x,y,w,h), per gradient type, then sample the ramp. This is the
+    // reference rasterization math used by the software renderer.
+    Color sampleAt(float px, float py, float rx, float ry, float rw, float rh) const {
+        float t = 0.0f;
+        if (type == Linear) {
+            // angle: 0deg = upward (to top); CSS measures clockwise from +Y up.
+            float rad = angle * 3.14159265358979323846f / 180.0f;
+            float dirx = std::sin(rad);
+            float diry = -std::cos(rad);
+            // Project the point (normalized to the box) onto the gradient line.
+            float nx = (rw > 0.0f ? (px - rx) / rw : 0.0f) - 0.5f;
+            float ny = (rh > 0.0f ? (py - ry) / rh : 0.0f) - 0.5f;
+            // Account for the box aspect so 45deg hits the corner (Blink scales
+            // the gradient line to the box diagonal); approximate with 0.5 span.
+            t = nx * dirx + ny * diry + 0.5f;
+        } else if (type == Radial) {
+            float cx = rx + center.x * rw;
+            float cy = ry + center.y * rh;
+            float dx = px - cx;
+            float dy = py - cy;
+            // Radius to the relevant extent. Default farthest-corner.
+            float halfW = std::max(center.x, 1.0f - center.x) * rw;
+            float halfH = std::max(center.y, 1.0f - center.y) * rh;
+            if (radialExtent == ClosestSide || radialExtent == ClosestCorner) {
+                halfW = std::min(center.x, 1.0f - center.x) * rw;
+                halfH = std::min(center.y, 1.0f - center.y) * rh;
+            }
+            float rxr = halfW, ryr = halfH;
+            if (radialShape == Circle) {
+                rxr = ryr = std::max(halfW, halfH);
+                if (radialExtent == ClosestSide || radialExtent == ClosestCorner) {
+                    rxr = ryr = std::min(halfW, halfH);
+                }
+            }
+            float ex = rxr > 1e-3f ? dx / rxr : 0.0f;
+            float ey = ryr > 1e-3f ? dy / ryr : 0.0f;
+            t = std::sqrt(ex * ex + ey * ey);
+        } else if (type == Conic) {
+            float cx = rx + center.x * rw;
+            float cy = ry + center.y * rh;
+            float ang = std::atan2(px - cx, -(py - cy));  // 0 at top, clockwise
+            float deg = ang * 180.0f / 3.14159265358979323846f - angle;
+            deg = std::fmod(std::fmod(deg, 360.0f) + 360.0f, 360.0f);
+            t = deg / 360.0f;
+        }
+        if (!repeating) t = std::clamp(t, 0.0f, 1.0f);
+        return sampleColor(t);
+    }
 };
 }

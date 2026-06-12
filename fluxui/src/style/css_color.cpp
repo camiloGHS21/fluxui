@@ -273,12 +273,14 @@ Gradient StyleSheet::parseGradient(const std::string& val) {
         grad.type = Gradient::Radial; grad.repeating = true;
     } else if (lower.find("repeating-conic-gradient") != std::string::npos) {
         grad.type = Gradient::Conic; grad.repeating = true;
+        grad.angle = 0.0f;   // conic from-angle defaults to 0 (top)
     } else if (lower.find("linear-gradient") != std::string::npos) {
         grad.type = Gradient::Linear;
     } else if (lower.find("radial-gradient") != std::string::npos) {
         grad.type = Gradient::Radial;
     } else if (lower.find("conic-gradient") != std::string::npos) {
         grad.type = Gradient::Conic;
+        grad.angle = 0.0f;   // conic from-angle defaults to 0 (top)
     } else {
         return grad;  // not a gradient
     }

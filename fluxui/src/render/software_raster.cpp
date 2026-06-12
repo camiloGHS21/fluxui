@@ -211,6 +211,69 @@ void Renderer::flushSoftwareRectBatch() {
     rectBatch_.clear();
 }
 
+void Renderer::drawSoftwareGradientRect(const Rect& rect,
+                                        const Gradient& gradient,
+                                        const BorderRadius& radius,
+                                        float opacity,
+                                        float drawScale,
+                                        const Vec2& pivot) {
+    if (!softwareFrameActive_ || softwarePixels_.empty() || opacity <= 0.0f) {
+        return;
+    }
+    if (gradient.stops.empty()) return;
+
+    Rect drawRect = transformSoftwareRect(rect, drawScale, pivot);
+    float left = std::floor(drawRect.x + 0.5f);
+    float right = std::floor(drawRect.x + drawRect.w + 0.5f);
+    float top = std::floor(drawRect.y + 0.5f);
+    float bottom = std::floor(drawRect.y + drawRect.h + 0.5f);
+    drawRect.x = left;
+    drawRect.y = top;
+    drawRect.w = std::max(1.0f, right - left);
+    drawRect.h = std::max(1.0f, bottom - top);
+
+    float scaledRadius = std::max(0.0f, radius.uniform() * drawScale);
+
+    SoftwareClip clip = softwareClipFor(scissorStack_, softwareWidth_,
+                                        softwareHeight_, dpiScale_);
+    int x0 = std::max(clip.x0, static_cast<int>(std::floor(drawRect.x)));
+    int y0 = std::max(clip.y0, static_cast<int>(std::floor(drawRect.y)));
+    int x1 = std::min(clip.x1, static_cast<int>(std::ceil(drawRect.x + drawRect.w)));
+    int y1 = std::min(clip.y1, static_cast<int>(std::ceil(drawRect.y + drawRect.h)));
+    if (x0 >= x1 || y0 >= y1) return;
+
+    float safeMargin = std::max(0.5f, scaledRadius);
+    float safeX0 = safeMargin, safeX1 = drawRect.w - safeMargin;
+    float safeY0 = safeMargin, safeY1 = drawRect.h - safeMargin;
+
+    for (int y = y0; y < y1; ++y) {
+        float py = static_cast<float>(y) + 0.5f;
+        float ly = py - drawRect.y;
+        size_t rowOffset = static_cast<size_t>(y) * softwareWidth_;
+        for (int x = x0; x < x1; ++x) {
+            float px = static_cast<float>(x) + 0.5f;
+            float lx = px - drawRect.x;
+
+            float coverage;
+            if (lx >= safeX0 && lx <= safeX1 && ly >= safeY0 && ly <= safeY1) {
+                coverage = 1.0f;
+            } else {
+                coverage = softwareRoundedCoverage(px, py, drawRect, scaledRadius);
+                if (coverage <= 0.0f) continue;
+            }
+
+            // Sample the full gradient ramp at this pixel (CSS-correct math).
+            Color fill = gradient.sampleAt(px, py, drawRect.x, drawRect.y,
+                                           drawRect.w, drawRect.h);
+            uint32_t fR = static_cast<uint32_t>(std::clamp(fill.r, 0.0f, 1.0f) * 255.0f);
+            uint32_t fG = static_cast<uint32_t>(std::clamp(fill.g, 0.0f, 1.0f) * 255.0f);
+            uint32_t fB = static_cast<uint32_t>(std::clamp(fill.b, 0.0f, 1.0f) * 255.0f);
+            uint32_t a_int = static_cast<uint32_t>(fill.a * opacity * coverage * 255.0f);
+            softwareBlendPixelFast(softwarePixels_[rowOffset + x], fR, fG, fB, a_int);
+        }
+    }
+}
+
 void Renderer::drawSoftwareRoundedRect(const Rect& rect,
                                        const Color& color,
                                        const Color& color2,

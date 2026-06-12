@@ -543,6 +543,11 @@ private:
                                  float opacity, bool hasGradient,
                                  float gradientAngle, float drawScale,
                                  const Vec2& pivot);
+    // Per-pixel rasterization of a full Gradient (radial/conic/multi-stop) into
+    // the software framebuffer, honoring rounded-rect coverage.
+    void drawSoftwareGradientRect(const Rect& rect, const Gradient& gradient,
+                                  const BorderRadius& radius, float opacity,
+                                  float drawScale, const Vec2& pivot);
     void drawSoftwareBoxShadow(const Rect& rect, const BoxShadow& shadow,
                                const BorderRadius& radius);
     void drawSoftwareText(const std::string& text, const Vec2& pos,

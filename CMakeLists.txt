@@ -1025,3 +1025,14 @@ target_include_directories(test_gradients PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_gradients)
+
+add_executable(test_gradient_sample
+    examples/cpp/test_gradient_sample.cpp
+)
+target_link_libraries(test_gradient_sample PRIVATE
+    fluxui
+)
+target_include_directories(test_gradient_sample PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_gradient_sample)

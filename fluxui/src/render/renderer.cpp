@@ -2215,6 +2215,19 @@ void Renderer::drawRoundedRectGradient(const Rect& rect, const Gradient& gradien
         return;
     }
 
+    // Software path: radial/conic and multi-stop (>2) gradients are rasterized
+    // per-pixel with the full Gradient ramp (CSS-correct). The fast 2-color
+    // linear path below handles the common simple case.
+    if (activeBackend_ == RenderBackendType::Compatibility &&
+        (gradient.type == Gradient::Radial || gradient.type == Gradient::Conic ||
+         gradient.stops.size() > 2 || gradient.repeating)) {
+        flushRectBatch();
+        drawSoftwareGradientRect(rect, gradient, radius, opacity,
+                                 scale_,
+                                 scalePivotStack_.empty() ? Vec2(0,0) : scalePivotStack_.back());
+        return;
+    }
+
     Vec2 pivot = scalePivotStack_.empty() ? Vec2(0,0) : scalePivotStack_.back();
     if (batchValid_ && (batchScale_ != scale_ || batchScalePivot_.x != pivot.x || batchScalePivot_.y != pivot.y)) {
         flushRectBatch();
