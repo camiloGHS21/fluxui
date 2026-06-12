@@ -610,6 +610,34 @@ static bool selectorPseudoMatches(std::string_view pseudoName,
     if (pseudoName == "checked") return selectorHasFlag(actualType, "checked");
     if (pseudoName == "open") return selectorHasFlag(actualType, "open");
     if (pseudoName == "indeterminate") return selectorHasFlag(actualType, "indeterminate");
+    // ── Structural / location pseudo-classes (CSS Selectors L4) ──
+    if (pseudoName == "root") {
+        // :root matches the document root element (no parent).
+        return widget && widget->parent == nullptr;
+    }
+    if (pseudoName == "scope") {
+        // Without an explicit scope element, :scope behaves like :root.
+        return widget && widget->parent == nullptr;
+    }
+    if (pseudoName == "link" || pseudoName == "any-link") {
+        // Unvisited link: an <a>/<area> with an href. FluxUI has no visited
+        // history, so :link and :any-link are equivalent (and :visited never
+        // matches, for privacy parity with browsers).
+        std::string_view baseType = selectorBaseType(actualType);
+        if (baseType != "a" && baseType != "area") return false;
+        if (auto* anchor = dynamic_cast<const Anchor*>(widget)) {
+            return !anchor->href.empty();
+        }
+        return false;
+    }
+    if (pseudoName == "visited") {
+        return false;  // no visited-history tracking (browser privacy parity)
+    }
+    if (pseudoName == "target") {
+        // :target matches the element whose id equals the URL fragment. FluxUI
+        // exposes this via a |target flag encoded into selectorType().
+        return selectorHasFlag(actualType, "target");
+    }
     if (pseudoName == "enabled") {
         if (selectorHasFlag(actualType, "disabled")) return false;
         return widget ? !widget->disabled : true;
@@ -1917,12 +1945,15 @@ void StyleSheet::parseRule(const std::string& selector, const std::string& body,
         std::string cleanSelector = trim(sel);
         if (cleanSelector.empty()) continue;
         if (cleanSelector == ":root") {
+            // :root custom properties feed the global variable table…
             for (const auto& prop : properties) {
                 if (prop.name.rfind("--", 0) == 0) {
                     variables_[prop.name] = prop.value;
                 }
             }
-            continue;
+            // …but :root is also a real selector: fall through so its other
+            // declarations (and the :root pseudo-class) still apply to the root
+            // element (CSS Selectors L4 :root).
         }
         CSSRule rule;
         rule.selector = cleanSelector;
