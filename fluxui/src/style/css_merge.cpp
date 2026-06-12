@@ -1535,14 +1535,34 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
         else style.whiteSpace = WhiteSpace::Normal;
         style.hasWhiteSpace = true;
     } else if (name == "text-decoration" || name == "text-decoration-line") {
-        if (value == "underline") style.textDecoration = TextDecoration::Underline;
-        else if (value == "line-through") style.textDecoration = TextDecoration::LineThrough;
-        else if (value == "overline") style.textDecoration = TextDecoration::Overline;
+        // Shorthand may carry line + style + color (+ thickness):
+        //   text-decoration: underline wavy red 2px
+        std::string lv = lowerAscii(trim(value));
+        // line
+        if (lv.find("underline") != std::string::npos) style.textDecoration = TextDecoration::Underline;
+        else if (lv.find("line-through") != std::string::npos) style.textDecoration = TextDecoration::LineThrough;
+        else if (lv.find("overline") != std::string::npos) style.textDecoration = TextDecoration::Overline;
         else style.textDecoration = TextDecoration::None;
         style.hasTextDecoration = true;
+        if (name == "text-decoration") {
+            // decoration style keyword
+            for (const char* st : {"solid", "double", "dotted", "dashed", "wavy"}) {
+                if (lv.find(st) != std::string::npos) { style.rare().textDecorationStyle = st; break; }
+            }
+        }
     } else if (name == "text-decoration-color") {
         style.textDecorationColor = parseColor(value);
         style.hasTextDecorationColor = true;
+    } else if (name == "text-decoration-style") {
+        style.rare().textDecorationStyle = lowerAscii(trim(value));
+    } else if (name == "text-decoration-thickness") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "auto" || v == "from-font") style.rare().textDecorationThickness = -1.0f;
+        else style.rare().textDecorationThickness = parseLengthPixels(value, emBase);
+    } else if (name == "text-underline-offset") {
+        std::string v = lowerAscii(trim(value));
+        if (v == "auto") style.rare().textUnderlineOffset = -1.0f;
+        else style.rare().textUnderlineOffset = parseLengthPixels(value, emBase);
     } else if (name == "text-transform") {
         if (value == "uppercase") style.textTransform = TextTransform::Uppercase;
         else if (value == "lowercase") style.textTransform = TextTransform::Lowercase;

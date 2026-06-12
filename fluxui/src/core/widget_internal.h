@@ -785,15 +785,48 @@ inline void renderTextDecoration(Renderer& renderer,
         x = rect.x + rect.w - textWidth;
     }
     Color lineColor = style.hasTextDecorationColor ? style.textDecorationColor : textColor;
-    float thickness = std::max(1.0f, std::round(style.fontSize / 14.0f));
+    // text-decoration-thickness (px) or auto (font-size based default).
+    float thickness = style.rare().textDecorationThickness > 0.0f
+        ? style.rare().textDecorationThickness
+        : std::max(1.0f, std::round(style.fontSize / 14.0f));
     float y = rect.y + rect.h * 0.5f;
     if (style.textDecoration == TextDecoration::Underline) {
         y += style.fontSize * 0.36f;
+        // text-underline-offset shifts the underline away from the baseline.
+        if (style.rare().textUnderlineOffset > 0.0f) y += style.rare().textUnderlineOffset;
     } else if (style.textDecoration == TextDecoration::Overline) {
         y -= style.fontSize * 0.44f;
     }
-    renderer.drawRoundedRect({x, y, std::max(0.0f, textWidth), thickness},
-                             lineColor, BorderRadius(thickness * 0.5f));
+    float w = std::max(0.0f, textWidth);
+    const std::string& decoStyle = style.rare().textDecorationStyle;
+
+    auto drawSegment = [&](float sx, float sw, float sy) {
+        renderer.drawRoundedRect({sx, sy, sw, thickness}, lineColor,
+                                 BorderRadius(thickness * 0.5f));
+    };
+
+    if (decoStyle == "double") {
+        float gap = thickness + std::max(1.0f, thickness);
+        drawSegment(x, w, y);
+        drawSegment(x, w, y + gap);
+    } else if (decoStyle == "dotted" || decoStyle == "dashed") {
+        float seg = decoStyle == "dotted" ? thickness * 1.5f : thickness * 4.0f;
+        float gap = decoStyle == "dotted" ? thickness * 1.5f : thickness * 3.0f;
+        for (float sx = x; sx < x + w; sx += seg + gap) {
+            drawSegment(sx, std::min(seg, x + w - sx), y);
+        }
+    } else if (decoStyle == "wavy") {
+        // Approximate a wave with short alternating-height segments.
+        float step = std::max(2.0f, thickness * 2.0f);
+        float amp = thickness;
+        bool up = true;
+        for (float sx = x; sx < x + w; sx += step) {
+            drawSegment(sx, std::min(step, x + w - sx), y + (up ? -amp : amp) * 0.5f);
+            up = !up;
+        }
+    } else {
+        drawSegment(x, w, y);   // solid (default)
+    }
 }
 inline std::string ellipsizeText(Renderer& renderer,
                                  const std::string& text,

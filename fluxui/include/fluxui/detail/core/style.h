@@ -94,6 +94,11 @@ struct StyleRareData {
     bool hasTextIndent = false;
     std::string hangingPunctuation;
     bool hasHangingPunctuation = false;
+    // text-decoration extras (CSS Text Decoration L4). Style: solid/double/
+    // dotted/dashed/wavy. thickness/offset in px (negative = unset).
+    std::string textDecorationStyle;     // "solid" (default) | double | dotted | dashed | wavy
+    float textDecorationThickness = -1.0f;
+    float textUnderlineOffset = -1.0f;
     std::string fontSynthesis;
     std::string fontLanguageOverride;
     bool hasFontVariantCaps = false;
