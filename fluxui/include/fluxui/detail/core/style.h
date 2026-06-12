@@ -101,6 +101,10 @@ struct StyleRareData {
     float textUnderlineOffset = -1.0f;
     std::string fontSynthesis;
     std::string fontLanguageOverride;
+    // CSS counters (CSS Lists L3): parsed counter-reset / counter-increment as
+    // (name, value) pairs. Used to drive counter() substitution in content.
+    std::vector<std::pair<std::string,int>> counterReset;
+    std::vector<std::pair<std::string,int>> counterIncrement;
     bool hasFontVariantCaps = false;
     bool hasFontVariantNumeric = false;
     bool hasFontVariantLigatures = false;

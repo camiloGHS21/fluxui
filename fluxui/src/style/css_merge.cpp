@@ -1694,7 +1694,11 @@ void StyleSheet::mergePropertyPart2(Style& style, const std::string& name, const
 }
 // -- mergePropertyPart3: scroll-driven animations + timeline properties --
 void StyleSheet::mergePropertyPart3(Style& style, const std::string& name, const std::string& value, float emBase) {
-    if (name == "animation-timeline") {
+    if (name == "counter-reset") {
+        style.rare().counterReset = parseCounterList(value, 0);
+    } else if (name == "counter-increment") {
+        style.rare().counterIncrement = parseCounterList(value, 1);
+    } else if (name == "animation-timeline") {
         style.rare().animationTimeline.clear();
         for (const auto& part : splitTopLevel(value, ',')) {
             style.rare().animationTimeline.push_back(trim(part));

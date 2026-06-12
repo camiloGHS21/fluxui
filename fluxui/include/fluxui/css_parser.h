@@ -395,6 +395,16 @@ public:
     static float parseLengthPixels(const std::string& val, float emBase = 16.0f);
     static float parseFontSizePixels(const std::string& val, float currentSize = 16.0f);
     static float parseLineHeight(const std::string& val, float fontSize);
+    // Format an integer counter value according to a list-style-type style
+    // ("decimal", "lower-roman", "upper-roman", "lower-alpha", "upper-alpha",
+    // "decimal-leading-zero", ...). Used by CSS counter() rendering.
+    static std::string formatCounter(int value, const std::string& style);
+    // Substitute counter(name[,style]) / counters(name,sep[,style]) tokens in a
+    // content string given the current resolved counter values.
+    static std::string substituteCounters(const std::string& content,
+                                          const std::unordered_map<std::string,int>& counters);
+    // Parse counter-reset / counter-increment into (name,value) pairs.
+    static std::vector<std::pair<std::string,int>> parseCounterList(const std::string& val, int defaultValue);
     static EdgeInsets parseEdgeInsets(const std::string& val, float emBase = 16.0f);
     static BorderRadius parseBorderRadius(const std::string& val, float emBase = 16.0f);
     static Border parseBorder(const std::string& val, float emBase = 16.0f);

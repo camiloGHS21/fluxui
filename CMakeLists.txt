@@ -1047,3 +1047,14 @@ target_include_directories(test_text_decoration PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_text_decoration)
+
+add_executable(test_counters
+    examples/cpp/test_counters.cpp
+)
+target_link_libraries(test_counters PRIVATE
+    fluxui
+)
+target_include_directories(test_counters PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_counters)

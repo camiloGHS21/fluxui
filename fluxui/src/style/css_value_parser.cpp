@@ -307,6 +307,116 @@ std::vector<TextShadow> StyleSheet::parseTextShadowList(const std::string& val, 
     }
     return shadows;
 }
+std::string StyleSheet::formatCounter(int value, const std::string& style) {
+    auto toRoman = [](int n, bool upper) -> std::string {
+        if (n <= 0 || n >= 4000) return std::to_string(n);
+        static const int vals[] = {1000,900,500,400,100,90,50,40,10,9,5,4,1};
+        static const char* up[] = {"M","CM","D","CD","C","XC","L","XL","X","IX","V","IV","I"};
+        static const char* lo[] = {"m","cm","d","cd","c","xc","l","xl","x","ix","v","iv","i"};
+        std::string out;
+        for (int i = 0; i < 13; ++i) {
+            while (n >= vals[i]) { out += (upper ? up[i] : lo[i]); n -= vals[i]; }
+        }
+        return out;
+    };
+    auto toAlpha = [](int n, bool upper) -> std::string {
+        if (n <= 0) return std::to_string(n);
+        std::string out;
+        char base = upper ? 'A' : 'a';
+        while (n > 0) {
+            int rem = (n - 1) % 26;
+            out.insert(out.begin(), (char)(base + rem));
+            n = (n - 1) / 26;
+        }
+        return out;
+    };
+    if (style == "lower-roman") return toRoman(value, false);
+    if (style == "upper-roman") return toRoman(value, true);
+    if (style == "lower-alpha" || style == "lower-latin") return toAlpha(value, false);
+    if (style == "upper-alpha" || style == "upper-latin") return toAlpha(value, true);
+    if (style == "decimal-leading-zero") {
+        std::string s = std::to_string(value);
+        if (value >= 0 && value < 10) s = "0" + s;
+        return s;
+    }
+    if (style == "none") return "";
+    return std::to_string(value);  // decimal (default)
+}
+std::string StyleSheet::substituteCounters(const std::string& content,
+                                           const std::unordered_map<std::string,int>& counters) {
+    if (content.find("counter") == std::string::npos) return content;
+    std::string out;
+    size_t i = 0;
+    auto lookup = [&](const std::string& name) -> int {
+        auto it = counters.find(name);
+        return it != counters.end() ? it->second : 0;
+    };
+    while (i < content.size()) {
+        // Match counter( or counters( at this position.
+        bool isCounters = content.compare(i, 9, "counters(") == 0;
+        bool isCounter = !isCounters && content.compare(i, 8, "counter(") == 0;
+        if (isCounter || isCounters) {
+            size_t open = content.find('(', i);
+            size_t close = content.find(')', open);
+            if (close == std::string::npos) { out += content.substr(i); break; }
+            std::string args = content.substr(open + 1, close - open - 1);
+            // Split args by comma.
+            std::vector<std::string> a;
+            std::string cur;
+            for (char c : args) {
+                if (c == ',') { a.push_back(trim(cur)); cur.clear(); }
+                else cur += c;
+            }
+            a.push_back(trim(cur));
+            auto unquote = [](std::string s) {
+                if (s.size() >= 2 && ((s.front()=='"'&&s.back()=='"')||(s.front()=='\''&&s.back()=='\'')))
+                    return s.substr(1, s.size()-2);
+                return s;
+            };
+            if (isCounters) {
+                // counters(name, sep [, style]) — flat list has a single level,
+                // so this behaves like counter() with no separator repetition.
+                std::string name = a.size() > 0 ? a[0] : "";
+                std::string style = a.size() > 2 ? a[2] : "decimal";
+                out += formatCounter(lookup(name), style);
+            } else {
+                std::string name = a.size() > 0 ? a[0] : "";
+                std::string style = a.size() > 1 ? a[1] : "decimal";
+                out += formatCounter(lookup(name), style);
+            }
+            i = close + 1;
+        } else {
+            out += content[i++];
+        }
+    }
+    return out;
+}
+std::vector<std::pair<std::string,int>> StyleSheet::parseCounterList(const std::string& val, int defaultValue) {
+    std::vector<std::pair<std::string,int>> out;
+    std::string v = trim(val);
+    if (v.empty() || v == "none") return out;
+    // Tokens: <name> [<int>]? repeated. e.g. "section 0 item" / "chapter 2".
+    std::vector<std::string> toks;
+    std::string cur;
+    for (char c : v) {
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+            if (!cur.empty()) { toks.push_back(cur); cur.clear(); }
+        } else cur += c;
+    }
+    if (!cur.empty()) toks.push_back(cur);
+    for (size_t i = 0; i < toks.size(); ) {
+        std::string name = toks[i++];
+        int value = defaultValue;
+        if (i < toks.size()) {
+            // Is the next token an integer?
+            const std::string& t = toks[i];
+            bool isInt = !t.empty() && (std::isdigit((unsigned char)t[0]) || t[0] == '-' || t[0] == '+');
+            if (isInt) { value = (int)parseFloat(t); ++i; }
+        }
+        out.emplace_back(name, value);
+    }
+    return out;
+}
 float StyleSheet::parseFloat(const std::string& val) {
     std::string v = trim(val);
     for (auto& suffix : {"px", "rem", "em", "deg", "ms", "s", "%"}) {

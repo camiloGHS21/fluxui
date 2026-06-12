@@ -582,6 +582,9 @@ public:
     // Walk the tree once per frame to detect value changes and focus loss,
     // firing input/change accordingly. Called alongside checkFocusChanges().
     void checkFormControlChanges();
+    // Walk the tree in document order applying counter-reset / counter-increment
+    // and substituting counter()/counters() into ::before/::after content.
+    void resolveCounters(std::unordered_map<std::string, int>& counters);
     virtual void resolveStyles(const StyleSheet& sheet);
     void updateStyleAndLayout();
     void markLayoutDirty();

@@ -2487,6 +2487,10 @@ void Application::updateStyleAndLayout() {
 
     documentLifecycle = DocumentLifecycle::InStyleRecalc;
     root_->resolveStyles(stylesheet_);
+    {
+        std::unordered_map<std::string,int> counters;
+        root_->resolveCounters(counters);
+    }
     documentLifecycle = DocumentLifecycle::StyleClean;
 
     root_->attachLayoutTree();

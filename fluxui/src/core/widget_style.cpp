@@ -37,6 +37,34 @@ void Widget::markSubtreeStyleDirty() {
     }
     if (parent) parent->markSubtreeStyleDirty();
 }
+void Widget::resolveCounters(std::unordered_map<std::string, int>& counters) {
+    // Apply this element's counter-reset then counter-increment (CSS Lists L3).
+    const Style& s = *computedStyle;
+    for (const auto& [name, val] : s.rare().counterReset) {
+        counters[name] = val;
+    }
+    for (const auto& [name, inc] : s.rare().counterIncrement) {
+        counters[name] += inc;   // implicitly 0-initialized if unseen
+    }
+    // Substitute counter()/counters() into already-resolved pseudo content.
+    if (beforePseudoNode) {
+        if (auto* t = dynamic_cast<Text*>(beforePseudoNode.get())) {
+            std::string raw = t->computedStyle->content;
+            if (!raw.empty()) t->content = StyleSheet::substituteCounters(raw, counters);
+        }
+    }
+    for (auto& child : children) {
+        if (child && child->type != "pseudo-before" && child->type != "pseudo-after") {
+            child->resolveCounters(counters);
+        }
+    }
+    if (afterPseudoNode) {
+        if (auto* t = dynamic_cast<Text*>(afterPseudoNode.get())) {
+            std::string raw = t->computedStyle->content;
+            if (!raw.empty()) t->content = StyleSheet::substituteCounters(raw, counters);
+        }
+    }
+}
 void Widget::checkFocusChanges() {
     if (focused != lastFrameFocused) {
         lastFrameFocused = focused;
