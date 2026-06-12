@@ -1080,3 +1080,14 @@ target_include_directories(test_range_pseudo PRIVATE
     "${CMAKE_BINARY_DIR}/generated"
 )
 enable_release_lto(test_range_pseudo)
+
+add_executable(test_nth_of
+    examples/cpp/test_nth_of.cpp
+)
+target_link_libraries(test_nth_of PRIVATE
+    fluxui
+)
+target_include_directories(test_nth_of PRIVATE
+    "${CMAKE_BINARY_DIR}/generated"
+)
+enable_release_lto(test_nth_of)

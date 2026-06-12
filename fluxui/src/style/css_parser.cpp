@@ -804,6 +804,31 @@ static int getSiblingIndex(const Widget* widget, bool ofType, bool fromEnd) {
     }
     return index;
 }
+// :nth-child(An+B of S) — index among siblings that match the selector S.
+// Returns 0 if the widget itself doesn't match S (never selected).
+static bool matchCompoundSelector(std::string_view, std::string_view, std::string_view, std::string_view, const Widget*);
+static int getSiblingIndexMatching(const Widget* widget, const std::string& sel, bool fromEnd) {
+    if (!widget || !widget->parent) return 0;
+    const auto& siblings = widget->parent->children;
+    // The element must itself match S to be selectable.
+    auto matchesSel = [&](const Widget* w) -> bool {
+        if (!w) return false;
+        // Match each compound in the (single-compound) S against the sibling.
+        // Reuse matchCompoundSelector for compound selectors (no combinators).
+        return matchCompoundSelector(sel, w->className, w->id, w->selectorType(), w);
+    };
+    if (!matchesSel(widget)) return 0;
+    int count = 0;
+    int index = 0;
+    for (const auto& sibling : siblings) {
+        if (!sibling) continue;
+        if (!matchesSel(sibling.get())) continue;
+        count++;
+        if (sibling.get() == widget) index = count;
+    }
+    if (fromEnd) return count - index + 1;
+    return index;
+}
 static bool widgetHasDescendantMatching(const Widget* root, const std::string& selector) {
     if (!root) return false;
 
@@ -962,11 +987,29 @@ static bool matchCompoundSelector(std::string_view compound,
             if (pseudoName == "nth-child" || pseudoName == "nth-last-child" ||
                 pseudoName == "nth-of-type" || pseudoName == "nth-last-of-type") {
                 if (!widget) return false;
-                int a = 0, b = 0;
-                if (!parseNth(inner, a, b)) return false;
-                bool ofType = (pseudoName == "nth-of-type" || pseudoName == "nth-last-of-type");
                 bool fromEnd = (pseudoName == "nth-last-child" || pseudoName == "nth-last-of-type");
-                int index = getSiblingIndex(widget, ofType, fromEnd);
+                bool ofType = (pseudoName == "nth-of-type" || pseudoName == "nth-last-of-type");
+                // :nth-child(An+B of S) — split the optional `of <selector>`.
+                std::string nthExpr = inner;
+                std::string ofSelector;
+                {
+                    std::string low = lowerAscii(inner);
+                    size_t ofPos = low.find(" of ");
+                    if (ofPos != std::string::npos &&
+                        (pseudoName == "nth-child" || pseudoName == "nth-last-child")) {
+                        nthExpr = trimLocal(inner.substr(0, ofPos));
+                        ofSelector = trimLocal(inner.substr(ofPos + 4));
+                    }
+                }
+                int a = 0, b = 0;
+                if (!parseNth(nthExpr, a, b)) return false;
+                int index;
+                if (!ofSelector.empty()) {
+                    index = getSiblingIndexMatching(widget, ofSelector, fromEnd);
+                    if (index == 0) return false;  // element doesn't match S
+                } else {
+                    index = getSiblingIndex(widget, ofType, fromEnd);
+                }
                 if (!matchNthIndex(index, a, b)) return false;
                 hasAnySelector = true;
                 continue;
